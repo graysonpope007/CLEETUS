@@ -1,0 +1,125 @@
+{% comment %}
+  STP Global Styles — render in layout/theme.liquid before </head>
+  {% render 'stp-global-styles' %}
+{% endcomment %}
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Josefin+Sans:wght@400;700&family=Playfair+Display:ital@1&display=swap" rel="stylesheet">
+
+<style>
+  /*
+    BRIM NARROW — uncomment after uploading font files to Content > Files
+  @font-face {
+    font-family: 'Brim Narrow';
+    src: url('{{ 'brim-narrow.woff2' | asset_url }}') format('woff2'),
+         url('{{ 'brim-narrow.woff' | asset_url }}') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+  */
+
+  :root {
+    --stp-sky:          #A8CEDE;
+    --stp-sky-light:    #C4DDE8;
+    --stp-sky-mid:      #85B8CC;
+    --stp-yellow:       #EDD835;
+    --stp-yellow-dark:  #C4B000;
+    --stp-green:        #4BAE8A;
+    --stp-green-dark:   #2D7A5F;
+    --stp-green-deep:   #1A5C45;
+    --stp-white:        #FFFFFF;
+    --stp-offwhite:     #F4F9FB;
+    --font-display: 'Brim Narrow', 'Alfa Slab One', serif;
+    --font-body:    'Josefin Sans', sans-serif;
+    --font-italic:  'Playfair Display', Georgia, serif;
+  }
+
+  .stp-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 24px;
+    border-bottom: 2px solid var(--stp-green);
+    padding-bottom: 10px;
+  }
+  .stp-section-title {
+    font-family: var(--font-display);
+    font-size: 13px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--stp-green-deep);
+    font-weight: 400;
+  }
+  .stp-section-title--yellow { color: var(--stp-yellow); }
+  .stp-section-link {
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--stp-green-dark);
+    text-decoration: none;
+    border-bottom: 1px solid var(--stp-green);
+  }
+  .stp-section-link--sky { color: var(--stp-sky); border-color: var(--stp-sky-mid); }
+
+  .stp-btn {
+    display: inline-block;
+    font-family: var(--font-display);
+    font-size: 13px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 13px 28px;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s, color 0.15s;
+  }
+  .stp-btn--solid { background: var(--stp-yellow); color: var(--stp-green-deep); }
+  .stp-btn--solid:hover { background: #F5E85A; }
+  .stp-btn--outline { background: transparent; color: var(--stp-white); border: 1px solid var(--stp-white); }
+  .stp-btn--outline:hover { background: var(--stp-white); color: var(--stp-green-deep); }
+
+  /* Dawn overrides */
+  .btn, .button, button[type="submit"], .product-form__submit {
+    background: var(--stp-yellow) !important;
+    color: var(--stp-green-deep) !important;
+    font-family: var(--font-display) !important;
+    letter-spacing: 2px !important;
+    text-transform: uppercase !important;
+    border-radius: 0 !important;
+    border: none !important;
+  }
+  .btn:hover, .button:hover, .product-form__submit:hover { background: #F5E85A !important; }
+  .price { color: var(--stp-green-deep) !important; font-family: var(--font-body) !important; }
+  .card__heading, .card__heading a { font-family: var(--font-display) !important; color: var(--stp-green-deep) !important; }
+  a { color: var(--stp-green-dark); }
+  a:hover { color: var(--stp-green-deep); }
+  body { background-color: var(--stp-sky-light) !important; }
+  .header { background: var(--stp-green-deep) !important; border-bottom: 3px solid var(--stp-yellow) !important; }
+  .header__heading-link, .header__menu-item, .header__icon { color: var(--stp-sky-light) !important; }
+  .footer { background: var(--stp-green-deep) !important; color: var(--stp-green) !important; border-top: 1px solid var(--stp-green-dark) !important; }
+  .footer a, .footer p, .footer li { color: var(--stp-green) !important; font-family: var(--font-body) !important; font-size: 11px !important; letter-spacing: 1px !important; }
+
+  /* Join The Pedigree nav button — tight, refined */
+  .stp-nav-join-btn,
+  a[href*="newsletter"].header__icon,
+  .header__menu-item--newsletter {
+    font-family: var(--font-body) !important;
+    font-weight: 700 !important;
+    font-size: 9px !important;
+    letter-spacing: 2.5px !important;
+    text-transform: uppercase !important;
+    border: 1px solid rgba(237,216,53,0.7) !important;
+    color: #EDD835 !important;
+    padding: 5px 10px !important;
+    text-decoration: none !important;
+    background: transparent !important;
+    line-height: 1 !important;
+    transition: background 0.15s, color 0.15s !important;
+    border-radius: 0 !important;
+  }
+
+</style>

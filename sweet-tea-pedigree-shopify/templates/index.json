@@ -1,0 +1,184 @@
+{
+  "sections": {
+    "stp_hero": {
+      "type": "stp-hero-banner",
+      "settings": {
+        "band_photo": "",
+        "show_overlay": true,
+        "eyebrow": "New Single Out Now",
+        "headline": "Sweet Tea Pedigree",
+        "btn1_label": "Stream Now",
+        "btn1_link": "",
+        "btn2_label": "Buy Vinyl",
+        "btn2_link": ""
+      }
+    },
+    "stp_music": {
+      "type": "stp-music",
+      "blocks": {
+        "release_1": {
+          "type": "release",
+          "settings": {
+            "title": "New Single",
+            "listen_link": ""
+          }
+        },
+        "release_2": {
+          "type": "release",
+          "settings": {
+            "title": "Debut Album",
+            "listen_link": ""
+          }
+        },
+        "release_3": {
+          "type": "release",
+          "settings": {
+            "title": "B-Side EP",
+            "listen_link": ""
+          }
+        },
+        "release_4": {
+          "type": "release",
+          "settings": {
+            "title": "Live Sessions",
+            "listen_link": ""
+          }
+        }
+      },
+      "block_order": [
+        "release_1",
+        "release_2",
+        "release_3",
+        "release_4"
+      ],
+      "settings": {
+        "title": "Music",
+        "see_all_link": ""
+      }
+    },
+    "stp_tour": {
+      "type": "stp-tour",
+      "blocks": {
+        "show_1": {
+          "type": "show",
+          "settings": {
+            "date": "Apr 12",
+            "venue": "Trees",
+            "city": "Dallas, TX",
+            "ticket_link": "",
+            "sold_out": false
+          }
+        },
+        "show_2": {
+          "type": "show",
+          "settings": {
+            "date": "Apr 19",
+            "venue": "The Parish",
+            "city": "Austin, TX",
+            "ticket_link": "",
+            "sold_out": false
+          }
+        },
+        "show_3": {
+          "type": "show",
+          "settings": {
+            "date": "May 3",
+            "venue": "House of Blues",
+            "city": "Houston, TX",
+            "ticket_link": "",
+            "sold_out": false
+          }
+        },
+        "show_4": {
+          "type": "show",
+          "settings": {
+            "date": "May 17",
+            "venue": "Knitting Factory",
+            "city": "Brooklyn, NY",
+            "ticket_link": "",
+            "sold_out": false
+          }
+        }
+      },
+      "block_order": [
+        "show_1",
+        "show_2",
+        "show_3",
+        "show_4"
+      ],
+      "settings": {
+        "title": "Tour",
+        "see_all_link": ""
+      }
+    },
+    "stp_videos": {
+      "type": "stp-videos",
+      "blocks": {
+        "video_1": {
+          "type": "video",
+          "settings": {
+            "title": "New Single (Official Video)",
+            "video_link": "",
+            "thumbnail": ""
+          }
+        },
+        "video_2": {
+          "type": "video",
+          "settings": {
+            "title": "Live at Trees, Dallas",
+            "video_link": "",
+            "thumbnail": ""
+          }
+        },
+        "video_3": {
+          "type": "video",
+          "settings": {
+            "title": "Acoustic Session",
+            "video_link": "",
+            "thumbnail": ""
+          }
+        }
+      },
+      "block_order": [
+        "video_1",
+        "video_2",
+        "video_3"
+      ],
+      "settings": {
+        "title": "Videos",
+        "see_all_link": ""
+      }
+    },
+    "stp_newsletter": {
+      "type": "stp-newsletter",
+      "settings": {
+        "eyebrow": "Stay Connected",
+        "line1": "Be the first to know",
+        "line2": "Sweet Tea Pedigree's",
+        "line3": "updates",
+        "placeholder": "Your email address",
+        "button_label": "Sign Up"
+      }
+    },
+    "stp_marquee": {
+      "type": "stp-marquee",
+      "settings": {
+        "text": "STEAP BABY STEAP",
+        "bg_color": "#EDD835",
+        "text_color": "#1A5C45",
+        "border_color": "#C4B000",
+        "font_size": 14,
+        "speed": 22,
+        "padding": 9
+      }
+    }
+  },
+  "order": [
+    "stp_marquee",
+    "stp_hero",
+    "stp_music",
+    "stp_tour",
+    "stp_videos",
+    "stp_newsletter"
+  ]
+}

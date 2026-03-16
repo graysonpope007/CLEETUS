@@ -1,0 +1,193 @@
+{% comment %}
+  =====================================================
+  SWEET TEA PEDIGREE — Music Releases Section
+  File: sections/stp-music.liquid
+  =====================================================
+  HOW TO INSTALL:
+  1. Add new section → name it: stp-music
+  2. Paste this file and save
+  3. In Customize → Add section → STP Music
+  4. Add each release as a "block" — no code needed!
+  =====================================================
+{% endcomment %}
+
+<section class="stp-music">
+  <div class="stp-section-head">
+    <h2 class="stp-section-title">{{ section.settings.title | default: 'Music' }}</h2>
+    {% if section.settings.see_all_link != blank %}
+      <a href="{{ section.settings.see_all_link }}" class="stp-section-link">See All Music</a>
+    {% endif %}
+  </div>
+
+  <div class="stp-music-grid">
+    {% for block in section.blocks %}
+      <div class="stp-music-card" {{ block.shopify_attributes }}>
+        <div class="stp-music-thumb">
+          {% if block.settings.cover_art != blank %}
+            <img
+              src="{{ block.settings.cover_art | image_url: width: 400 }}"
+              alt="{{ block.settings.title | escape }}"
+              loading="lazy"
+              width="400"
+              height="400"
+            >
+          {% else %}
+            <div class="stp-music-thumb-placeholder">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <circle cx="24" cy="24" r="20" stroke="#4BAE8A" stroke-width="1.5" fill="none"/>
+                <circle cx="24" cy="24" r="6" fill="#4BAE8A"/>
+              </svg>
+            </div>
+          {% endif %}
+        </div>
+        <p class="stp-music-name">{{ block.settings.title }}</p>
+        <p class="stp-music-artist">Sweet Tea Pedigree</p>
+        {% if block.settings.listen_link != blank %}
+          <a href="{{ block.settings.listen_link }}" class="stp-music-btn" target="_blank" rel="noopener">
+            Listen Now
+          </a>
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="stp-empty-note">Add your releases using the "Add block" button in the theme editor.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<style>
+  .stp-music {
+    padding: 48px 40px 44px;
+    background: #C4DDE8;
+  }
+  .stp-music-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
+  }
+  .stp-music-card {
+    cursor: default;
+  }
+  .stp-music-thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    background: #1A5C45;
+    border: 2px solid #4BAE8A;
+    margin-bottom: 10px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stp-music-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .stp-music-thumb-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+  }
+  .stp-music-name {
+    font-family: 'Alfa Slab One', serif;
+    font-size: 13px;
+    color: #1A5C45;
+    margin-bottom: 3px;
+    line-height: 1.3;
+  }
+  .stp-music-artist {
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #2D7A5F;
+    margin-bottom: 8px;
+  }
+  .stp-music-btn {
+    font-family: 'Josefin Sans', sans-serif;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #2D7A5F;
+    text-decoration: none;
+    border-bottom: 1px solid #2D7A5F;
+    padding-bottom: 1px;
+  }
+  .stp-empty-note {
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 13px;
+    color: #2D7A5F;
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 0;
+    font-style: italic;
+  }
+  @media (max-width: 899px) {
+    .stp-music-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stp-music { padding: 36px 20px; }
+  }
+  @media (max-width: 499px) {
+    .stp-music-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  }
+</style>
+
+{% schema %}
+{
+  "name": "STP Music",
+  "settings": [
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Section title",
+      "default": "Music"
+    },
+    {
+      "type": "url",
+      "id": "see_all_link",
+      "label": "See all link",
+      "info": "Link to your full music page or Spotify artist page"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "release",
+      "name": "Release",
+      "settings": [
+        {
+          "type": "image_picker",
+          "id": "cover_art",
+          "label": "Album / single cover art"
+        },
+        {
+          "type": "text",
+          "id": "title",
+          "label": "Release title",
+          "default": "New Single"
+        },
+        {
+          "type": "url",
+          "id": "listen_link",
+          "label": "Listen link",
+          "info": "Spotify, Apple Music, Bandcamp, etc."
+        }
+      ]
+    }
+  ],
+  "max_blocks": 8,
+  "presets": [
+    {
+      "name": "STP Music",
+      "blocks": [
+        { "type": "release" },
+        { "type": "release" },
+        { "type": "release" },
+        { "type": "release" }
+      ]
+    }
+  ]
+}
+{% endschema %}
