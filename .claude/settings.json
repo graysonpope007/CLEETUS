@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "command": "python3 .claude/hooks/session-start-context.py",
+        "timeout": 10000
+      }
+    ],
+    "PreCompact": [
+      {
+        "command": "python3 .claude/hooks/pre-compact-flush.py",
+        "timeout": 15000
+      }
+    ],
+    "SessionEnd": [
+      {
+        "command": "python3 .claude/hooks/session-end-flush.py",
+        "timeout": 15000
+      }
+    ]
+  }
+}
