@@ -1,0 +1,25 @@
+# Cleetus dependencies — install with:
+# /opt/homebrew/bin/python3 -m pip install -r requirements.txt --break-system-packages
+#
+# Requires: /opt/homebrew/bin/python3 (Homebrew Python 3.14+)
+# System Python (3.9) does NOT work — sqlite extension loading is disabled.
+
+# Google integrations
+google-api-python-client>=2.194.0
+google-auth>=2.49.2
+google-auth-httplib2>=0.3.1
+google-auth-oauthlib>=1.3.1
+
+# Slack
+slack-sdk>=3.41.0
+
+# Vector search + embeddings
+fastembed>=0.7.4
+sqlite-vec>=0.1.9
+
+# Claude / Anthropic
+anthropic>=0.50.0
+
+# Utilities
+python-dotenv>=1.2.2
+requests>=2.33.0
