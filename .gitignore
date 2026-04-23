@@ -1,0 +1,19 @@
+# Vault is its own git repo — tracked separately, not as a submodule
+vault/
+
+# Secrets — never commit
+.env
+credentials.json
+token.json
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# macOS
+.DS_Store
