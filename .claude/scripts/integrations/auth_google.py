@@ -24,7 +24,7 @@ _CREDS_PATH = _CREDS_ROOT / "credentials.json"
 ALL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar",          # full read+write (was readonly)
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 

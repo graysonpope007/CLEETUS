@@ -1,7 +1,8 @@
 #!/opt/homebrew/bin/python3
 """
 gcal.py — Google Calendar integration module.
-Read-only. Shared OAuth token with Gmail.
+Read + write. Shared OAuth token with Gmail (requires calendar scope, not just readonly).
+Re-run auth.py if you get a 403 — the token needs the full calendar scope.
 """
 from __future__ import annotations
 
@@ -82,6 +83,65 @@ def _parse_event(raw: dict) -> CalEvent:
             if a.get("responseStatus") != "declined"
         ],
     )
+
+
+STEAP_CALENDAR_ID = "33ad875b74640fe961001763256b347def6422496ee9e099b3f0628b260c7134@group.calendar.google.com"
+
+
+def create_event(
+    summary: str,
+    start_dt: str,          # ISO8601 datetime string e.g. "2026-06-15T21:00:00"
+    end_dt: str,
+    calendar_id: str = STEAP_CALENDAR_ID,
+    location: str = "",
+    description: str = "",
+    timezone: str = "America/New_York",
+    color_id: str = "10",   # 10 = Basil green
+) -> str:
+    """Create a calendar event. Returns the event ID."""
+    svc = calendar_service()
+    body = {
+        "summary": summary,
+        "location": location,
+        "description": description,
+        "start": {"dateTime": start_dt, "timeZone": timezone},
+        "end": {"dateTime": end_dt, "timeZone": timezone},
+        "colorId": color_id,
+    }
+    result = svc.events().insert(calendarId=calendar_id, body=body).execute()
+    return result["id"]
+
+
+def update_event(
+    event_id: str,
+    updates: dict,
+    calendar_id: str = STEAP_CALENDAR_ID,
+) -> None:
+    """Update fields on an existing calendar event."""
+    svc = calendar_service()
+    event = svc.events().get(calendarId=calendar_id, eventId=event_id).execute()
+    event.update(updates)
+    svc.events().update(calendarId=calendar_id, eventId=event_id, body=event).execute()
+
+
+def delete_event(event_id: str, calendar_id: str = STEAP_CALENDAR_ID) -> None:
+    """Delete a calendar event."""
+    svc = calendar_service()
+    svc.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+
+
+def list_steap_events(days_ahead: int = 120) -> list[CalEvent]:
+    """List upcoming events on the STEAP calendar."""
+    svc = calendar_service()
+    now = _now_utc()
+    result = svc.events().list(
+        calendarId=STEAP_CALENDAR_ID,
+        timeMin=_iso(now),
+        timeMax=_iso(now + timedelta(days=days_ahead)),
+        singleEvents=True,
+        orderBy="startTime",
+    ).execute()
+    return [_parse_event(e) for e in result.get("items", [])]
 
 
 if __name__ == "__main__":
