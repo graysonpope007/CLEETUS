@@ -27,6 +27,20 @@ def get_db():
         conn.close()
 
 
+def _seed_memory(conn, key: str, category: str, content: str):
+    """Insert a named seed memory if it doesn't exist yet (keyed by content prefix)."""
+    exists = conn.execute(
+        "SELECT 1 FROM memories WHERE content = ? LIMIT 1", (content,)
+    ).fetchone()
+    if not exists:
+        mid = f"seed-{key}"
+        ts = _now()
+        conn.execute(
+            "INSERT OR IGNORE INTO memories (id, category, content, source_conversation_id, confidence, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+            (mid, category, content, None, 1.0, ts, ts),
+        )
+
+
 def init_db():
     with get_db() as conn:
         conn.executescript("""
@@ -92,6 +106,13 @@ def init_db():
                 synced_at TEXT NOT NULL
             );
         """)
+        # Seed hard rules that must always be present
+        _seed_memory(
+            conn,
+            key="no-emojis",
+            category="preference",
+            content="Never use emojis in any response, message, title, or output of any kind.",
+        )
 
 
 # ── Conversations ────────────────────────────────────────────────────────────
