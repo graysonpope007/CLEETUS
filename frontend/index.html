@@ -449,9 +449,95 @@
 
   .btn-cancel { background: var(--surface2); color: var(--text); }
   .btn-send-confirm { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── Lock screen ── */
+  #lock-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+
+  #lock-screen.hidden { display: none; }
+
+  #lock-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 36px 32px;
+    width: 340px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  #lock-box h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 0.05em;
+    text-align: center;
+  }
+
+  #lock-box p {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-align: center;
+  }
+
+  #lock-token {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 0.9rem;
+    font-family: monospace;
+    outline: none;
+  }
+
+  #lock-token:focus { border-color: var(--accent); }
+
+  #lock-error {
+    font-size: 0.78rem;
+    color: var(--danger);
+    text-align: center;
+    min-height: 1em;
+  }
+
+  #lock-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #lock-btn:hover { opacity: 0.9; }
 </style>
 </head>
 <body>
+
+<!-- Lock screen -->
+<div id="lock-screen">
+  <div id="lock-box">
+    <h2>CLEETUS</h2>
+    <p>Enter your access token to continue</p>
+    <input type="password" id="lock-token" placeholder="Secret token" autocomplete="current-password">
+    <div id="lock-error"></div>
+    <button id="lock-btn">Unlock</button>
+  </div>
+</div>
 
 <!-- Sidebar -->
 <div id="sidebar">
@@ -537,9 +623,53 @@
 </div>
 
 <script>
-const API = '';
 let activeConvId = null;
 let isStreaming = false;
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+let _token = localStorage.getItem('cleetus_token') || '';
+
+function apiFetch(path, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers, { 'X-Cleetus-Token': _token });
+  return fetch(path, opts).then(r => {
+    if (r.status === 401) { logout(); throw new Error('Unauthorized'); }
+    return r;
+  });
+}
+
+function logout() {
+  _token = '';
+  localStorage.removeItem('cleetus_token');
+  document.getElementById('lock-screen').classList.remove('hidden');
+  document.getElementById('lock-error').textContent = '';
+  document.getElementById('lock-token').value = '';
+}
+
+async function tryUnlock() {
+  const candidate = document.getElementById('lock-token').value.trim();
+  if (!candidate) return;
+  const res = await fetch('/api/memories/count', {
+    headers: { 'X-Cleetus-Token': candidate },
+  });
+  if (res.status === 401) {
+    document.getElementById('lock-error').textContent = 'Invalid token.';
+    return;
+  }
+  _token = candidate;
+  localStorage.setItem('cleetus_token', _token);
+  document.getElementById('lock-screen').classList.add('hidden');
+  init();
+}
+
+document.getElementById('lock-btn').onclick = tryUnlock;
+document.getElementById('lock-token').addEventListener('keydown', e => {
+  if (e.key === 'Enter') tryUnlock();
+});
+
+if (_token) {
+  document.getElementById('lock-screen').classList.add('hidden');
+}
 
 // ── Utilities ──────────────────────────────────────────────────────────────
 
@@ -584,7 +714,7 @@ document.querySelectorAll('.sidebar-tab').forEach(t => {
 // ── Conversations ──────────────────────────────────────────────────────────
 
 async function loadConversations() {
-  const res = await fetch(`${API}/api/conversations`);
+  const res = await apiFetch(`/api/conversations`);
   const convs = await res.json();
   const list = document.getElementById('conversations-list');
   list.innerHTML = '';
@@ -604,7 +734,7 @@ async function openConversation(id, title) {
   document.getElementById('empty-state')?.remove();
   document.getElementById('messages').innerHTML = '';
 
-  const res = await fetch(`${API}/api/conversations/${id}/messages`);
+  const res = await apiFetch(`/api/conversations/${id}/messages`);
   const msgs = await res.json();
   msgs.forEach(m => appendMessage(m.role, m.content, m.created_at));
   scrollToBottom();
@@ -613,7 +743,7 @@ async function openConversation(id, title) {
 }
 
 document.getElementById('new-chat-btn').onclick = async () => {
-  const res = await fetch(`${API}/api/conversations`, {
+  const res = await apiFetch(`/api/conversations`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title: 'New conversation' }),
@@ -637,7 +767,7 @@ titleEl.addEventListener('keydown', async (e) => {
   if (e.key === 'Enter') {
     e.preventDefault();
     titleEl.contentEditable = false;
-    await fetch(`${API}/api/conversations/${activeConvId}/title`, {
+    await apiFetch(`/api/conversations/${activeConvId}/title`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: titleEl.textContent.trim() }),
@@ -709,7 +839,7 @@ sendBtn.onclick = sendMessage;
 async function sendMessage() {
   if (!activeConvId) {
     // Auto-create conversation
-    const res = await fetch(`${API}/api/conversations`, {
+    const res = await apiFetch(`/api/conversations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: 'New conversation' }),
@@ -737,7 +867,7 @@ async function sendMessage() {
   let fullText = '';
 
   try {
-    const res = await fetch(`${API}/api/conversations/${activeConvId}/chat`, {
+    const res = await apiFetch(`/api/conversations/${activeConvId}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text }),
@@ -807,7 +937,7 @@ async function autoTitle(firstMessage) {
   const title = firstMessage.length > 45
     ? firstMessage.slice(0, 42) + '...'
     : firstMessage;
-  await fetch(`${API}/api/conversations/${activeConvId}/title`, {
+  await apiFetch(`/api/conversations/${activeConvId}/title`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -819,13 +949,13 @@ async function autoTitle(firstMessage) {
 // ── Memories ──────────────────────────────────────────────────────────────
 
 async function updateMemoryBadge() {
-  const res = await fetch(`${API}/api/memories/count`);
+  const res = await apiFetch(`/api/memories/count`);
   const data = await res.json();
   document.getElementById('memory-badge').textContent = `${data.count} memories`;
 }
 
 async function loadMemories() {
-  const res = await fetch(`${API}/api/memories`);
+  const res = await apiFetch(`/api/memories`);
   const mems = await res.json();
   const panel = document.getElementById('memories-panel');
   panel.innerHTML = `<div class="memory-count">${mems.length} memories stored</div>`;
@@ -854,7 +984,7 @@ async function loadMemories() {
       btn.textContent = '✕';
       btn.title = 'Delete this memory';
       btn.onclick = async () => {
-        await fetch(`${API}/api/memories/${m.id}`, { method: 'DELETE' });
+        await apiFetch(`/api/memories/${m.id}`, { method: 'DELETE' });
         loadMemories();
         updateMemoryBadge();
       };
@@ -870,7 +1000,7 @@ async function loadMemories() {
 
 async function loadSms() {
   // Check device status
-  const statusRes = await fetch(`${API}/api/sms/status`);
+  const statusRes = await apiFetch(`/api/sms/status`);
   const status = await statusRes.json();
   const bar = document.getElementById('sms-status-bar');
   if (status.connected) {
@@ -882,7 +1012,7 @@ async function loadSms() {
   }
 
   // Load stored messages
-  const msgsRes = await fetch(`${API}/api/sms/messages?limit=30`);
+  const msgsRes = await apiFetch(`/api/sms/messages?limit=30`);
   const msgs = await msgsRes.json();
   const list = document.getElementById('sms-list');
   list.innerHTML = '';
@@ -908,7 +1038,7 @@ async function syncSms() {
   btn.textContent = 'Syncing...';
   btn.disabled = true;
   try {
-    const res = await fetch(`${API}/api/sms/sync`, { method: 'POST' });
+    const res = await apiFetch(`/api/sms/sync`, { method: 'POST' });
     const data = await res.json();
     if (data.success) {
       btn.textContent = `Synced ${data.synced} messages`;
@@ -938,7 +1068,7 @@ async function confirmSendSms() {
   const to = document.getElementById('sms-to').value.trim();
   const body = document.getElementById('sms-body').value.trim();
   if (!to || !body) return alert('Please fill in both fields.');
-  const res = await fetch(`${API}/api/sms/send`, {
+  const res = await apiFetch(`/api/sms/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ to, message: body }),

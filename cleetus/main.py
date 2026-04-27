@@ -2,9 +2,9 @@ import asyncio
 import json
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -32,6 +32,7 @@ from cleetus.memory.database import (
     set_profile_field,
     update_conversation_title,
 )
+from cleetus.config import SECRET_TOKEN
 from cleetus.memory.extractor import extract_and_save
 
 app = FastAPI(title="CLEETUS", version="1.0.0")
@@ -42,6 +43,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if request.url.path.startswith("/api/") and SECRET_TOKEN:
+        token = request.headers.get("X-Cleetus-Token", "")
+        if token != SECRET_TOKEN:
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 # ── Startup ───────────────────────────────────────────────────────────────────
 
