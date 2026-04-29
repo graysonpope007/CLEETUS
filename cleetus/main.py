@@ -32,6 +32,13 @@ from cleetus.memory.database import (
     set_profile_field,
     update_conversation_title,
 )
+from cleetus.integrations.vault import (
+    append_update,
+    get_vault_context,
+    list_notes,
+    read_note,
+    write_note,
+)
 from cleetus.memory.extractor import extract_and_save
 
 app = FastAPI(title="CLEETUS", version="1.0.0")
@@ -223,3 +230,46 @@ class SendSmsBody(BaseModel):
 @app.post("/api/sms/send")
 async def api_send_sms(body: SendSmsBody):
     return send_sms(body.to, body.message)
+
+
+# ── Vault ─────────────────────────────────────────────────────────────────────
+
+class NoteBody(BaseModel):
+    content: str
+
+
+class UpdateBody(BaseModel):
+    text: str
+
+
+@app.get("/api/vault/notes")
+async def api_vault_list_notes(folder: str = ""):
+    return {"notes": list_notes(folder)}
+
+
+@app.get("/api/vault/context")
+async def api_vault_context():
+    return {"context": get_vault_context()}
+
+
+@app.get("/api/vault/notes/{path:path}")
+async def api_vault_read_note(path: str):
+    content = read_note(path)
+    if content is None:
+        raise HTTPException(404, "Note not found")
+    return {"path": path, "content": content}
+
+
+@app.post("/api/vault/notes/{path:path}/update")
+async def api_vault_append_update(path: str, body: UpdateBody):
+    try:
+        append_update(path, body.text)
+    except FileNotFoundError:
+        raise HTTPException(404, "Note not found")
+    return {"ok": True}
+
+
+@app.post("/api/vault/notes/{path:path}")
+async def api_vault_write_note(path: str, body: NoteBody):
+    write_note(path, body.content)
+    return {"ok": True}

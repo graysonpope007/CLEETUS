@@ -1,3 +1,4 @@
+from cleetus.integrations.vault import get_vault_context
 from cleetus.memory.database import (
     get_memories_by_category,
     get_user_profile,
@@ -39,6 +40,10 @@ def get_memory_context(query: str = "") -> str:
             lines.append(f"\n## User {cat}s")
             for m in mems[:5]:
                 lines.append(f"- {m['content']}")
+
+    vault_ctx = get_vault_context(query)
+    if vault_ctx:
+        lines.append("\n" + vault_ctx)
 
     if not lines:
         return ""
