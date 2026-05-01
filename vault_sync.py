@@ -213,15 +213,32 @@ def _upload(data: dict, url: str, key: str) -> None:
 def main():
     _load_env()
 
-    supabase_url = os.environ.get("SUPABASE_URL", "").strip()
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    # Accept either bare SUPABASE_URL or Expo's EXPO_PUBLIC_ prefix
+    supabase_url = (
+        os.environ.get("SUPABASE_URL")
+        or os.environ.get("EXPO_PUBLIC_SUPABASE_URL")
+        or ""
+    ).strip()
 
-    if not supabase_url:
-        print("ERROR: SUPABASE_URL not set. Add it to .env or export it.")
+    # Service role key (needed for storage writes). Never shipped in Expo .env —
+    # pass via CLI: export SUPABASE_SERVICE_ROLE_KEY=eyJ...
+    service_key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("SUPABASE_SERVICE_KEY")
+        or ""
+    ).strip()
+
+    if not supabase_url or "YOUR_PROJECT_ID" in supabase_url:
+        print("ERROR: SUPABASE_URL not set.")
+        print("  export SUPABASE_URL='https://xxxx.supabase.co'")
         sys.exit(1)
-    if not service_key:
-        print("ERROR: SUPABASE_SERVICE_ROLE_KEY not set (anon key won't work for writes).")
+    if not service_key or service_key.startswith("eyJhbGci..."):
+        print("ERROR: SUPABASE_SERVICE_ROLE_KEY not set.")
+        print("  Get it from: supabase.com → Project Settings → API → service_role")
+        print("  export SUPABASE_SERVICE_ROLE_KEY='eyJ...'")
         sys.exit(1)
+
+    print(f"Supabase URL: {supabase_url}")
 
     if not VAULT.is_dir():
         print(f"ERROR: Vault not found at {VAULT}")
