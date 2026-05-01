@@ -18,6 +18,7 @@ from cleetus.integrations.sms import (
     send_sms,
     sync_sms,
 )
+from cleetus.chat.titler import auto_title
 from cleetus.memory.database import (
     create_conversation,
     delete_memory,
@@ -29,6 +30,7 @@ from cleetus.memory.database import (
     init_db,
     memory_count,
     save_message,
+    search_memories,
     set_profile_field,
     update_conversation_title,
 )
@@ -132,7 +134,7 @@ async def api_chat(cid: str, body: ChatBody, background_tasks: BackgroundTasks):
             save_message(cid, "assistant", assistant_text)
 
             # Kick off memory extraction in background after streaming completes
-            background_tasks.add_task(_run_extraction, cid)
+            background_tasks.add_task(_run_extraction_and_title, cid)
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
@@ -145,9 +147,10 @@ async def api_chat(cid: str, body: ChatBody, background_tasks: BackgroundTasks):
     )
 
 
-async def _run_extraction(conversation_id: str):
+async def _run_extraction_and_title(conversation_id: str):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, extract_and_save, conversation_id)
+    await loop.run_in_executor(None, auto_title, conversation_id)
 
 
 # ── Memories ──────────────────────────────────────────────────────────────────
@@ -160,6 +163,13 @@ async def api_get_memories():
 @app.get("/api/memories/count")
 async def api_memory_count():
     return {"count": memory_count()}
+
+
+@app.get("/api/memories/search")
+async def api_search_memories(q: str = ""):
+    if not q.strip():
+        return []
+    return search_memories(q.strip(), limit=20)
 
 
 @app.delete("/api/memories/{mid}")

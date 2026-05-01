@@ -57,6 +57,26 @@ def _build_extraction_prompt(messages: list[dict], existing: list[dict]) -> str:
     )
 
 
+def _word_overlap(a: str, b: str) -> float:
+    """Jaccard-style overlap on the shorter string's vocabulary."""
+    words_a = set(re.sub(r"[^\w\s]", "", a.lower()).split())
+    words_b = set(re.sub(r"[^\w\s]", "", b.lower()).split())
+    # Remove very common stop words so "the user likes X" != "the user likes Y"
+    stops = {"the", "a", "an", "is", "are", "was", "were", "user", "grayson", "he", "his", "i", "my"}
+    words_a -= stops
+    words_b -= stops
+    if not words_a or not words_b:
+        return 0.0
+    return len(words_a & words_b) / min(len(words_a), len(words_b))
+
+
+def _is_duplicate(content: str, existing: list[dict], threshold: float = 0.72) -> bool:
+    for mem in existing:
+        if _word_overlap(content, mem["content"]) >= threshold:
+            return True
+    return False
+
+
 def extract_and_save(conversation_id: str) -> int:
     messages = get_messages(conversation_id)
     if len(messages) < 2:
@@ -94,12 +114,15 @@ def extract_and_save(conversation_id: str) -> int:
         confidence = float(item.get("confidence", 1.0))
         if category not in _CATEGORIES or not content:
             continue
-        save_memory(
+        if _is_duplicate(content, existing):
+            continue
+        mem = save_memory(
             category=category,
             content=content,
             conversation_id=conversation_id,
             confidence=confidence,
         )
+        existing.append(mem)
         saved += 1
 
     return saved
