@@ -41,9 +41,15 @@ MAX_FILE_CHARS = 4000
 
 
 def _load_env():
-    """Load .env from script directory if present."""
-    env_path = Path(__file__).parent / ".env"
-    if env_path.exists():
+    """Load .env from several known locations (first match wins per key)."""
+    candidates = [
+        Path(__file__).parent / ".env",          # next to vault_sync.py
+        Path.home() / "cleetus" / ".env",         # Python backend
+        Path.home() / "cleetus-app" / ".env",     # Expo app (no service role key here)
+    ]
+    for env_path in candidates:
+        if not env_path.exists():
+            continue
         for line in env_path.read_text().splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
