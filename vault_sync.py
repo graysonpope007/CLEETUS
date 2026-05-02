@@ -226,22 +226,22 @@ def main():
         or ""
     ).strip()
 
-    # Service role key (needed for storage writes). Never shipped in Expo .env —
-    # pass via CLI: export SUPABASE_SERVICE_ROLE_KEY=eyJ...
+    # Use service role key if available; fall back to anon key (bucket policy allows it)
     service_key = (
         os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
         or os.environ.get("SUPABASE_SERVICE_KEY")
+        or os.environ.get("SUPABASE_ANON_KEY")
+        or os.environ.get("EXPO_PUBLIC_SUPABASE_ANON_KEY")
         or ""
     ).strip()
 
     if not supabase_url or "YOUR_PROJECT_ID" in supabase_url:
         print("ERROR: SUPABASE_URL not set.")
-        print("  export SUPABASE_URL='https://xxxx.supabase.co'")
+        print("  Add SUPABASE_URL or EXPO_PUBLIC_SUPABASE_URL to ~/cleetus-app/.env")
         sys.exit(1)
-    if not service_key or service_key.startswith("eyJhbGci..."):
-        print("ERROR: SUPABASE_SERVICE_ROLE_KEY not set.")
-        print("  Get it from: supabase.com → Project Settings → API → service_role")
-        print("  export SUPABASE_SERVICE_ROLE_KEY='eyJ...'")
+    if not service_key:
+        print("ERROR: No Supabase key found.")
+        print("  Add EXPO_PUBLIC_SUPABASE_ANON_KEY to ~/cleetus-app/.env")
         sys.exit(1)
 
     print(f"Supabase URL: {supabase_url}")
