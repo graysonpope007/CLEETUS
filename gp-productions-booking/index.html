@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magnolia Booking Co.</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+
+        /* ── RESET ─────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        /* ── TOKENS ────────────────────────────────────── */
+        :root {
+            --forest:     #152E1E;   /* deep Essex — visibly green */
+            --green:      #1C3829;   /* true Essex green */
+            --green-mid:  #274A36;   /* mid Essex */
+            --green-lt:   #3D6B50;   /* light Essex */
+            --paper:      #FEFAE0;   /* true cornsilk */
+            --paper-lt:   #FFFDF0;   /* light cornsilk */
+            --paper-dk:   #EDE7C5;   /* dimmed cornsilk */
+            --amber:      #C9A052;   /* warm gold */
+            --amber-dim:  #9B7A3D;   /* dimmed gold */
+            --rust:       #7A2E12;
+            --cream:      #FEFAE0;   /* cornsilk as primary text-on-green */
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Oswald', sans-serif;
+            background: var(--forest);
+            color: var(--cream);
+            overflow-x: hidden;
+        }
+
+        /* ── GRAIN OVERLAY ──────────────────────────────── */
+        #grain {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.45;
+            mix-blend-mode: overlay;
+        }
+
+        /* ── NAV ───────────────────────────────────────── */
+        #nav {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 200;
+            padding: 1.2rem 3rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.5s, border-color 0.5s, backdrop-filter 0.5s;
+            border-bottom: 1px solid transparent;
+        }
+
+        #nav.scrolled {
+            background: rgba(10, 20, 10, 0.92);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-bottom-color: rgba(200, 140, 26, 0.18);
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: baseline;
+            gap: 0.55rem;
+            text-decoration: none;
+        }
+
+        .nav-logo .magnolia {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-weight: 600;
+            font-size: 1.5rem;
+            color: var(--cream);
+            line-height: 1;
+        }
+
+        .nav-logo .co {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.5rem;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+            color: var(--amber);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2.5rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 500;
+            font-size: 0.62rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--cream);
+            opacity: 0.55;
+            text-decoration: none;
+            transition: opacity 0.2s, color 0.2s;
+        }
+
+        .nav-links a:hover { opacity: 1; color: var(--amber); }
+
+        /* ── HERO ──────────────────────────────────────── */
+        #hero {
+            position: relative;
+            height: 100vh;
+            min-height: 720px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            background: var(--forest);
+        }
+
+        /* Badge SVG behind everything */
+        #badge {
+            position: absolute;
+            inset: 0;
+            width: 100%; height: 100%;
+        }
+
+        /* Aged vignette */
+        #hero::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 65% 60% at 50% 50%, transparent 20%, rgba(8,16,8,0.55) 100%),
+                linear-gradient(to bottom, rgba(8,16,8,0.5) 0%, transparent 18%, transparent 82%, rgba(8,16,8,0.6) 100%);
+            pointer-events: none;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            padding: 0 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* ── hero type ── */
+        .hero-location {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 400;
+            font-size: 0.62rem;
+            letter-spacing: 0.52em;
+            text-transform: uppercase;
+            color: var(--amber);
+            opacity: 0.75;
+        }
+
+        .hero-orn {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+            margin: 1.4rem 0;
+            opacity: 0.38;
+        }
+
+        .hero-orn::before,
+        .hero-orn::after {
+            content: '';
+            display: block;
+            width: 72px;
+            height: 1px;
+            background: var(--amber);
+        }
+
+        .hero-orn span {
+            font-size: 0.5rem;
+            color: var(--amber);
+        }
+
+        .hero-name {
+            line-height: 0.88;
+        }
+
+        .hero-magnolia {
+            display: block;
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-weight: 700;
+            font-size: clamp(5.5rem, 13vw, 10.5rem);
+            color: var(--cream);
+            letter-spacing: -0.02em;
+        }
+
+        .hero-bco {
+            display: block;
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: clamp(1rem, 2.2vw, 1.7rem);
+            letter-spacing: 0.65em;
+            text-transform: uppercase;
+            color: var(--amber);
+            margin-top: 0.6rem;
+        }
+
+        .hero-divider {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 2.2rem 0;
+        }
+
+        .hero-divider::before,
+        .hero-divider::after {
+            content: '';
+            display: block;
+            height: 1px;
+            width: 100px;
+            background: linear-gradient(to right, transparent, rgba(200,140,26,0.5));
+        }
+
+        .hero-divider::after {
+            background: linear-gradient(to left, transparent, rgba(200,140,26,0.5));
+        }
+
+        .hero-divider span {
+            font-size: 0.5rem;
+            color: var(--amber);
+            opacity: 0.6;
+        }
+
+        .hero-tagline {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-weight: 400;
+            font-size: clamp(1.05rem, 1.8vw, 1.45rem);
+            color: var(--cream);
+            opacity: 0.65;
+        }
+
+        /* ── BUTTONS ───────────────────────────────────── */
+        .btn-outline {
+            display: inline-block;
+            margin-top: 2.5rem;
+            padding: 0.9rem 3rem;
+            border: 1px solid var(--amber);
+            color: var(--amber);
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.6rem;
+            letter-spacing: 0.32em;
+            text-transform: uppercase;
+            text-decoration: none;
+            transition: background 0.25s, color 0.25s;
+        }
+
+        .btn-outline:hover { background: var(--amber); color: var(--forest); }
+
+        .btn-solid {
+            display: inline-block;
+            padding: 0.9rem 2.8rem;
+            background: var(--amber);
+            color: var(--forest);
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: 0.6rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            text-decoration: none;
+            transition: background 0.25s;
+        }
+
+        .btn-solid:hover { background: var(--cream); }
+
+        .btn-outline-dk {
+            display: inline-block;
+            padding: 0.9rem 2.8rem;
+            border: 1px solid rgba(14,26,13,0.55);
+            color: var(--forest);
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.6rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            text-decoration: none;
+            transition: background 0.25s, color 0.25s;
+        }
+
+        .btn-outline-dk:hover { background: var(--forest); color: var(--paper); }
+
+        /* ── HERO ANIMATIONS ────────────────────────────── */
+        .h-anim {
+            opacity: 0;
+            transform: translateY(18px);
+        }
+
+        .h-anim.in {
+            animation: fadeUp 0.85s ease forwards;
+        }
+
+        @keyframes fadeUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── SECTION SHARED ─────────────────────────────── */
+        .section { padding: 7rem 0; }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 3rem;
+        }
+
+        .eyebrow {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.58rem;
+            letter-spacing: 0.38em;
+            text-transform: uppercase;
+            color: var(--amber);
+            display: block;
+            margin-bottom: 0.8rem;
+        }
+
+        /* Decorative rule — ornament */
+        .orn-rule {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 2rem 0;
+            color: var(--amber);
+            opacity: 0.35;
+        }
+
+        .orn-rule::before,
+        .orn-rule::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: currentColor;
+        }
+
+        .orn-rule span { font-size: 0.5rem; }
+
+        /* ── SCROLL REVEAL ──────────────────────────────── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(28px);
+            transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* ── ABOUT ──────────────────────────────────────── */
+        #about { background: var(--paper); }
+
+        .about-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6rem;
+            align-items: start;
+        }
+
+        .about-quote {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-weight: 400;
+            font-size: clamp(1.75rem, 2.8vw, 2.5rem);
+            line-height: 1.4;
+            color: var(--forest);
+            border-left: 3px solid var(--amber);
+            padding-left: 2rem;
+        }
+
+        .about-text { color: var(--forest); }
+
+        .about-text p {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.08rem;
+            line-height: 1.9;
+            color: var(--green);
+            opacity: 0.9;
+            margin-bottom: 1.25rem;
+        }
+
+        .about-sig {
+            margin-top: 2.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        .sig-rule { width: 30px; height: 1px; background: var(--amber); flex-shrink: 0; }
+
+        .sig-name {
+            display: block;
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.72rem;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--forest);
+        }
+
+        .sig-title {
+            display: block;
+            font-family: 'Oswald', sans-serif;
+            font-weight: 400;
+            font-size: 0.58rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--amber-dim);
+            margin-top: 0.25rem;
+        }
+
+        /* ── SERVICES ───────────────────────────────────── */
+        #services { background: var(--green); }
+
+        .services-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 0;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(200,140,26,0.2);
+        }
+
+        .services-title {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: clamp(2rem, 4vw, 3rem);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--cream);
+        }
+
+        .services-of {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 400;
+            font-size: 0.58rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: var(--amber);
+            opacity: 0.55;
+        }
+
+        .svc {
+            display: grid;
+            grid-template-columns: 56px 1fr auto;
+            gap: 2rem;
+            align-items: start;
+            border-top: 1px solid rgba(200,140,26,0.1);
+            padding: 2.5rem 0;
+        }
+
+        .svc-num {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 2.8rem;
+            font-weight: 300;
+            color: var(--amber);
+            opacity: 0.35;
+            line-height: 1;
+        }
+
+        .svc-name {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 1.75rem;
+            font-weight: 500;
+            color: var(--cream);
+            margin-bottom: 0.75rem;
+            line-height: 1.2;
+        }
+
+        .svc-desc {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.02rem;
+            line-height: 1.85;
+            color: var(--cream);
+            opacity: 0.52;
+        }
+
+        .svc-tag {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 500;
+            font-size: 0.52rem;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+            color: var(--amber);
+            opacity: 0.4;
+            padding-top: 0.5rem;
+            text-align: right;
+        }
+
+        /* ── MARKETS ────────────────────────────────────── */
+        #markets { background: var(--paper); }
+
+        .markets-head {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .markets-head h2 {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: clamp(2rem, 4vw, 3rem);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--forest);
+        }
+
+        .markets-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2.5rem;
+        }
+
+        /* Show-bill double border card */
+        .market {
+            background: var(--green);
+            padding: 3.5rem;
+            position: relative;
+            border: 1px solid rgba(200,140,26,0.18);
+        }
+
+        .market::before {
+            content: '';
+            position: absolute;
+            inset: 8px;
+            border: 1px solid rgba(200,140,26,0.07);
+            pointer-events: none;
+        }
+
+        /* Gold top bar */
+        .market::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--amber);
+            opacity: 0.6;
+        }
+
+        .market-city {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: 2.4rem;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--cream);
+            line-height: 1;
+        }
+
+        .market-region {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 400;
+            font-size: 0.58rem;
+            letter-spacing: 0.32em;
+            text-transform: uppercase;
+            color: var(--amber);
+            display: block;
+            margin: 0.5rem 0 2rem;
+        }
+
+        .market-desc {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1rem;
+            line-height: 1.8;
+            color: var(--cream);
+            opacity: 0.58;
+            margin-bottom: 2rem;
+        }
+
+        .market-venues {
+            list-style: none;
+            border-top: 1px solid rgba(200,140,26,0.1);
+            padding-top: 1.5rem;
+        }
+
+        .market-venues li {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 1rem;
+            color: var(--cream);
+            opacity: 0.55;
+            padding: 0.4rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .market-venues li::before {
+            content: '◆';
+            font-size: 0.32rem;
+            color: var(--amber);
+            opacity: 0.7;
+            flex-shrink: 0;
+        }
+
+        /* ── CTA SPLIT ──────────────────────────────────── */
+        #cta { background: var(--forest); }
+
+        .cta-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            min-height: 520px;
+        }
+
+        .cta-panel {
+            padding: 6rem 5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 1.5rem;
+        }
+
+        .cta-panel.dark { background: var(--green-mid); }
+        .cta-panel.light { background: var(--paper); }
+
+        .cta-panel-eyebrow {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.58rem;
+            letter-spacing: 0.38em;
+            text-transform: uppercase;
+        }
+
+        .cta-panel.dark .cta-panel-eyebrow { color: var(--amber); }
+        .cta-panel.light .cta-panel-eyebrow { color: var(--amber-dim); }
+
+        .cta-panel-title {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: clamp(1.4rem, 2.2vw, 1.9rem);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            line-height: 1.2;
+        }
+
+        .cta-panel.dark .cta-panel-title { color: var(--cream); }
+        .cta-panel.light .cta-panel-title { color: var(--forest); }
+
+        .cta-panel-body {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.05rem;
+            line-height: 1.8;
+        }
+
+        .cta-panel.dark .cta-panel-body { color: var(--cream); opacity: 0.58; }
+        .cta-panel.light .cta-panel-body { color: var(--forest); opacity: 0.72; }
+
+        /* ── CONTACT ────────────────────────────────────── */
+        #contact { background: var(--forest); }
+
+        .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.6fr;
+            gap: 6rem;
+            align-items: start;
+        }
+
+        .contact-heading {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: clamp(2rem, 3.5vw, 3.2rem);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            line-height: 1.1;
+            color: var(--cream);
+            margin-bottom: 3rem;
+        }
+
+        .contact-info { display: flex; flex-direction: column; gap: 1.75rem; }
+
+        .info-label {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.52rem;
+            letter-spacing: 0.38em;
+            text-transform: uppercase;
+            color: var(--amber);
+            display: block;
+            margin-bottom: 0.3rem;
+        }
+
+        .info-val {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.05rem;
+            color: var(--cream);
+            opacity: 0.65;
+        }
+
+        /* ── FORM ───────────────────────────────────────── */
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .fg {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            margin-bottom: 1rem;
+        }
+
+        .fg label {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 500;
+            font-size: 0.56rem;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+            color: var(--cream);
+            opacity: 0.42;
+        }
+
+        .fg input,
+        .fg select,
+        .fg textarea {
+            background: rgba(255,255,255,0.035);
+            border: 1px solid rgba(200,140,26,0.18);
+            padding: 0.9rem 1rem;
+            color: var(--cream);
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.25s, background 0.25s;
+            appearance: none;
+        }
+
+        .fg input::placeholder, .fg textarea::placeholder { color: var(--cream); opacity: 0.18; }
+        .fg input:focus, .fg select:focus, .fg textarea:focus {
+            border-color: var(--amber);
+            background: rgba(200,140,26,0.04);
+        }
+        .fg select option { background: var(--forest); color: var(--cream); }
+        .fg textarea { resize: vertical; min-height: 140px; }
+
+        .form-foot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 0.5rem;
+        }
+
+        .form-note {
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.58rem;
+            letter-spacing: 0.08em;
+            color: var(--cream);
+            opacity: 0.22;
+        }
+
+        button.submit {
+            padding: 0.9rem 3rem;
+            background: var(--amber);
+            color: var(--forest);
+            border: none;
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: 0.6rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.25s, color 0.25s;
+        }
+
+        button.submit:hover { background: var(--cream); }
+        button.submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* ── FORM CONDITIONAL ───────────────────────────── */
+        .form-conditional {
+            animation: formIn 0.32s ease;
+        }
+
+        @keyframes formIn {
+            from { opacity: 0; transform: translateY(-8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── FOOTER ─────────────────────────────────────── */
+        footer {
+            background: var(--forest);
+            border-top: 1px solid rgba(200,140,26,0.1);
+            padding: 2rem 3rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .footer-logo {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--cream);
+            opacity: 0.32;
+        }
+
+        .footer-copy {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 300;
+            font-size: 0.56rem;
+            letter-spacing: 0.1em;
+            color: var(--cream);
+            opacity: 0.2;
+        }
+
+        .footer-markets {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 400;
+            font-size: 0.56rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--amber);
+            opacity: 0.38;
+        }
+
+        /* ── RESPONSIVE ─────────────────────────────────── */
+        @media (max-width: 900px) {
+            #nav { padding: 1rem 1.5rem; }
+            .nav-links { display: none; }
+            .container { padding: 0 1.5rem; }
+            .section { padding: 5rem 0; }
+            .about-grid,
+            .markets-grid,
+            .cta-grid,
+            .contact-grid { grid-template-columns: 1fr; gap: 3rem; }
+            .cta-grid { min-height: auto; }
+            .cta-panel { padding: 4rem 2rem; }
+            .svc { grid-template-columns: 48px 1fr; }
+            .svc-tag { display: none; }
+            .form-row { grid-template-columns: 1fr; }
+            footer { flex-direction: column; gap: 1rem; text-align: center; }
+        }
+
+    </style>
+</head>
+<body>
+
+<!-- GRAIN -->
+<div id="grain"></div>
+
+<!-- NAV -->
+<nav id="nav">
+    <a href="#hero" class="nav-logo">
+        <span class="magnolia">Magnolia</span>
+        <span class="co">Booking Co.</span>
+    </a>
+    <ul class="nav-links">
+        <li><a href="#about">About</a></li>
+        <li><a href="#services">Services</a></li>
+        <li><a href="#markets">Markets</a></li>
+        <li><a href="#contact">Contact</a></li>
+        <li><a href="venues.html">Venue Map</a></li>
+    </ul>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+    <svg id="badge" xmlns="http://www.w3.org/2000/svg"></svg>
+
+    <div class="hero-content">
+        <p class="hero-location h-anim">Athens &middot; Augusta, Georgia</p>
+
+        <div class="hero-orn h-anim"><span>✦</span></div>
+
+        <div class="hero-name h-anim">
+            <span class="hero-magnolia">Magnolia</span>
+            <span class="hero-bco">Booking Co.</span>
+        </div>
+
+        <div class="hero-divider h-anim"><span>✦</span></div>
+
+        <p class="hero-tagline h-anim">From the soil to the stage.</p>
+
+        <a href="#contact" class="btn-outline h-anim">Get in Touch</a>
+    </div>
+</section>
+
+<!-- ABOUT -->
+<section id="about" class="section">
+    <div class="container">
+        <div class="about-grid">
+            <div class="about-quote reveal">
+                "We put Georgia artists on Georgia stages — and build something real in the process."
+            </div>
+            <div class="about-text reveal">
+                <span class="eyebrow" style="color:var(--amber-dim)">About</span>
+                <p>Magnolia Booking Co. is a Georgia-based booking operation placing independent artists on stages across Athens and Augusta. We work with a focused roster of emerging acts and build long-term relationships with the venues and promoters that matter in this region.</p>
+                <p>We're not a corporation. We're a music-first operation that moves fast, communicates straight, and gets things done without layers of bureaucracy between the artist and the stage.</p>
+                <div class="about-sig">
+                    <div class="sig-rule"></div>
+                    <div>
+                        <span class="sig-name">Grayson Pope</span>
+                        <span class="sig-title">Head of Booking — Magnolia Booking Co.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- SERVICES -->
+<section id="services" class="section">
+    <div class="container">
+        <div class="services-head reveal">
+            <h2 class="services-title">What We Do</h2>
+            <span class="services-of">03 Services</span>
+        </div>
+
+        <div class="svc reveal">
+            <span class="svc-num">01</span>
+            <div>
+                <h3 class="svc-name">Artist Booking &amp; Placement</h3>
+                <p class="svc-desc">We secure holds, negotiate deals, and place artists on the right stages at the right time. Focused on building a genuine live presence — not just filling calendar dates.</p>
+            </div>
+            <span class="svc-tag">Core</span>
+        </div>
+
+        <div class="svc reveal">
+            <span class="svc-num">02</span>
+            <div>
+                <h3 class="svc-name">Show Production &amp; Logistics</h3>
+                <p class="svc-desc">From load-in to last song, we handle the details. Stage times, sound coordination, ticket structure, and night-of logistics so artists can focus on the performance.</p>
+            </div>
+            <span class="svc-tag">Full Service</span>
+        </div>
+
+        <div class="svc reveal">
+            <span class="svc-num">03</span>
+            <div>
+                <h3 class="svc-name">Venue Relations &amp; Promotion</h3>
+                <p class="svc-desc">We maintain active relationships with bookers across Georgia. We also handle show promotion — Flagpole, social, flyering, and press where relevant.</p>
+            </div>
+            <span class="svc-tag">Growth</span>
+        </div>
+    </div>
+</section>
+
+<!-- MARKETS -->
+<section id="markets" class="section">
+    <div class="container">
+        <div class="markets-head reveal">
+            <span class="eyebrow" style="color:var(--amber-dim)">Where We Work</span>
+            <h2>Our Markets</h2>
+        </div>
+        <div class="markets-grid">
+            <div class="market reveal">
+                <h3 class="market-city">Athens</h3>
+                <span class="market-region">Northeast Georgia</span>
+                <p class="market-desc">The flagship market. Athens has one of the strongest independent music ecosystems in the South — from 50-cap rooms to 500-seat stages, we're building a presence here first.</p>
+                <ul class="market-venues">
+                    <li>Hendershot's</li>
+                    <li>Dead Beat Club</li>
+                    <li>Flicker Theatre &amp; Bar</li>
+                    <li>40 Watt Club</li>
+                    <li>Georgia Theatre</li>
+                </ul>
+            </div>
+            <div class="market reveal">
+                <h3 class="market-city">Augusta</h3>
+                <span class="market-region">CSRA — Richmond &amp; Columbia County</span>
+                <p class="market-desc">Home base. The CSRA has a growing independent scene centered on Broad Street. We know the rooms, we know the people, and we're building the infrastructure to support it.</p>
+                <ul class="market-venues">
+                    <li>Fox's Lair</li>
+                    <li>Soul Bar</li>
+                    <li>Stillwater Taproom</li>
+                    <li>Joe's Underground</li>
+                    <li>The Highlander</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA SPLIT -->
+<section id="cta">
+    <div class="cta-grid">
+        <div class="cta-panel dark reveal">
+            <p class="eyebrow cta-panel-eyebrow">For Venues</p>
+            <h2 class="cta-panel-title">Looking for Independent Artists That Draw?</h2>
+            <p class="cta-panel-body">We book acts across multiple genres — indie pop, punk, Christian rap, and singer-songwriter. Every artist we work with is stage-ready and actively building their audience.</p>
+            <a href="#contact" class="btn-solid">Submit a Booking Request</a>
+        </div>
+        <div class="cta-panel light reveal">
+            <p class="eyebrow cta-panel-eyebrow">For Artists</p>
+            <h2 class="cta-panel-title">Ready to Play More Shows in Georgia?</h2>
+            <p class="cta-panel-body">We work with a focused roster and build real show histories — not one-off gigs. If you're based in Georgia and serious about your live presence, let's talk.</p>
+            <a href="#contact" class="btn-outline-dk">Submit Your Music</a>
+        </div>
+    </div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact" class="section">
+    <div class="container">
+        <div class="contact-grid">
+            <div class="reveal">
+                <h2 class="contact-heading">Let's Put You on a Stage.</h2>
+                <div class="contact-info">
+                    <div class="info-block">
+                        <span class="info-label">Email</span>
+                        <span class="info-val">gpope@goodlifemusicllc.com</span>
+                    </div>
+                    <div class="info-block">
+                        <span class="info-label">Based In</span>
+                        <span class="info-val">Athens &amp; Augusta, Georgia</span>
+                    </div>
+                    <div class="info-block">
+                        <span class="info-label">Markets</span>
+                        <span class="info-val">Athens · Augusta · Atlanta (2027)</span>
+                    </div>
+                    <div class="info-block">
+                        <span class="info-label">Response Time</span>
+                        <span class="info-val">Within 48 hours</span>
+                    </div>
+                </div>
+            </div>
+            <form class="reveal" id="form" onsubmit="submitForm(event)">
+
+                <!-- Always visible -->
+                <div class="form-row">
+                    <div class="fg">
+                        <label for="email">Your Email</label>
+                        <input type="email" id="email" placeholder="your@email.com" required>
+                    </div>
+                    <div class="fg">
+                        <label for="type">I am a</label>
+                        <select id="type" required onchange="switchForm(this.value)">
+                            <option value="" disabled selected>Select one</option>
+                            <option value="artist">Artist / Band</option>
+                            <option value="venue">Venue / Promoter</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- ARTIST FIELDS -->
+                <div id="artist-fields" class="form-conditional" style="display:none">
+                    <div class="fg">
+                        <label for="artist-name">Artist Name</label>
+                        <input type="text" id="artist-name" placeholder="Your project or band name">
+                    </div>
+                    <div class="fg">
+                        <label for="music">Your Music</label>
+                        <input type="text" id="music" placeholder="Spotify, SoundCloud, Bandcamp link — or describe your sound">
+                    </div>
+                    <div class="fg">
+                        <label for="artist-info">Additional Info</label>
+                        <textarea id="artist-info" placeholder="Where are you based? What markets are you trying to play? What does your draw look like?"></textarea>
+                    </div>
+                </div>
+
+                <!-- VENUE FIELDS -->
+                <div id="venue-fields" class="form-conditional" style="display:none">
+                    <div class="form-row">
+                        <div class="fg">
+                            <label for="venue-name">Venue Name</label>
+                            <input type="text" id="venue-name" placeholder="Your venue name">
+                        </div>
+                        <div class="fg">
+                            <label for="venue-city">City</label>
+                            <input type="text" id="venue-city" placeholder="City, State">
+                        </div>
+                    </div>
+                    <div class="fg">
+                        <label for="venue-info">Additional Info</label>
+                        <textarea id="venue-info" placeholder="What nights do you run live music? What genres work best for your room?"></textarea>
+                    </div>
+                </div>
+
+                <!-- Submit — hidden until type selected -->
+                <div class="form-foot" id="form-foot" style="display:none">
+                    <span class="form-note">We'll be in touch within 48 hours.</span>
+                    <button type="submit" class="submit" id="submitBtn">Send It</button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+    <span class="footer-logo">Magnolia</span>
+    <span class="footer-copy">&copy; 2026 Magnolia Booking Co. &nbsp;&middot;&nbsp; Athens &amp; Augusta, GA</span>
+    <span class="footer-markets">Athens &middot; Augusta</span>
+</footer>
+
+<script>
+
+// ── GRAIN TEXTURE ───────────────────────────────────────────
+(function () {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(256, 256);
+    for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.floor(Math.random() * 255);
+        img.data[i]     = v;
+        img.data[i + 1] = v;
+        img.data[i + 2] = v;
+        img.data[i + 3] = Math.floor(Math.random() * 22);
+    }
+    ctx.putImageData(img, 0, 0);
+
+    const grain = document.getElementById('grain');
+    grain.style.backgroundImage  = `url(${c.toDataURL()})`;
+    grain.style.backgroundSize   = '256px 256px';
+    grain.style.backgroundRepeat = 'repeat';
+})();
+
+
+// ── CONCENTRIC OVAL BADGE (show bill motif) ─────────────────
+(function () {
+    const svg = document.getElementById('badge');
+    const W   = window.innerWidth;
+    const H   = window.innerHeight;
+    const cx  = W / 2;
+    const cy  = H / 2;
+
+    // Outer rings — progressively more faint
+    const rings = [
+        { s: 0.72, sw: 2.0, op: 0.14 },
+        { s: 0.74, sw: 0.5, op: 0.06 },
+        { s: 0.82, sw: 1.0, op: 0.09 },
+        { s: 0.84, sw: 0.5, op: 0.05 },
+        { s: 0.94, sw: 1.0, op: 0.06 },
+        { s: 1.04, sw: 0.5, op: 0.04 },
+        { s: 1.18, sw: 0.8, op: 0.04 },
+        { s: 1.34, sw: 0.4, op: 0.025 },
+    ];
+
+    const baseRx = Math.min(W * 0.38, H * 0.38);
+    const baseRy = Math.min(W * 0.30, H * 0.30);
+
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+    rings.forEach(r => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+        el.setAttribute('cx', cx);
+        el.setAttribute('cy', cy);
+        el.setAttribute('rx', baseRx * r.s);
+        el.setAttribute('ry', baseRy * r.s);
+        el.setAttribute('fill', 'none');
+        el.setAttribute('stroke', `rgba(200,140,26,${r.op})`);
+        el.setAttribute('stroke-width', r.sw);
+        svg.appendChild(el);
+    });
+
+    // Cardinal ornament stars — top, bottom, left, right of innermost ring
+    const rx0 = baseRx * rings[0].s;
+    const ry0 = baseRy * rings[0].s;
+    const pts  = [
+        [cx,       cy - ry0],  // top
+        [cx,       cy + ry0],  // bottom
+        [cx - rx0, cy],        // left
+        [cx + rx0, cy],        // right
+    ];
+
+    pts.forEach(([x, y]) => {
+        const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        t.setAttribute('x', x);
+        t.setAttribute('y', y + 4.5);
+        t.setAttribute('text-anchor', 'middle');
+        t.setAttribute('fill', `rgba(200,140,26,0.25)`);
+        t.setAttribute('font-size', '9');
+        t.setAttribute('font-family', 'serif');
+        t.textContent = '✦';
+        svg.appendChild(t);
+    });
+})();
+
+
+// ── NAV SCROLL STATE ────────────────────────────────────────
+window.addEventListener('scroll', () => {
+    document.getElementById('nav').classList.toggle('scrolled', window.scrollY > 60);
+}, { passive: true });
+
+
+// ── HERO ENTRANCE ───────────────────────────────────────────
+document.querySelectorAll('.h-anim').forEach((el, i) => {
+    setTimeout(() => el.classList.add('in'), 260 + i * 170);
+});
+
+
+// ── SCROLL REVEAL ───────────────────────────────────────────
+const io = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+        if (e.isIntersecting) {
+            const siblings = e.target.parentElement.querySelectorAll('.reveal');
+            siblings.forEach((s, i) => {
+                if (!s.classList.contains('visible')) {
+                    setTimeout(() => s.classList.add('visible'), i * 110);
+                }
+            });
+            io.unobserve(e.target);
+        }
+    });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+
+// ── FORM SWITCH ─────────────────────────────────────────────
+function switchForm(val) {
+    const artistFields = document.getElementById('artist-fields');
+    const venueFields  = document.getElementById('venue-fields');
+    const formFoot     = document.getElementById('form-foot');
+
+    artistFields.style.display = (val === 'artist') ? '' : 'none';
+    venueFields.style.display  = (val === 'venue')  ? '' : 'none';
+    formFoot.style.display     = val ? '' : 'none';
+
+    // Manage required so HTML5 validation only fires on visible fields
+    document.getElementById('artist-name').required = (val === 'artist');
+    document.getElementById('music').required        = (val === 'artist');
+    document.getElementById('artist-info').required  = false;
+    document.getElementById('venue-name').required   = (val === 'venue');
+    document.getElementById('venue-city').required   = (val === 'venue');
+    document.getElementById('venue-info').required   = false;
+
+    // Re-trigger animation
+    const target = val === 'artist' ? artistFields : venueFields;
+    if (target) { target.style.animation = 'none'; target.offsetHeight; target.style.animation = ''; }
+}
+
+// ── FORM SUBMIT ─────────────────────────────────────────────
+function submitForm(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.textContent = 'Sent ✓';
+    btn.disabled    = true;
+    btn.style.background = '#3A5838';
+    btn.style.color      = '#F8EDD0';
+}
+
+</script>
+</body>
+</html>
