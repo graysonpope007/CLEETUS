@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Venue atlas for Magnolia Booking Co. across Athens, Augusta, Evans, and North Augusta.">
+    <meta property="og:title" content="Venue Map - Magnolia Booking Co.">
+    <meta property="og:description" content="A Georgia venue map for independent music booking.">
+    <meta property="og:type" content="website">
     <title>Venue Map — Magnolia Booking Co.</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -92,6 +96,7 @@
             display: flex;
             gap: 2rem;
             list-style: none;
+            align-items: center;
         }
 
         .nav-links a {
@@ -107,6 +112,12 @@
         }
 
         .nav-links a:hover, .nav-links a.active { opacity: 1; color: var(--amber); }
+
+        a:focus-visible,
+        button:focus-visible {
+            outline: 2px solid var(--amber);
+            outline-offset: 4px;
+        }
 
         .back-link {
             font-family: 'Oswald', sans-serif;
@@ -504,11 +515,40 @@
 
         /* ── MOBILE ─────────────────────────────────────── */
         @media (max-width: 768px) {
+            :root { --nav-h: 116px; }
             body { overflow: auto; }
+            #nav {
+                height: var(--nav-h);
+                padding: 0.85rem 1.2rem;
+                flex-direction: column;
+                align-items: flex-start;
+                justify-content: center;
+                gap: 0.75rem;
+            }
+            .nav-right,
+            .nav-links {
+                width: 100%;
+            }
+            .nav-links {
+                flex-wrap: wrap;
+                gap: 0.75rem 1rem;
+            }
+            .nav-links a {
+                font-size: 0.52rem;
+                letter-spacing: 0.15em;
+            }
             .venue-layout { flex-direction: column; height: auto; overflow: auto; }
             #map { height: 55vw; min-height: 280px; flex: none; width: 100%; }
             #panel { width: 100%; height: auto; max-height: 60vh; overflow-y: auto; }
             html, body { overflow: auto; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
 
     </style>
@@ -820,6 +860,13 @@ makeCityLabel(33.5480, -82.1200, 'EVANS / COLUMBIA CO.');
 const markers = {};
 let selectedId = null;
 
+const escapeHtml = value => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
 function makeMarkerIcon(selected = false) {
     return L.divIcon({
         className: '',
@@ -847,8 +894,8 @@ venues.forEach(v => {
     row.id        = `row-${v.id}`;
     row.innerHTML = `
         <div class="venue-row-left">
-            <div class="venue-row-name">${v.name}</div>
-            <div class="venue-row-type">${v.type}</div>
+            <div class="venue-row-name">${escapeHtml(v.name)}</div>
+            <div class="venue-row-type">${escapeHtml(v.type)}</div>
         </div>
         <div class="venue-row-cap">Cap. ${v.capacity.toLocaleString()}</div>
     `;
@@ -888,14 +935,14 @@ function showDetail(v) {
     detail.classList.add('visible');
 
     const notableHtml = v.notable
-        .map(act => `<li>${act}</li>`)
+        .map(act => `<li>${escapeHtml(act)}</li>`)
         .join('');
 
     document.getElementById('detail-body').innerHTML = `
-        <div class="detail-city-tag">${v.city}</div>
-        <div class="detail-name">${v.name}</div>
+        <div class="detail-city-tag">${escapeHtml(v.city)}</div>
+        <div class="detail-name">${escapeHtml(v.name)}</div>
         <div class="detail-meta">
-            <span>${v.type}</span>
+            <span>${escapeHtml(v.type)}</span>
             <div class="dot"></div>
             <span>Est. ${v.founded}</span>
             <div class="dot"></div>
@@ -905,10 +952,10 @@ function showDetail(v) {
             <svg width="11" height="14" viewBox="0 0 11 14" fill="none" style="margin-top:2px;flex-shrink:0">
                 <path d="M5.5 0C2.46 0 0 2.46 0 5.5c0 3.85 5.5 8.5 5.5 8.5S11 9.35 11 5.5C11 2.46 8.54 0 5.5 0zm0 7.5a2 2 0 110-4 2 2 0 010 4z" fill="rgba(200,140,26,0.45)"/>
             </svg>
-            ${v.address}
+            ${escapeHtml(v.address)}
         </div>
         <div class="detail-divider"></div>
-        <p class="detail-desc">${v.description}</p>
+        <p class="detail-desc">${escapeHtml(v.description)}</p>
         <div class="detail-divider"></div>
         <span class="detail-acts-label">Notable Acts</span>
         <ul class="detail-acts">${notableHtml}</ul>

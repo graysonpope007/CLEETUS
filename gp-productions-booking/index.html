@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Magnolia Booking Co. books independent artists across Athens, Augusta, and the Georgia live music circuit.">
+    <meta property="og:title" content="Magnolia Booking Co.">
+    <meta property="og:description" content="Georgia booking for independent artists, venues, and promoters.">
+    <meta property="og:type" content="website">
     <title>Magnolia Booking Co.</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -95,6 +99,7 @@
             display: flex;
             gap: 2.5rem;
             list-style: none;
+            align-items: center;
         }
 
         .nav-links a {
@@ -110,6 +115,15 @@
         }
 
         .nav-links a:hover { opacity: 1; color: var(--amber); }
+
+        a:focus-visible,
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible {
+            outline: 2px solid var(--amber);
+            outline-offset: 4px;
+        }
 
         /* ── HERO ──────────────────────────────────────── */
         #hero {
@@ -699,6 +713,8 @@
             font-size: 1.05rem;
             color: var(--cream);
             opacity: 0.65;
+            text-decoration-color: rgba(201,160,82,0.45);
+            text-underline-offset: 0.18em;
         }
 
         /* ── FORM ───────────────────────────────────────── */
@@ -760,6 +776,16 @@
             letter-spacing: 0.08em;
             color: var(--cream);
             opacity: 0.22;
+        }
+
+        .form-status {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 0.95rem;
+            color: var(--amber);
+            min-height: 1.4rem;
+            margin-top: 1rem;
+            opacity: 0.82;
         }
 
         button.submit {
@@ -829,8 +855,28 @@
 
         /* ── RESPONSIVE ─────────────────────────────────── */
         @media (max-width: 900px) {
-            #nav { padding: 1rem 1.5rem; }
-            .nav-links { display: none; }
+            #nav {
+                padding: 0.85rem 1.2rem;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.9rem;
+                background: rgba(10, 20, 10, 0.94);
+                border-bottom-color: rgba(200, 140, 26, 0.18);
+            }
+            .nav-links {
+                width: 100%;
+                gap: 0.85rem 1.1rem;
+                flex-wrap: wrap;
+            }
+            .nav-links a {
+                font-size: 0.54rem;
+                letter-spacing: 0.16em;
+            }
+            #hero {
+                min-height: 660px;
+                padding-top: 7.5rem;
+            }
+            .hero-bco { letter-spacing: 0.42em; }
             .container { padding: 0 1.5rem; }
             .section { padding: 5rem 0; }
             .about-grid,
@@ -843,6 +889,15 @@
             .svc-tag { display: none; }
             .form-row { grid-template-columns: 1fr; }
             footer { flex-direction: column; gap: 1rem; text-align: center; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html { scroll-behavior: auto; }
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
         }
 
     </style>
@@ -1012,7 +1067,7 @@
                 <div class="contact-info">
                     <div class="info-block">
                         <span class="info-label">Email</span>
-                        <span class="info-val">gpope@goodlifemusicllc.com</span>
+                        <a class="info-val" href="mailto:gpope@goodlifemusicllc.com">gpope@goodlifemusicllc.com</a>
                     </div>
                     <div class="info-block">
                         <span class="info-label">Based In</span>
@@ -1034,11 +1089,11 @@
                 <div class="form-row">
                     <div class="fg">
                         <label for="email">Your Email</label>
-                        <input type="email" id="email" placeholder="your@email.com" required>
+                        <input type="email" id="email" name="email" placeholder="your@email.com" autocomplete="email" required>
                     </div>
                     <div class="fg">
                         <label for="type">I am a</label>
-                        <select id="type" required onchange="switchForm(this.value)">
+                        <select id="type" name="type" required onchange="switchForm(this.value)">
                             <option value="" disabled selected>Select one</option>
                             <option value="artist">Artist / Band</option>
                             <option value="venue">Venue / Promoter</option>
@@ -1050,15 +1105,15 @@
                 <div id="artist-fields" class="form-conditional" style="display:none">
                     <div class="fg">
                         <label for="artist-name">Artist Name</label>
-                        <input type="text" id="artist-name" placeholder="Your project or band name">
+                        <input type="text" id="artist-name" name="artist-name" placeholder="Your project or band name" autocomplete="organization">
                     </div>
                     <div class="fg">
                         <label for="music">Your Music</label>
-                        <input type="text" id="music" placeholder="Spotify, SoundCloud, Bandcamp link — or describe your sound">
+                        <input type="text" id="music" name="music" placeholder="Spotify, SoundCloud, Bandcamp link — or describe your sound">
                     </div>
                     <div class="fg">
                         <label for="artist-info">Additional Info</label>
-                        <textarea id="artist-info" placeholder="Where are you based? What markets are you trying to play? What does your draw look like?"></textarea>
+                        <textarea id="artist-info" name="artist-info" placeholder="Where are you based? What markets are you trying to play? What does your draw look like?"></textarea>
                     </div>
                 </div>
 
@@ -1067,16 +1122,16 @@
                     <div class="form-row">
                         <div class="fg">
                             <label for="venue-name">Venue Name</label>
-                            <input type="text" id="venue-name" placeholder="Your venue name">
+                            <input type="text" id="venue-name" name="venue-name" placeholder="Your venue name" autocomplete="organization">
                         </div>
                         <div class="fg">
                             <label for="venue-city">City</label>
-                            <input type="text" id="venue-city" placeholder="City, State">
+                            <input type="text" id="venue-city" name="venue-city" placeholder="City, State" autocomplete="address-level2">
                         </div>
                     </div>
                     <div class="fg">
                         <label for="venue-info">Additional Info</label>
-                        <textarea id="venue-info" placeholder="What nights do you run live music? What genres work best for your room?"></textarea>
+                        <textarea id="venue-info" name="venue-info" placeholder="What nights do you run live music? What genres work best for your room?"></textarea>
                     </div>
                 </div>
 
@@ -1085,6 +1140,7 @@
                     <span class="form-note">We'll be in touch within 48 hours.</span>
                     <button type="submit" class="submit" id="submitBtn">Send It</button>
                 </div>
+                <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
 
             </form>
         </div>
@@ -1240,10 +1296,43 @@ function switchForm(val) {
 function submitForm(e) {
     e.preventDefault();
     const btn = document.getElementById('submitBtn');
-    btn.textContent = 'Sent ✓';
+    const status = document.getElementById('form-status');
+    const type = document.getElementById('type').value;
+    const email = document.getElementById('email').value.trim();
+
+    const lines = [
+        `Email: ${email}`,
+        `Type: ${type === 'artist' ? 'Artist / Band' : 'Venue / Promoter'}`,
+        '',
+    ];
+
+    if (type === 'artist') {
+        lines.push(
+            `Artist: ${document.getElementById('artist-name').value.trim()}`,
+            `Music: ${document.getElementById('music').value.trim()}`,
+            '',
+            document.getElementById('artist-info').value.trim()
+        );
+    } else {
+        lines.push(
+            `Venue: ${document.getElementById('venue-name').value.trim()}`,
+            `City: ${document.getElementById('venue-city').value.trim()}`,
+            '',
+            document.getElementById('venue-info').value.trim()
+        );
+    }
+
+    const subject = type === 'artist'
+        ? 'Artist submission for Magnolia Booking Co.'
+        : 'Venue booking request for Magnolia Booking Co.';
+    const mailto = `mailto:gpope@goodlifemusicllc.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
+
+    window.location.href = mailto;
+    btn.textContent = 'Email Draft Opened';
     btn.disabled    = true;
     btn.style.background = '#3A5838';
     btn.style.color      = '#F8EDD0';
+    status.textContent = 'Your email app should open with the booking details filled in.';
 }
 
 </script>
