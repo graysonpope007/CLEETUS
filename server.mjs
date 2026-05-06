@@ -294,7 +294,8 @@ const server = createServer(async (request, response) => {
   }
 
   try {
-    const body = request.method === "HEAD" ? "" : await readFile(filePath);
+    const fileBody = await readFile(filePath);
+    const body = request.method === "HEAD" ? "" : fileBody;
     const contentType =
       mimeTypes[path.extname(filePath).toLowerCase()] ||
       "application/octet-stream";
