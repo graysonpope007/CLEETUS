@@ -39,6 +39,7 @@ function send(response, statusCode, body, headers = {}) {
 
 function sendJson(response, statusCode, payload) {
   send(response, statusCode, JSON.stringify(payload), {
+    "Cache-Control": "no-store",
     "Content-Type": "application/json; charset=utf-8"
   });
 }
