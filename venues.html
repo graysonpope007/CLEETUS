@@ -569,6 +569,7 @@
             <li><a href="index.html#services">Services</a></li>
             <li><a href="index.html#markets">Markets</a></li>
             <li><a href="venues.html" class="active">Venue Map</a></li>
+            <li><a href="bands.html">Bands</a></li>
             <li><a href="index.html#contact">Contact</a></li>
         </ul>
     </div>
@@ -637,7 +638,7 @@
 
 
 // ── VENUE DATA ───────────────────────────────────────────────
-const venues = [
+let venues = [
     {
         id: 1,
         name: "40 Watt Club",
@@ -876,32 +877,73 @@ function makeMarkerIcon(selected = false) {
     });
 }
 
-venues.forEach(v => {
-    // Map marker
-    const marker = L.marker([v.lat, v.lng], {
-        icon: makeMarkerIcon(false),
-        title: v.name,
-    }).addTo(map);
+function formatCapacity(value) {
+    const capacity = Number(value);
+    return Number.isFinite(capacity) && capacity > 0
+        ? `Cap. ${capacity.toLocaleString()}`
+        : 'Capacity TBD';
+}
 
-    marker.on('click', () => selectVenue(v.id));
-    markers[v.id] = marker;
+function hasCoordinates(v) {
+    return Number.isFinite(Number(v.lat)) && Number.isFinite(Number(v.lng));
+}
 
-    // List row
-    const groupId = v.city === 'Athens' ? 'group-athens' : v.city === 'Evans' ? 'group-evans' : v.city === 'North Augusta' ? 'group-northaugusta' : 'group-augusta';
-    const group   = document.getElementById(groupId);
-    const row     = document.createElement('div');
-    row.className = 'venue-row';
-    row.id        = `row-${v.id}`;
-    row.innerHTML = `
-        <div class="venue-row-left">
-            <div class="venue-row-name">${escapeHtml(v.name)}</div>
-            <div class="venue-row-type">${escapeHtml(v.type)}</div>
-        </div>
-        <div class="venue-row-cap">Cap. ${v.capacity.toLocaleString()}</div>
-    `;
-    row.addEventListener('click', () => selectVenue(v.id));
-    group.appendChild(row);
-});
+function groupIdForVenue(v) {
+    const city = String(v.city || '').toLowerCase();
+    if (city.includes('athens')) return 'group-athens';
+    if (city.includes('evans') || city.includes('columbia')) return 'group-evans';
+    if (city.includes('north augusta')) return 'group-northaugusta';
+    return 'group-augusta';
+}
+
+function clearVenueRows() {
+    Object.values(markers).forEach(marker => map.removeLayer(marker));
+    Object.keys(markers).forEach(key => delete markers[key]);
+    document.querySelectorAll('.venue-row').forEach(row => row.remove());
+    selectedId = null;
+    document.getElementById('detail-view').classList.remove('visible');
+    document.getElementById('list-view').style.display = '';
+}
+
+function renderVenues(nextVenues = venues) {
+    venues = (nextVenues || []).filter(v => v && v.name);
+    clearVenueRows();
+
+    venues.forEach(v => {
+        if (hasCoordinates(v)) {
+            const marker = L.marker([Number(v.lat), Number(v.lng)], {
+                icon: makeMarkerIcon(false),
+                title: v.name,
+            }).addTo(map);
+
+            marker.on('click', () => selectVenue(v.id));
+            markers[v.id] = marker;
+        }
+
+        const group = document.getElementById(groupIdForVenue(v));
+        const row = document.createElement('div');
+        row.className = 'venue-row';
+        row.id = `row-${v.id}`;
+        row.innerHTML = `
+            <div class="venue-row-left">
+                <div class="venue-row-name">${escapeHtml(v.name)}</div>
+                <div class="venue-row-type">${escapeHtml([v.city, v.type].filter(Boolean).join(' · '))}</div>
+            </div>
+            <div class="venue-row-cap">${escapeHtml(formatCapacity(v.capacity))}</div>
+        `;
+        row.addEventListener('click', () => selectVenue(v.id));
+        group.appendChild(row);
+    });
+}
+
+renderVenues(venues);
+
+fetch('/api/content')
+    .then(response => response.ok ? response.json() : null)
+    .then(payload => {
+        if (payload?.venues?.length) renderVenues(payload.venues);
+    })
+    .catch(() => {});
 
 
 // ── SELECT VENUE ─────────────────────────────────────────────
@@ -911,7 +953,7 @@ function selectVenue(id) {
 
     // Deselect previous
     if (selectedId !== null) {
-        markers[selectedId].setIcon(makeMarkerIcon(false));
+        if (markers[selectedId]) markers[selectedId].setIcon(makeMarkerIcon(false));
         const prevRow = document.getElementById(`row-${selectedId}`);
         if (prevRow) prevRow.classList.remove('selected');
     }
@@ -919,11 +961,13 @@ function selectVenue(id) {
     selectedId = id;
 
     // Highlight marker
-    markers[id].setIcon(makeMarkerIcon(true));
+    if (markers[id]) markers[id].setIcon(makeMarkerIcon(true));
     document.getElementById(`row-${id}`)?.classList.add('selected');
 
     // Fly to venue
-    map.flyTo([v.lat, v.lng], 15, { duration: 1.2, easeLinearity: 0.4 });
+    if (hasCoordinates(v)) {
+        map.flyTo([Number(v.lat), Number(v.lng)], 15, { duration: 1.2, easeLinearity: 0.4 });
+    }
 
     // Show detail panel
     showDetail(v);
@@ -934,30 +978,34 @@ function showDetail(v) {
     const detail = document.getElementById('detail-view');
     detail.classList.add('visible');
 
-    const notableHtml = v.notable
+    const notableHtml = (v.notable || [])
         .map(act => `<li>${escapeHtml(act)}</li>`)
+        .join('');
+    const metaParts = [
+        v.type,
+        v.founded ? `Est. ${v.founded}` : '',
+        Number(v.capacity) ? formatCapacity(v.capacity) : ''
+    ].filter(Boolean);
+    const metaHtml = metaParts
+        .map((part, index) => `${index ? '<div class="dot"></div>' : ''}<span>${escapeHtml(part)}</span>`)
         .join('');
 
     document.getElementById('detail-body').innerHTML = `
         <div class="detail-city-tag">${escapeHtml(v.city)}</div>
         <div class="detail-name">${escapeHtml(v.name)}</div>
         <div class="detail-meta">
-            <span>${escapeHtml(v.type)}</span>
-            <div class="dot"></div>
-            <span>Est. ${v.founded}</span>
-            <div class="dot"></div>
-            <span>Cap. ${v.capacity.toLocaleString()}</span>
+            ${metaHtml}
         </div>
         <div class="detail-address">
             <svg width="11" height="14" viewBox="0 0 11 14" fill="none" style="margin-top:2px;flex-shrink:0">
                 <path d="M5.5 0C2.46 0 0 2.46 0 5.5c0 3.85 5.5 8.5 5.5 8.5S11 9.35 11 5.5C11 2.46 8.54 0 5.5 0zm0 7.5a2 2 0 110-4 2 2 0 010 4z" fill="rgba(200,140,26,0.45)"/>
             </svg>
-            ${escapeHtml(v.address)}
+            ${escapeHtml(v.address || 'Address pending')}
         </div>
         <div class="detail-divider"></div>
         <p class="detail-desc">${escapeHtml(v.description)}</p>
         <div class="detail-divider"></div>
-        <span class="detail-acts-label">Notable Acts</span>
+        <span class="detail-acts-label">Notable Acts / Fit</span>
         <ul class="detail-acts">${notableHtml}</ul>
     `;
 
@@ -968,7 +1016,7 @@ function showDetail(v) {
 document.getElementById('back-btn').addEventListener('click', () => {
     // Deselect
     if (selectedId !== null) {
-        markers[selectedId].setIcon(makeMarkerIcon(false));
+        if (markers[selectedId]) markers[selectedId].setIcon(makeMarkerIcon(false));
         const row = document.getElementById(`row-${selectedId}`);
         if (row) row.classList.remove('selected');
         selectedId = null;
