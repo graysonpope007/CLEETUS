@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>CLEETUS — Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #03110D;
+  --surface:    #16302B;
+  --surface2:   #1c3d35;
+  --claret:     #390517;
+  --claret2:    #4d0820;
+  --gold:       #A38560;
+  --gold-dim:   rgba(163,133,96,0.18);
+  --gold-rule:  rgba(163,133,96,0.4);
+  --text:       #E0E0E0;
+  --text-muted: #7d9089;
+  --danger:     #7a1525;
+  --sidebar-w:  272px;
+}
+
+html, body { height: 100%; height: 100dvh; }
+
+body {
+  font-family: 'Courier Prime', 'Courier New', monospace;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  overflow: hidden;
+  letter-spacing: 0.01em;
+}
+
+/* ── Sidebar backdrop ────────────────────────────────────────────────── */
+#sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(3,17,13,0.75);
+  z-index: 49;
+  backdrop-filter: blur(2px);
+}
+#sidebar-backdrop.open { display: block; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+#sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--gold-rule);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+  z-index: 50;
+}
+
+#sidebar-header {
+  padding: 22px 18px 16px;
+  border-bottom: 1px solid var(--gold-rule);
+  flex-shrink: 0;
+}
+
+#sidebar-header h1 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+#sidebar-header .rule { height: 1px; background: var(--gold-rule); margin: 8px 0 6px; }
+
+#sidebar-header p {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+#sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--gold-rule);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#sidebar-tabs::-webkit-scrollbar { display: none; }
+
+.sidebar-tab {
+  flex: 1;
+  padding: 9px 4px;
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  min-width: 0;
+}
+.sidebar-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.sidebar-tab:hover:not(.active) { color: var(--text); }
+
+/* ── Tab panels ──────────────────────────────────────────────────────── */
+.tab-panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+.tab-panel.active { display: flex; }
+
+/* ── Dashboard tab ───────────────────────────────────────────────────── */
+#tab-dashboard { overflow-y: auto; padding: 16px 14px 20px; gap: 14px; }
+
+.dash-greeting {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1rem;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--gold);
+  line-height: 1.3;
+}
+
+.dash-date {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.dash-divider { height: 1px; background: var(--gold-rule); margin: 4px 0; }
+
+.dash-section-label {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.58rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 6px 0 4px;
+}
+
+.dash-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.dash-stat {
+  background: var(--bg);
+  border: 1px solid var(--gold-rule);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.dash-stat:hover { background: var(--gold-dim); }
+
+.dash-stat-num {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+}
+
+.dash-stat-label {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.dash-recent-item {
+  padding: 8px 10px;
+  border-left: 2px solid var(--gold-rule);
+  cursor: pointer;
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
+  margin: 2px 0;
+}
+.dash-recent-item:hover { color: var(--text); border-left-color: var(--gold); background: var(--gold-dim); }
+
+.dash-quick-btn {
+  width: 100%;
+  padding: 9px 14px;
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold-rule);
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  margin-top: 4px;
+}
+.dash-quick-btn:hover { background: var(--gold-dim); }
+
+/* ── Chats tab ───────────────────────────────────────────────────────── */
+#new-chat-btn {
+  margin: 12px 14px;
+  padding: 9px 14px;
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold-rule);
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+#new-chat-btn:hover { background: var(--gold-dim); }
+
+#conversations-list { flex: 1; overflow-y: auto; padding: 0 6px 8px; }
+
+.conv-item {
+  padding: 9px 10px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  margin: 1px 0;
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.04em;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+.conv-item:hover { color: var(--text); background: var(--gold-dim); border-left-color: var(--gold-rule); }
+.conv-item.active { color: var(--gold); border-left-color: var(--gold); background: var(--gold-dim); font-weight: 600; }
+
+/* ── Memory tab ──────────────────────────────────────────────────────── */
+#memory-search-wrap { padding: 10px 12px 6px; border-bottom: 1px solid var(--gold-rule); flex-shrink: 0; }
+
+#memory-search {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--gold-rule);
+  padding: 6px 10px;
+  color: var(--text);
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+#memory-search::placeholder { color: var(--text-muted); }
+#memory-search:focus { border-color: var(--gold); }
+
+#memories-panel { flex: 1; overflow-y: auto; padding: 6px 10px 12px; }
+
+.memory-count {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 6px 2px 10px;
+}
+
+.memory-category { margin-bottom: 14px; }
+
+.memory-category h3 {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--gold);
+  padding: 4px 0 6px;
+  border-top: 1px solid var(--gold-rule);
+  margin-bottom: 4px;
+}
+
+.memory-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 4px;
+  border-bottom: 1px solid rgba(163,133,96,0.08);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.memory-item:hover { background: var(--gold-dim); }
+
+.memory-delete {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 0.68rem;
+  opacity: 0;
+  padding: 0 2px;
+  font-family: 'Oswald', sans-serif;
+  letter-spacing: 0.05em;
+  min-width: 28px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.memory-item:hover .memory-delete { opacity: 1; }
+
+/* ── SMS tab ─────────────────────────────────────────────────────────── */
+#sms-panel { flex: 1; overflow-y: auto; padding: 10px 12px; }
+
+#sms-status-bar {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border: 1px solid var(--gold-rule);
+  margin-bottom: 8px;
+}
+#sms-status-bar.connected { color: #5a9a6a; border-color: rgba(90,154,106,0.4); }
+#sms-status-bar.disconnected { color: var(--text-muted); }
+
+.sms-btn {
+  padding: 8px 10px;
+  border: 1px solid var(--gold-rule);
+  background: transparent;
+  color: var(--gold);
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  width: 100%;
+  margin-bottom: 6px;
+  min-height: 36px;
+  transition: background 0.1s;
+}
+.sms-btn:hover { background: var(--gold-dim); }
+
+.sms-item { padding: 9px 8px; border-top: 1px solid var(--gold-rule); font-size: 0.76rem; }
+.sms-item .sms-from {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  margin-bottom: 3px;
+  text-transform: uppercase;
+}
+.sms-item .sms-body { color: var(--text-muted); line-height: 1.4; }
+.sms-item .sms-time {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.sms-item.unread .sms-from { color: var(--gold); }
+
+/* ── Main area ───────────────────────────────────────────────────────── */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+#chat-header {
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--gold-rule);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  min-height: 52px;
+  flex-shrink: 0;
+}
+
+#menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--gold);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 1.1rem;
+  line-height: 1;
+  flex-shrink: 0;
+  min-width: 36px;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+}
+
+#chat-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1rem;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+#memory-badge {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+  border: 1px solid var(--gold-rule);
+  padding: 4px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  transition: background 0.15s;
+}
+#memory-badge:hover { background: var(--gold-dim); }
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Message bubbles ─────────────────────────────────────────────────── */
+.message { max-width: 76%; display: flex; flex-direction: column; gap: 4px; position: relative; }
+.message.user  { align-self: flex-end; }
+.message.assistant { align-self: flex-start; }
+
+.message-bubble {
+  padding: 12px 16px;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  word-break: break-word;
+  position: relative;
+}
+
+.message.user .message-bubble {
+  background: var(--claret);
+  color: var(--text);
+  border-top: 2px solid var(--gold);
+  white-space: pre-wrap;
+}
+
+.message.assistant .message-bubble {
+  background: var(--surface);
+  color: var(--text);
+  border-left: 3px solid var(--gold);
+}
+
+.message.assistant .message-bubble p { margin: 0 0 0.7em; }
+.message.assistant .message-bubble p:last-child { margin-bottom: 0; }
+.message.assistant .message-bubble h1,
+.message.assistant .message-bubble h2,
+.message.assistant .message-bubble h3 {
+  font-family: 'Playfair Display', Georgia, serif;
+  color: var(--gold);
+  font-weight: 700;
+  margin: 0.9em 0 0.4em;
+}
+.message.assistant .message-bubble strong { color: var(--text); font-weight: 700; }
+.message.assistant .message-bubble ul,
+.message.assistant .message-bubble ol { margin: 0.4em 0 0.7em 1.4em; }
+.message.assistant .message-bubble li { margin: 0.2em 0; }
+.message.assistant .message-bubble code {
+  background: rgba(163,133,96,0.12);
+  border: 1px solid var(--gold-rule);
+  padding: 1px 5px;
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.85em;
+  color: var(--gold);
+}
+
+.msg-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--surface2);
+  border: 1px solid var(--gold-rule);
+  color: var(--text-muted);
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.55rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.message:hover .msg-copy-btn { opacity: 1; }
+.msg-copy-btn:hover { color: var(--gold); }
+
+.message-time {
+  font-family: 'Oswald', sans-serif;
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding: 0 2px;
+}
+.message.user .message-time { text-align: right; }
+
+.typing-indicator { display: flex; gap: 5px; align-items: center; padding: 14px 16px; }
+.typing-indicator span {
+  display: inline-block;
+  width: 5px; height: 5px;
+  background: var(--gold);
+  animation: blink 1.3s infinite;
+}
+.typing-indicator span:nth-child(2) { animation-delay: 0.22s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.44s; }
+@keyframes blink { 0%, 70%, 100% { opacity: 0.2; } 35% { opacity: 1; } }
+
+/* ── Input area ──────────────────────────────────────────────────────── */
+#input-area {
+  padding: 14px 24px;
+  border-top: 1px solid var(--gold-rule);
+  background: var(--surface);
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+#message-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--gold-rule);
+  padding: 10px 14px;
+  color: var(--text);
+  font-family: 'Courier Prime', monospace;
+  font-size: 0.875rem;
+  resize: none;
+  max-height: 150px;
+  overflow-y: auto;
+  line-height: 1.5;
+  outline: none;
+  transition: border-color 0.15s;
+}
+#message-input:focus { border-color: var(--gold); }
+#message-input::placeholder { color: var(--text-muted); }
+
+#send-btn {
+  width: 42px; height: 42px;
+  background: var(--gold);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bg);
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+#send-btn:hover { background: #b8966e; }
+
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gold-rule); }
+
+/* ── Mobile ──────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  #sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1);
+  }
+  #sidebar.open { transform: translateX(0); }
+  #main { width: 100%; height: 100dvh; }
+  #menu-btn { display: flex; }
+  #chat-header { padding: 12px 16px; }
+  #messages { padding: 16px; gap: 16px; }
+  .message { max-width: 88%; }
+  #input-area { padding: 10px 16px; }
+}
+</style>
+</head>
+<body>
+
+<div id="sidebar-backdrop"></div>
+
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h1>CLEETUS</h1>
+    <div class="rule"></div>
+    <p>Personal Intelligence System</p>
+  </div>
+
+  <div id="sidebar-tabs">
+    <div class="sidebar-tab active" data-tab="dashboard">Home</div>
+    <div class="sidebar-tab" data-tab="chats">Chats</div>
+    <div class="sidebar-tab" data-tab="memories">Memory</div>
+    <div class="sidebar-tab" data-tab="sms">SMS</div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="tab-dashboard" class="tab-panel active">
+    <div class="dash-greeting">Good evening, Grayson.</div>
+    <div class="dash-date">WEDNESDAY, MAY 7, 2026</div>
+    <div class="dash-divider"></div>
+
+    <div class="dash-section-label">Overview</div>
+    <div class="dash-stats">
+      <div class="dash-stat" onclick="switchTab('memories')">
+        <div class="dash-stat-num">47</div>
+        <div class="dash-stat-label">Memories</div>
+      </div>
+      <div class="dash-stat" onclick="switchTab('chats')">
+        <div class="dash-stat-num">12</div>
+        <div class="dash-stat-label">Conversations</div>
+      </div>
+    </div>
+
+    <div class="dash-section-label" style="margin-top:6px;">Recent Chats</div>
+    <div class="dash-recent-item" onclick="loadPreviewConv(0)">Creo AI outreach strategy</div>
+    <div class="dash-recent-item" onclick="loadPreviewConv(1)">Magnolia venue emails</div>
+    <div class="dash-recent-item" onclick="loadPreviewConv(2)">What's on my plate this week</div>
+    <div class="dash-recent-item">Deadbeat Club show recap</div>
+    <div class="dash-recent-item">Good Life Music booking update</div>
+
+    <div class="dash-section-label" style="margin-top:6px;">Quick Actions</div>
+    <button class="dash-quick-btn" onclick="switchTab('chats')">+ New Conversation</button>
+    <button class="dash-quick-btn" onclick="switchTab('memories')">Browse Memory</button>
+    <button class="dash-quick-btn" onclick="switchTab('sms')">View SMS</button>
+  </div>
+
+  <!-- Chats -->
+  <div id="tab-chats" class="tab-panel">
+    <button id="new-chat-btn" onclick="switchTab('chats')">+ New Conversation</button>
+    <div id="conversations-list">
+      <div class="conv-item active" onclick="loadPreviewConv(0)">Creo AI outreach strategy</div>
+      <div class="conv-item" onclick="loadPreviewConv(1)">Magnolia venue emails</div>
+      <div class="conv-item" onclick="loadPreviewConv(2)">What's on my plate this week</div>
+      <div class="conv-item" onclick="loadPreviewConv(3)">Deadbeat Club show recap</div>
+      <div class="conv-item" onclick="loadPreviewConv(4)">Good Life Music booking update</div>
+      <div class="conv-item">Flight to Chicago — packing list</div>
+      <div class="conv-item">Help me draft a text to Mom</div>
+      <div class="conv-item">Schwab portfolio check</div>
+      <div class="conv-item">Athens apartment search</div>
+      <div class="conv-item">Band gear budget</div>
+      <div class="conv-item">Creo internship goals</div>
+      <div class="conv-item">Weekly review — April 28</div>
+    </div>
+  </div>
+
+  <!-- Memory -->
+  <div id="tab-memories" class="tab-panel">
+    <div id="memory-search-wrap">
+      <input type="text" id="memory-search" placeholder="Search memories..." autocomplete="off">
+    </div>
+    <div id="memories-panel">
+      <div class="memory-count">47 memories stored</div>
+
+      <div class="memory-category">
+        <h3>Identity</h3>
+        <div class="memory-item"><span>Grayson Pope, 21 years old, from Athens GA</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Bassist — plays in Sweet Tea Pedigree</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>CEO of Magnolia Booking Co and booking head at Good Life Music LLC</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Intern at Creo AI — grayson@getcreo.ai</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Tree-nut allergy for Finley</span><button class="memory-delete">DEL</button></div>
+      </div>
+
+      <div class="memory-category">
+        <h3>Goal</h3>
+        <div class="memory-item"><span>Sign 20 Creo AI clients this summer (official target is 5)</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Book 10+ CSRA venues through Magnolia Booking Co</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Get CLEETUS deployed at cleetusai.com</span><button class="memory-delete">DEL</button></div>
+      </div>
+
+      <div class="memory-category">
+        <h3>Project</h3>
+        <div class="memory-item"><span>Creo AI leads sheet — 60 CSRA businesses (30 food trucks, 30 other)</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Magnolia Booking Co — outreach in progress to 23 CSRA venues</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>CLEETUS app — FastAPI backend, web frontend, planning iOS app</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Good Life Music — Fox's Lair and Joe's Underground Athens bookings</span><button class="memory-delete">DEL</button></div>
+      </div>
+
+      <div class="memory-category">
+        <h3>Preference</h3>
+        <div class="memory-item"><span>Prefers direct, no-fluff communication — no em dashes, no corporate speak</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Southern-friendly tone, warm but confident</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Never mention alcohol around Finley</span><button class="memory-delete">DEL</button></div>
+      </div>
+
+      <div class="memory-category">
+        <h3>Relationship</h3>
+        <div class="memory-item"><span>David — boss at Creo AI — david@getcreo.ai</span><button class="memory-delete">DEL</button></div>
+        <div class="memory-item"><span>Finley — close friend, tree-nut allergy, no alcohol mentions</span><button class="memory-delete">DEL</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SMS -->
+  <div id="tab-sms" class="tab-panel">
+    <div id="sms-panel">
+      <div id="sms-status-bar" class="connected">Connected — Grayson's iPhone</div>
+      <button class="sms-btn">Sync from phone</button>
+      <button class="sms-btn">Send new SMS</button>
+      <div id="sms-list">
+        <div class="sms-item unread">
+          <div class="sms-from">IN  DAVID CREO</div>
+          <div class="sms-body">Hey, can you send me an update on your lead count before Friday? Looks like we may have a team call.</div>
+          <div class="sms-time">Today, 4:12 PM</div>
+        </div>
+        <div class="sms-item">
+          <div class="sms-from">OUT  MOM</div>
+          <div class="sms-body">Heading home this weekend, I'll be there Saturday evening</div>
+          <div class="sms-time">Today, 11:30 AM</div>
+        </div>
+        <div class="sms-item unread">
+          <div class="sms-from">IN  FINLEY</div>
+          <div class="sms-body">You playing this Saturday? I might come through if Sweet Tea is on the bill</div>
+          <div class="sms-time">Yesterday, 9:44 PM</div>
+        </div>
+        <div class="sms-item">
+          <div class="sms-from">OUT  JOE'S UNDERGROUND</div>
+          <div class="sms-body">Hey — Grayson with Good Life Music. Wanted to follow up on the booking conversation from last week</div>
+          <div class="sms-time">Yesterday, 2:15 PM</div>
+        </div>
+        <div class="sms-item">
+          <div class="sms-from">IN  COLBY</div>
+          <div class="sms-body">Bro the show was insane. Y'all need to play Athens again ASAP</div>
+          <div class="sms-time">May 5, 11:58 PM</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Main chat area -->
+<div id="main">
+  <div id="chat-header">
+    <button id="menu-btn" title="Menu" onclick="toggleSidebar()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square">
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
+      </svg>
+    </button>
+    <span id="chat-title">Creo AI outreach strategy</span>
+    <span id="memory-badge">47 Memories</span>
+  </div>
+
+  <div id="messages"></div>
+
+  <div id="input-area">
+    <textarea id="message-input" placeholder="Transmit your message..." rows="1"></textarea>
+    <button id="send-btn" title="Send">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+// ── Mock conversations ────────────────────────────────────────────────────────
+const CONVS = [
+  {
+    title: "Creo AI outreach strategy",
+    messages: [
+      { role: "user", content: "Give me a priority order for my Creo leads. I want to hit the highest-value targets first this week.", time: "4:02 PM" },
+      { role: "assistant", content: "Based on your 60-lead sheet, here is how I would stack your week:\n\n**Tier 1 — Contact today (no website, zero Google presence)**\n1. Taqueria Las Ruthis — Facebook only, active audience, Mexican food truck. High visual content potential.\n2. Mustard Seed Eatery — Nicole Walker just opened, Facebook only. Get in early.\n3. The Lobstah Joint — has an email (thelobstahjoint@yahoo.com). Easiest first call.\n4. Next Level Mobile Detailing — Facebook page is their entire business. Perfect Creo pitch.\n\n**Tier 2 — Early this week**\n5. Ono Ice — Instagram + Facebook only, locally owned, unique product.\n6. RLC Mobile Auto Detail — Facebook only, no SEO at all.\n7. Spotless Mobile Detailing — Yelp-only presence. Google Ads angle is obvious.\n\n**Why these first:** All have zero website and zero Google Business Profile. The pitch writes itself: \"People near you are searching right now and cannot find you.\" Close rate on that framing is high.\n\nWant me to draft the opening emails for Tier 1 right now?", time: "4:02 PM" },
+      { role: "user", content: "Yes — write the Lobstah Joint email. Keep it short.", time: "4:04 PM" },
+      { role: "assistant", content: "Here you go:\n\n---\n\nSubject: Marketing for The Lobstah Joint — Creo AI\n\nHey,\n\nI came across The Lobstah Joint and I love the concept. Seafood food truck in Grovetown is a real gap in the market and you are sitting on something people will drive for.\n\nI work at Creo AI, a marketing agency that runs on AI. We build websites, Google listings, and social content for food trucks — fast and affordable. Right now you are invisible on Google, and that is costing you customers every day.\n\nWould you be open to a 15-minute call this week?\n\nGrayson Pope\nCreo AI\ngrayson@getcreo.ai\n\n---\n\nUnder 120 words. Want me to adjust the tone or add anything specific?", time: "4:04 PM" },
+    ]
+  },
+  {
+    title: "Magnolia venue emails",
+    messages: [
+      { role: "user", content: "How many venue emails have we sent out for Magnolia so far?", time: "2:30 PM" },
+      { role: "assistant", content: "Based on what we have done together, here is the current Magnolia outreach status:\n\n**Drafted and ready to send (9 venues)**\n- The Highlander (North Augusta) — info@pubhighlander.net\n- The Bee's Knees — beeskneesaugusta@icloud.com *(confirmed)*\n- Cork & Flame — info@corkandflame.com *(confirmed)*\n- Savannah River Brewing — info@savannahriverbrew.com *(unverified — call first)*\n- Good Girl Brewing — info@goodgirlbrewingco.com *(unverified — call first)*\n- Metro, Soul Bar, Stillwater Taproom, Joe's Underground *(emails unverified)*\n\n**Artists contacted**\n- AE the Cool — booking@aethecool.com *(confirmed, sent)*\n- Perfect Backseat Driver — info@perfectbackseatdriver.com *(unverified)*\n\n**Next move:** Verify the 4 unconfirmed venue emails by calling or checking their websites, then send. The confirmed ones (Bee's Knees and Cork & Flame) are ready to go right now.", time: "2:30 PM" },
+    ]
+  },
+  {
+    title: "What's on my plate this week",
+    messages: [
+      { role: "user", content: "Give me a quick life status check.", time: "9:15 AM" },
+      { role: "assistant", content: "Here is where things stand, Grayson:\n\n**Creo AI**\nYou have 60 leads built out and a Claude cowork prompt ready. Your first week goal should be 10 emails sent and 2-3 replies. David wants a Friday update — I can draft that for you Thursday night.\n\n**Magnolia Booking**\nNine venue drafts are sitting in Gmail. Two have confirmed emails (Bee's Knees, Cork & Flame) — those should go out today. The others need one phone call each to verify before sending.\n\n**CLEETUS**\nPR #5 is open on the main branch. Next step is getting it deployed so cleetusai.com is live. After that, iOS app build.\n\n**Music**\nFinley texted asking if you are playing Saturday. Worth a reply.\n\nWhat do you want to tackle first?", time: "9:15 AM" },
+    ]
+  },
+  {
+    title: "Deadbeat Club show recap",
+    messages: [
+      { role: "user", content: "We just played the Deadbeat Club. Help me write a post-show Instagram caption.", time: "11:45 PM" },
+      { role: "assistant", content: "Here are two options:\n\n**Option 1 — Short and clean**\n*Athens last night. Thank you Deadbeat Club. Next one soon.*\n\n**Option 2 — More personal**\n*Every time we play Athens it hits different. Deadbeat Club treated us right — good room, good people, good night. More shows coming. Stay close.*\n\nBoth skip the hashtag clutter. Which vibe fits better, or want me to blend them?", time: "11:45 PM" },
+    ]
+  },
+  {
+    title: "Good Life Music booking update",
+    messages: [
+      { role: "user", content: "What is the status of the Fox's Lair relationship?", time: "3:00 PM" },
+      { role: "assistant", content: "Fox's Lair is your most important CSRA venue relationship right now. Here is what I have:\n\n- Address: 735 Broad St, Augusta GA 30901\n- Phone: (706) 722-5247\n- They run the Southeastern Songwriter Series every 3rd Wednesday\n- That open mic night is your single best networking event in Augusta — attend in person, introduce yourself to performers and the booker\n\nYou have not sent a formal pitch email yet. Want me to draft one? The angle should be: Good Life Music already runs shows at similar Athens rooms, and you want to bring that same caliber of artists to Fox's Lair on a recurring basis.", time: "3:00 PM" },
+    ]
+  },
+];
+
+let activeConv = 0;
+
+function loadPreviewConv(idx) {
+  activeConv = idx;
+  const conv = CONVS[idx];
+  document.getElementById('chat-title').textContent = conv.title;
+
+  // Update active state in sidebar
+  document.querySelectorAll('.conv-item').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+  document.querySelectorAll('.dash-recent-item').forEach((el, i) => {
+    el.classList.toggle('active', i === idx);
+  });
+
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = '';
+
+  conv.messages.forEach(m => {
+    const wrap = document.createElement('div');
+    wrap.className = `message ${m.role}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+
+    if (m.role === 'assistant') {
+      bubble.innerHTML = simpleMarkdown(m.content);
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'msg-copy-btn';
+      copyBtn.textContent = 'COPY';
+      copyBtn.onclick = () => {
+        copyBtn.textContent = 'COPIED';
+        setTimeout(() => copyBtn.textContent = 'COPY', 1500);
+      };
+      bubble.appendChild(copyBtn);
+    } else {
+      bubble.textContent = m.content;
+    }
+
+    const time = document.createElement('div');
+    time.className = 'message-time';
+    time.textContent = m.time;
+
+    wrap.appendChild(bubble);
+    wrap.appendChild(time);
+    msgs.appendChild(wrap);
+  });
+
+  msgs.scrollTop = msgs.scrollHeight;
+  if (window.innerWidth <= 768) closeSidebar();
+}
+
+// Simple markdown renderer (no library dependency)
+function simpleMarkdown(text) {
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    // Restore intentional HTML (none in mock data)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+    .replace(/^---$/gm, '<hr>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+    .replace(/^(?!<[h|u|o|l|h])(.+)$/gm, '<p>$1</p>')
+    .replace(/<p><\/p>/g, '')
+    .replace(/<p>(<[hulo])/g, '$1')
+    .replace(/(<\/[hulo][^>]*>)<\/p>/g, '$1');
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById('tab-' + name);
+  if (panel) panel.classList.add('active');
+}
+
+document.querySelectorAll('.sidebar-tab').forEach(t => {
+  t.addEventListener('click', () => switchTab(t.dataset.tab));
+});
+
+// ── Mobile sidebar ────────────────────────────────────────────────────────────
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const open = sidebar.classList.toggle('open');
+  backdrop.classList.toggle('open', open);
+}
+
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('open');
+}
+
+document.getElementById('sidebar-backdrop').addEventListener('click', closeSidebar);
+
+// ── Input auto-resize ─────────────────────────────────────────────────────────
+const input = document.getElementById('message-input');
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+});
+
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+
+    // Add user message
+    const msgs = document.getElementById('messages');
+    const wrap = document.createElement('div');
+    wrap.className = 'message user';
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    bubble.textContent = text;
+    const time = document.createElement('div');
+    time.className = 'message-time';
+    time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    wrap.appendChild(bubble);
+    wrap.appendChild(time);
+    msgs.appendChild(wrap);
+
+    input.value = '';
+    input.style.height = 'auto';
+
+    // Show typing indicator then mock response
+    const typingWrap = document.createElement('div');
+    typingWrap.className = 'message assistant';
+    const typingBubble = document.createElement('div');
+    typingBubble.className = 'message-bubble typing-indicator';
+    typingBubble.innerHTML = '<span></span><span></span><span></span>';
+    typingWrap.appendChild(typingBubble);
+    msgs.appendChild(typingWrap);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    setTimeout(() => {
+      typingWrap.remove();
+      const rWrap = document.createElement('div');
+      rWrap.className = 'message assistant';
+      const rBubble = document.createElement('div');
+      rBubble.className = 'message-bubble';
+      rBubble.innerHTML = '<p>This is a preview — the live app connects to the CLEETUS backend and responds with full Claude AI, your memory context, and vault data loaded in. Run the server with <code>python run.py</code> to activate the real thing.</p>';
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'msg-copy-btn';
+      copyBtn.textContent = 'COPY';
+      rBubble.appendChild(copyBtn);
+      const rTime = document.createElement('div');
+      rTime.className = 'message-time';
+      rTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      rWrap.appendChild(rBubble);
+      rWrap.appendChild(rTime);
+      msgs.appendChild(rWrap);
+      msgs.scrollTop = msgs.scrollHeight;
+    }, 1200);
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadPreviewConv(0);
+</script>
+</body>
+</html>
