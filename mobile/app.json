@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "CLEETUS",
+    "slug": "cleetus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#060D0A",
+    "splash": {
+      "backgroundColor": "#060D0A",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.graysonpope.cleetus",
+      "buildNumber": "1",
+      "requireFullScreen": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Not required",
+        "UIStatusBarStyle": "UIStatusBarStyleLightContent"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#060D0A"
+      },
+      "package": "com.graysonpope.cleetus",
+      "versionCode": 1
+    },
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
+    },
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}
