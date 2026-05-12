@@ -544,6 +544,7 @@
   <script>
     const CAMPAIGN_ID = 'ae-the-cool-downtown-augusta-asap';
     const TARGET_ORDER = [
+      "Edgar's Above Broad",
       "Fox's Lair",
       "Joe's Underground",
       "Soul Bar",
@@ -555,6 +556,21 @@
     ];
 
     const DEFAULT_PROSPECTS = [
+      {
+        id: 'edgars-above-broad',
+        name: "Edgar's Above Broad",
+        city: 'Augusta',
+        address: '699 Broad Street, Third Floor, Augusta, GA 30901',
+        type: 'Rooftop Restaurant / Entertainment Venue',
+        capacity: 300,
+        contactEmail: 'information@edgarshospitality.com',
+        contactPhone: '762-320-4320',
+        website: 'https://www.edgarsabovebroad.com/private-events/',
+        preferredGenres: ['Hip-hop', 'R&B', 'DJ', 'Acoustic', 'Private event'],
+        typicalNights: 'Thursday-Saturday evening programming and private events',
+        dealNotes: 'Best pitch is a rooftop showcase, support set, or branded happy-hour event built around downtown Augusta energy.',
+        sourceNote: 'Official pages list 699 Broad Street, third floor, 762.320.4320, group bookings, and private-event inquiry routing.'
+      },
       {
         id: 'foxs-lair',
         name: "Fox's Lair",
@@ -823,6 +839,16 @@
       return Math.max(20, Math.min(100, score));
     }
 
+    function targetOrderIndex(venue) {
+      const index = TARGET_ORDER.findIndex(name => normalizeName(name) === normalizeName(venue.name));
+      return index >= 0 ? index : TARGET_ORDER.length;
+    }
+
+    function compareVenueFit(a, b) {
+      const scoreDelta = scoreVenue(b) - scoreVenue(a);
+      return scoreDelta || targetOrderIndex(a) - targetOrderIndex(b);
+    }
+
     function defaultTargetForVenue(venue, index) {
       const venueName = venue.name;
       return {
@@ -841,7 +867,7 @@
     function defaultCampaign() {
       const ranked = getVenuePool()
         .filter(venue => TARGET_ORDER.some(name => normalizeName(name) === normalizeName(venue.name)))
-        .sort((a, b) => scoreVenue(b) - scoreVenue(a));
+        .sort(compareVenueFit);
 
       return {
         id: CAMPAIGN_ID,
@@ -871,7 +897,7 @@
         .map((venue, index) => defaultTargetForVenue(venue, existingKeys.size + index));
 
       campaign.targets = [...(campaign.targets || []), ...additions]
-        .sort((a, b) => scoreVenue(getVenueByTarget(b)) - scoreVenue(getVenueByTarget(a)));
+        .sort((a, b) => compareVenueFit(getVenueByTarget(a), getVenueByTarget(b)));
       return campaign;
     }
 
@@ -1009,6 +1035,10 @@
     }
 
     function draftSubject(campaign, venue) {
+      if (normalizeName(venue.name) === normalizeName("Edgar's Above Broad")) {
+        return `${campaign.artistName} rooftop showcase at Edgar's Above Broad`;
+      }
+
       return `${campaign.artistName} at ${venue.name} - ${campaign.market} date`;
     }
 
@@ -1018,6 +1048,28 @@
       const rate = campaign.rate || '[flexible on guarantee, split, or support slot]';
       const dateWindow = campaign.dateWindow || 'ASAP';
       const fit = venue.dealNotes || venue.sourceNote || 'it feels like a strong downtown Augusta fit.';
+
+      if (normalizeName(venue.name) === normalizeName("Edgar's Above Broad")) {
+        return `Hey Edgar's Above Broad team,
+
+This is Grayson with Magnolia Booking Co. I am reaching out about routing an artist I signed, ${campaign.artistName}, for a downtown Augusta date ${dateWindow}. Edgar's feels like the right room because the rooftop setting already has the energy for a focused live set, happy-hour event, or private-event style showcase.
+
+Quick details:
+- Artist: ${campaign.artistName}
+- Music: ${music}
+- Expected draw / promo plan: ${draw}
+- Date window: ${dateWindow}
+- Deal range: ${rate}
+- Event fit: rooftop showcase, support set, happy-hour activation, or private-event entertainment
+
+If your team has an open Thursday, Friday, Saturday, or private-event slot coming up, I would love to get ${campaign.artistName} considered. We can move quickly on promo assets, date holds, and confirmation details.
+
+Would you be open to taking a look, or could you point me to the best person for live music and private-event entertainment booking?
+
+Best,
+Grayson
+Magnolia Booking Co.`;
+      }
 
       return `Hey ${venue.contactName || `${venue.name} team`},
 
@@ -1043,10 +1095,14 @@ Magnolia Booking Co.`;
 
     function callScript(campaign, venue, target) {
       const contact = venue.contactPhone || 'the venue';
+      const ask = normalizeName(venue.name) === normalizeName("Edgar's Above Broad")
+        ? 'I wanted to ask who handles live music or private-event entertainment for the rooftop, and where I should send a short artist pitch.'
+        : 'I wanted to see if you have any open support slots, weeknight holds, showcases, or local bills coming up.';
+
       return `
         <strong>Call target:</strong> ${escapeHtml(contact)}<br>
         <strong>Open:</strong> Hey, this is Grayson with Magnolia Booking Co. I am trying to reach whoever handles live music booking for ${escapeHtml(venue.name)}.<br>
-        <strong>Pitch:</strong> I signed an artist, ${escapeHtml(campaign.artistName)}, and I am routing a downtown Augusta date ${escapeHtml(campaign.dateWindow || 'ASAP')}. I wanted to see if you have any open support slots, weeknight holds, showcases, or local bills coming up.<br>
+        <strong>Pitch:</strong> I signed an artist, ${escapeHtml(campaign.artistName)}, and I am routing a downtown Augusta date ${escapeHtml(campaign.dateWindow || 'ASAP')}. ${escapeHtml(ask)}<br>
         <strong>Ask:</strong> What is the best email or DM to send the music link and quick details to?<br>
         <strong>Log after call:</strong> ${escapeHtml(target.nextStep || 'Update target status and next step.')}
       `;
