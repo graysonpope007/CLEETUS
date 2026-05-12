@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Show Booker - Magnolia Booking Co.</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,600&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --forest: #152E1E;
+      --green: #1C3829;
+      --paper: #FEFAE0;
+      --paper-soft: #FFF8D6;
+      --gold: #C9A052;
+      --gold-soft: rgba(201,160,82,0.22);
+      --line: rgba(21,46,30,0.24);
+      --ink: #152E1E;
+      --muted: #5F604E;
+      --rust: #7A2E12;
+      --white: #fffdf0;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(254,250,224,0.96), rgba(255,248,214,0.94)),
+        var(--paper);
+      color: var(--ink);
+      font-family: Oswald, system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+
+    a { color: inherit; }
+
+    .shell {
+      width: min(1440px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 44px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 20px;
+      border: 2px solid var(--forest);
+      background: var(--paper-soft);
+      box-shadow: 6px 6px 0 var(--forest);
+    }
+
+    .brand {
+      margin: 0;
+      font-family: "Cormorant Garamond", serif;
+      font-size: clamp(2.4rem, 6vw, 5.4rem);
+      font-style: italic;
+      line-height: 0.9;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--rust);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .button,
+    button {
+      min-height: 42px;
+      padding: 10px 14px;
+      border: 2px solid var(--forest);
+      background: var(--forest);
+      color: var(--paper);
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-decoration: none;
+      cursor: pointer;
+      box-shadow: 3px 3px 0 rgba(21,46,30,0.22);
+    }
+
+    .button.secondary,
+    button.secondary {
+      background: transparent;
+      color: var(--forest);
+    }
+
+    button.ghost {
+      min-height: 34px;
+      padding: 7px 10px;
+      border-color: var(--line);
+      background: rgba(255,255,255,0.35);
+      color: var(--forest);
+      box-shadow: none;
+    }
+
+    button.active,
+    .status-pill.active {
+      background: var(--gold);
+      color: var(--forest);
+    }
+
+    .status {
+      min-height: 24px;
+      margin: 18px 0 0;
+      color: var(--rust);
+      font-weight: 700;
+    }
+
+    .admin-key {
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto auto;
+      gap: 10px;
+      margin: 22px 0;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 42px;
+      padding: 10px;
+      border: 2px solid var(--forest);
+      background: #fff;
+      color: var(--ink);
+      font: 500 1rem Oswald, system-ui, sans-serif;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    .workbench {
+      display: grid;
+      grid-template-columns: minmax(270px, 0.78fr) minmax(370px, 1.12fr) minmax(330px, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      min-width: 0;
+      padding: 18px;
+      border: 2px solid var(--forest);
+      background: var(--paper-soft);
+      box-shadow: 5px 5px 0 rgba(21,46,30,0.18);
+    }
+
+    .panel.plain {
+      background: rgba(255,253,240,0.78);
+    }
+
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1;
+    }
+
+    h2 {
+      margin-bottom: 14px;
+      font-family: "Cormorant Garamond", serif;
+      font-size: 2.15rem;
+      font-style: italic;
+    }
+
+    h3 {
+      font-size: 1rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .wide { grid-column: 1 / -1; }
+
+    .brief-actions,
+    .draft-actions,
+    .target-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
+
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .metric {
+      min-height: 74px;
+      padding: 10px;
+      border: 2px solid var(--line);
+      background: rgba(255,255,255,0.46);
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--rust);
+      font-size: 1.3rem;
+      line-height: 1;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .queue {
+      display: grid;
+      gap: 10px;
+      max-height: 66vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .target-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      width: 100%;
+      padding: 13px;
+      border: 2px solid var(--line);
+      background: rgba(255,255,255,0.44);
+      color: var(--ink);
+      text-align: left;
+      box-shadow: none;
+    }
+
+    .target-card.selected {
+      border-color: var(--rust);
+      background: var(--gold-soft);
+    }
+
+    .target-title {
+      display: block;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      overflow-wrap: anywhere;
+    }
+
+    .target-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 0.83rem;
+    }
+
+    .pill,
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 4px 7px;
+      border: 1px solid rgba(21,46,30,0.26);
+      background: rgba(255,255,255,0.42);
+      color: var(--forest);
+      font-size: 0.64rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .pill.warn {
+      border-color: rgba(122,46,18,0.35);
+      color: var(--rust);
+    }
+
+    .score {
+      display: grid;
+      align-content: start;
+      justify-items: end;
+      gap: 6px;
+      min-width: 58px;
+    }
+
+    .score strong {
+      font-size: 1.5rem;
+      line-height: 1;
+    }
+
+    .target-editor {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 2px solid var(--line);
+    }
+
+    .detail-block {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding: 12px;
+      border: 2px solid var(--line);
+      background: rgba(255,255,255,0.42);
+    }
+
+    .detail-line {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .detail-line strong {
+      color: var(--forest);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .outreach-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .subject-row {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .draft-body {
+      min-height: 310px;
+      line-height: 1.45;
+    }
+
+    .script {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      padding: 12px;
+      border: 2px solid var(--line);
+      background: rgba(255,255,255,0.42);
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .script strong {
+      color: var(--forest);
+    }
+
+    .empty {
+      padding: 18px;
+      border: 2px dashed var(--line);
+      color: var(--muted);
+      background: rgba(255,255,255,0.32);
+    }
+
+    [hidden] { display: none !important; }
+
+    @media (max-width: 1180px) {
+      .workbench {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .outreach-panel {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 820px) {
+      header,
+      .admin-key,
+      .workbench,
+      .form-grid,
+      .metric-strip {
+        grid-template-columns: 1fr;
+      }
+
+      header { display: grid; }
+      .nav { justify-content: flex-start; }
+      .queue { max-height: none; }
+      .detail-line { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <p class="eyebrow">Magnolia Booking Co.</p>
+        <h1 class="brand">Show Booker</h1>
+      </div>
+      <nav class="nav" aria-label="Booking links">
+        <a class="button secondary" href="/manage">Manager</a>
+        <a class="button secondary" href="/venues">Venue Map</a>
+        <a class="button secondary" href="/bands">Bands</a>
+        <a class="button secondary" href="/">Home</a>
+      </nav>
+    </header>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <section class="admin-key" aria-label="Admin key">
+      <label>
+        Admin key
+        <input id="adminKeyInput" type="password" autocomplete="current-password" placeholder="Required to save campaign">
+      </label>
+      <button id="rememberKeyButton" class="secondary" type="button">Remember Key</button>
+      <button id="reloadButton" type="button">Reload</button>
+    </section>
+
+    <section class="workbench">
+      <section class="panel">
+        <p class="eyebrow">Booking Brief</p>
+        <h2>AE Campaign</h2>
+        <form id="campaignForm">
+          <div class="form-grid">
+            <label>Artist <input name="artistName" value="AE the cool" required></label>
+            <label>Market <input name="market" value="Downtown Augusta" required></label>
+            <label>Date Window <input name="dateWindow" value="ASAP" required></label>
+            <label>Priority
+              <select name="priority">
+                <option value="urgent">Urgent</option>
+                <option value="high">High</option>
+                <option value="normal">Normal</option>
+              </select>
+            </label>
+            <label>Music Link <input name="musicUrl" type="url" placeholder="Paste link before sending"></label>
+            <label>Draw <input name="draw" placeholder="Local draw or promo plan"></label>
+            <label>Rate <input name="rate" placeholder="Guarantee, split, or flexible"></label>
+            <label>Status
+              <select name="status">
+                <option value="active">Active</option>
+                <option value="pitched">Pitched</option>
+                <option value="hold">Hold</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="paused">Paused</option>
+              </select>
+            </label>
+            <label class="wide">Goal <textarea name="goal">Book AE the cool at a downtown Augusta room as soon as possible.</textarea></label>
+            <label class="wide">Pitch Angle <textarea name="pitchAngle">New Magnolia Booking Co. signed artist. Fast-moving local/regional push. Best fit is a downtown room that can test the act on a weeknight, support slot, showcase, or quick-turn local bill.</textarea></label>
+            <label class="wide">Internal Notes <textarea name="internalNotes" placeholder="Private routing notes"></textarea></label>
+          </div>
+          <div class="brief-actions">
+            <button class="secondary" id="resetCampaignButton" type="button">Reset AE Brief</button>
+            <button type="submit">Save Campaign</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel plain">
+        <p class="eyebrow">Downtown Augusta</p>
+        <h2>Target Queue</h2>
+        <div class="metric-strip">
+          <div class="metric"><strong id="targetCount">0</strong><span>Targets</span></div>
+          <div class="metric"><strong id="contactedCount">0</strong><span>Contacted</span></div>
+          <div class="metric"><strong id="confirmedCount">0</strong><span>Confirmed</span></div>
+        </div>
+        <div id="targetQueue" class="queue" aria-live="polite"></div>
+        <div id="targetEditor" class="target-editor" hidden>
+          <h3 id="targetEditorTitle">Selected Venue</h3>
+          <div class="form-grid">
+            <label>Status
+              <select id="targetStatusInput">
+                <option value="target">Target</option>
+                <option value="contacted">Contacted</option>
+                <option value="followed_up">Followed Up</option>
+                <option value="hold">Hold</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="passed">Passed</option>
+              </select>
+            </label>
+            <label>Contact Method <input id="targetContactMethodInput" placeholder="Email, call, Instagram DM"></label>
+            <label class="wide">Next Step <input id="targetNextStepInput" placeholder="Send first pitch, call at 4pm, follow up Friday"></label>
+            <label class="wide">Fit Notes <textarea id="targetFitNotesInput"></textarea></label>
+            <label class="wide">Thread Link <input id="targetThreadUrlInput" type="url" placeholder="Email thread, DM, or CRM URL"></label>
+          </div>
+          <div class="target-actions">
+            <button id="applyTargetButton" type="button">Update Target</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel outreach-panel">
+        <p class="eyebrow">Outreach</p>
+        <h2>Pitch Draft</h2>
+        <div id="venueDetails" class="detail-block"></div>
+        <div class="outreach-tabs" aria-label="Outreach mode">
+          <button id="emailModeButton" class="ghost active" type="button">Email</button>
+          <button id="callModeButton" class="ghost" type="button">Call</button>
+        </div>
+        <div id="emailDraft">
+          <label class="subject-row">Subject <input id="subjectInput"></label>
+          <label>Body <textarea id="bodyInput" class="draft-body"></textarea></label>
+          <div class="draft-actions">
+            <a id="mailtoLink" class="button secondary" href="#" target="_blank" rel="noreferrer">Open Email</a>
+            <button id="copyDraftButton" type="button">Copy Draft</button>
+          </div>
+        </div>
+        <div id="callScript" class="script" hidden></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const CAMPAIGN_ID = 'ae-the-cool-downtown-augusta-asap';
+    const TARGET_ORDER = [
+      "Fox's Lair",
+      "Joe's Underground",
+      "Soul Bar",
+      "Stillwater Taproom",
+      "Metro Coffee House",
+      "Tacocat",
+      "Miller Theater",
+      "Imperial Theatre"
+    ];
+
+    const DEFAULT_PROSPECTS = [
+      {
+        id: 'foxs-lair',
+        name: "Fox's Lair",
+        city: 'Augusta',
+        address: '349 Telfair Street, Augusta, GA 30901',
+        type: 'Bar / Intimate Venue',
+        capacity: 100,
+        contactEmail: 'foxslair.oldetowninn@gmail.com',
+        contactPhone: '706-828-5600',
+        website: 'https://www.oldetowninn.online/thefoxslair/lairdrinks',
+        preferredGenres: ['Singer-songwriter', 'Indie', 'Hip-hop', 'Open mic'],
+        typicalNights: 'Open mic Thursdays; live music Tuesday-Saturday',
+        dealNotes: 'Start with a support slot, open mic relationship, or weeknight original set.',
+        sourceNote: 'Official page lists open mic Thursdays and live music Tuesday-Saturday.'
+      },
+      {
+        id: 'joes-underground',
+        name: "Joe's Underground",
+        city: 'Augusta',
+        address: '144 8th St, Augusta, GA 30901',
+        type: 'Underground Venue',
+        capacity: 250,
+        contactPhone: '706-724-9457',
+        website: 'https://www.facebook.com/joesundergroundaugusta/',
+        preferredGenres: ['Hip-hop', 'Punk', 'Metal', 'DJ', 'Underground'],
+        typicalNights: 'Late-night downtown shows',
+        dealNotes: 'Best ASAP target for a raw original bill or local support slot.',
+        sourceNote: 'Public listings describe downtown live performances and nightlife.'
+      },
+      {
+        id: 'soul-bar',
+        name: 'Soul Bar',
+        city: 'Augusta',
+        address: '984 Broad Street, Augusta, GA 30901',
+        type: 'Bar / Music Venue',
+        capacity: 200,
+        contactPhone: '706-724-8880',
+        website: 'https://soulbar.com/',
+        preferredGenres: ['Soul', 'Funk', 'Hip-hop', 'DJ', 'Rock'],
+        typicalNights: 'Live music and DJ programming',
+        dealNotes: 'Pitch as a quick local support or showcase fit.',
+        sourceNote: 'Visit Augusta identifies Soul Bar as a long-running downtown music stop.'
+      },
+      {
+        id: 'stillwater-taproom',
+        name: 'Stillwater Taproom',
+        city: 'Augusta',
+        address: '974 Broad St, Augusta, GA 30901',
+        type: 'Taproom / Venue',
+        capacity: 150,
+        contactPhone: '706-826-9857',
+        website: 'https://www.facebook.com/StillwaterTaproomAugusta/',
+        preferredGenres: ['Folk', 'Rock', 'Americana', 'Hip-hop', 'Regional'],
+        typicalNights: 'Downtown evening programming',
+        dealNotes: 'Use as a neighborhood room or local bill route.',
+        sourceNote: 'Listings identify Stillwater as a downtown taproom with live music.'
+      },
+      {
+        id: 'metro-coffee-house',
+        name: 'Metro Coffee House',
+        city: 'Augusta',
+        address: '1054 Broad St, Augusta, GA 30901',
+        type: 'Coffeehouse / Pub',
+        capacity: 120,
+        contactPhone: '706-722-6468',
+        website: 'https://www.instagram.com/metrocoffeehouse_pub/',
+        preferredGenres: ['Acoustic', 'Indie', 'Hip-hop', 'Drag', 'Local'],
+        typicalNights: 'Evening coffeehouse and pub events',
+        dealNotes: 'Good low-pressure weeknight test room if production needs are light.',
+        sourceNote: 'Public listings identify Metro as a downtown coffeehouse/pub with occasional bands.'
+      },
+      {
+        id: 'tacocat',
+        name: 'Tacocat',
+        city: 'Augusta',
+        address: '208 10th Street, Augusta, GA 30901',
+        type: 'Restaurant / Live Music',
+        capacity: 100,
+        contactPhone: '706-842-7800',
+        website: 'https://tacocataugusta.com/contact/',
+        preferredGenres: ['Acoustic', 'DJ', 'Local', 'Hip-hop'],
+        typicalNights: 'Live music schedule',
+        dealNotes: 'Use as a restaurant-showcase or event-collab backup.',
+        sourceNote: 'Official contact page includes a live music schedule section.'
+      },
+      {
+        id: 'miller-theater',
+        name: 'Miller Theater',
+        city: 'Augusta',
+        address: '708 Broad Street, Augusta, GA 30901',
+        type: 'Historic Theater',
+        capacity: 1200,
+        contactPhone: '706-842-4080',
+        website: 'https://millertheateraugusta.com/',
+        preferredGenres: ['R&B', 'Soul', 'Touring', 'Theater'],
+        typicalNights: 'Ticketed theater programming',
+        dealNotes: 'Not a first ASAP ask unless positioning as opener, lounge, or community showcase.',
+        sourceNote: 'Official site identifies it as a downtown entertainment destination.'
+      },
+      {
+        id: 'imperial-theatre',
+        name: 'Imperial Theatre',
+        city: 'Augusta',
+        address: '745 Broad Street, Augusta, GA 30901',
+        type: 'Performing Arts Theater',
+        capacity: 853,
+        contactEmail: 'boxoffice@imperialtheatre.com',
+        contactPhone: '706-722-8341',
+        website: 'https://imperialtheatre.com/',
+        preferredGenres: ['Theater', 'Performing arts', 'Community', 'Concert'],
+        typicalNights: 'Ticketed performing arts programming',
+        dealNotes: 'Longer lead backup, not the fastest small-room path.',
+        sourceNote: 'Official organizer page lists contact details and downtown venue mission.'
+      }
+    ];
+
+    const STATUS_LABELS = {
+      target: 'Target',
+      contacted: 'Contacted',
+      followed_up: 'Followed Up',
+      hold: 'Hold',
+      confirmed: 'Confirmed',
+      passed: 'Passed'
+    };
+
+    const state = {
+      content: { venues: [], bands: [], bookingCampaigns: [] },
+      campaign: null,
+      selectedTargetId: null,
+      selectedVenue: null
+    };
+
+    const elements = {
+      status: document.getElementById('status'),
+      adminKeyInput: document.getElementById('adminKeyInput'),
+      rememberKeyButton: document.getElementById('rememberKeyButton'),
+      reloadButton: document.getElementById('reloadButton'),
+      campaignForm: document.getElementById('campaignForm'),
+      targetQueue: document.getElementById('targetQueue'),
+      targetCount: document.getElementById('targetCount'),
+      contactedCount: document.getElementById('contactedCount'),
+      confirmedCount: document.getElementById('confirmedCount'),
+      targetEditor: document.getElementById('targetEditor'),
+      targetEditorTitle: document.getElementById('targetEditorTitle'),
+      targetStatusInput: document.getElementById('targetStatusInput'),
+      targetContactMethodInput: document.getElementById('targetContactMethodInput'),
+      targetNextStepInput: document.getElementById('targetNextStepInput'),
+      targetFitNotesInput: document.getElementById('targetFitNotesInput'),
+      targetThreadUrlInput: document.getElementById('targetThreadUrlInput'),
+      applyTargetButton: document.getElementById('applyTargetButton'),
+      venueDetails: document.getElementById('venueDetails'),
+      emailModeButton: document.getElementById('emailModeButton'),
+      callModeButton: document.getElementById('callModeButton'),
+      emailDraft: document.getElementById('emailDraft'),
+      callScript: document.getElementById('callScript'),
+      subjectInput: document.getElementById('subjectInput'),
+      bodyInput: document.getElementById('bodyInput'),
+      mailtoLink: document.getElementById('mailtoLink'),
+      copyDraftButton: document.getElementById('copyDraftButton'),
+      resetCampaignButton: document.getElementById('resetCampaignButton')
+    };
+
+    elements.adminKeyInput.value = localStorage.getItem('magnoliaAdminKey') || '';
+
+    const escapeHtml = value => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+    function setStatus(message, tone = 'info') {
+      elements.status.textContent = message;
+      elements.status.style.color = tone === 'success' ? '#1C3829' : '#7A2E12';
+    }
+
+    function slugify(value, fallback) {
+      const slug = String(value || '')
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      return slug || fallback;
+    }
+
+    function normalizeName(value) {
+      return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    }
+
+    function formToCampaign() {
+      const formData = new FormData(elements.campaignForm);
+      const campaign = { ...state.campaign };
+
+      for (const [key, value] of formData.entries()) {
+        campaign[key] = String(value).trim();
+      }
+
+      campaign.id = CAMPAIGN_ID;
+      campaign.artistId = 'ae-the-cool';
+      campaign.updatedAt = new Date().toISOString();
+      campaign.targets = campaign.targets || [];
+      return campaign;
+    }
+
+    function fillCampaignForm(campaign) {
+      for (const element of elements.campaignForm.elements) {
+        if (!element.name) continue;
+        element.value = campaign[element.name] ?? '';
+      }
+    }
+
+    function mergeVenue(base = {}, override = {}) {
+      return {
+        ...base,
+        ...override,
+        id: base.id || override.id,
+        name: override.name || base.name,
+        city: override.city || base.city,
+        address: override.address || base.address,
+        type: override.type || base.type,
+        capacity: override.capacity || base.capacity,
+        contactName: override.contactName || base.contactName,
+        contactEmail: override.contactEmail || base.contactEmail,
+        contactPhone: override.contactPhone || base.contactPhone,
+        website: override.website || base.website,
+        preferredGenres: override.preferredGenres?.length ? override.preferredGenres : base.preferredGenres || [],
+        typicalNights: override.typicalNights || base.typicalNights,
+        dealNotes: override.dealNotes || base.dealNotes,
+        sourceNote: override.sourceNote || base.sourceNote
+      };
+    }
+
+    function getVenuePool() {
+      const byName = new Map();
+
+      for (const venue of state.content.venues || []) {
+        byName.set(normalizeName(venue.name), venue);
+      }
+
+      for (const prospect of DEFAULT_PROSPECTS) {
+        const key = normalizeName(prospect.name);
+        byName.set(key, mergeVenue(byName.get(key), prospect));
+      }
+
+      return Array.from(byName.values());
+    }
+
+    function getVenueByTarget(target) {
+      const pool = getVenuePool();
+      return pool.find(venue => venue.id === target.venueId) ||
+        pool.find(venue => normalizeName(venue.name) === normalizeName(target.venueName)) ||
+        { name: target.venueName, id: target.venueId };
+    }
+
+    function scoreVenue(venue) {
+      const orderIndex = TARGET_ORDER.findIndex(name => normalizeName(name) === normalizeName(venue.name));
+      let score = orderIndex >= 0 ? 96 - orderIndex * 7 : 48;
+      const text = `${venue.name} ${venue.city} ${venue.address} ${venue.type} ${(venue.preferredGenres || []).join(' ')}`.toLowerCase();
+
+      if (text.includes('augusta')) score += 8;
+      if (text.includes('broad') || text.includes('telfair') || text.includes('8th') || text.includes('10th')) score += 8;
+      if (text.includes('music') || text.includes('venue') || text.includes('underground')) score += 8;
+      if (text.includes('bar') || text.includes('taproom') || text.includes('pub')) score += 5;
+      if (Number(venue.capacity) && Number(venue.capacity) <= 300) score += 7;
+      if (Number(venue.capacity) && Number(venue.capacity) > 800) score -= 16;
+      return Math.max(20, Math.min(100, score));
+    }
+
+    function defaultTargetForVenue(venue, index) {
+      const venueName = venue.name;
+      return {
+        id: slugify(venueName, `target-${index + 1}`),
+        venueId: venue.id || slugify(venueName, `venue-${index + 1}`),
+        venueName,
+        status: 'target',
+        priority: index < 4 ? 'urgent' : 'normal',
+        fitNotes: venue.dealNotes || venue.sourceNote || '',
+        nextStep: index < 4 ? 'Send first pitch today.' : 'Use as backup after first four targets.',
+        contactMethod: venue.contactEmail ? 'Email' : venue.contactPhone ? 'Call' : 'Find booker',
+        threadUrl: ''
+      };
+    }
+
+    function defaultCampaign() {
+      const ranked = getVenuePool()
+        .filter(venue => TARGET_ORDER.some(name => normalizeName(name) === normalizeName(venue.name)))
+        .sort((a, b) => scoreVenue(b) - scoreVenue(a));
+
+      return {
+        id: CAMPAIGN_ID,
+        artistId: 'ae-the-cool',
+        artistName: 'AE the cool',
+        market: 'Downtown Augusta',
+        dateWindow: 'ASAP',
+        goal: 'Book AE the cool at a downtown Augusta room as soon as possible.',
+        pitchAngle: 'New Magnolia Booking Co. signed artist. Fast-moving local/regional push. Best fit is a downtown room that can test the act on a weeknight, support slot, showcase, or quick-turn local bill.',
+        musicUrl: '',
+        draw: '',
+        rate: '',
+        priority: 'urgent',
+        status: 'active',
+        targets: ranked.map(defaultTargetForVenue),
+        internalNotes: '',
+        updatedAt: new Date().toISOString()
+      };
+    }
+
+    function ensureTargetCoverage(campaign) {
+      const existingKeys = new Set((campaign.targets || []).map(target => normalizeName(target.venueName || target.venueId)));
+      const additions = getVenuePool()
+        .filter(venue => TARGET_ORDER.some(name => normalizeName(name) === normalizeName(venue.name)))
+        .filter(venue => !existingKeys.has(normalizeName(venue.name)))
+        .sort((a, b) => scoreVenue(b) - scoreVenue(a))
+        .map((venue, index) => defaultTargetForVenue(venue, existingKeys.size + index));
+
+      campaign.targets = [...(campaign.targets || []), ...additions]
+        .sort((a, b) => scoreVenue(getVenueByTarget(b)) - scoreVenue(getVenueByTarget(a)));
+      return campaign;
+    }
+
+    function ensureAeBand() {
+      const bands = state.content.bands || [];
+      const existing = bands.find(band => normalizeName(band.name) === normalizeName('AE the cool'));
+      const band = {
+        id: existing?.id || 'ae-the-cool',
+        name: 'AE the cool',
+        hometown: existing?.hometown || 'Georgia',
+        genres: existing?.genres?.length ? existing.genres : ['Artist'],
+        bio: existing?.bio || 'AE the cool is a Magnolia Booking Co. artist currently being routed for Augusta-area show opportunities.',
+        members: existing?.members || [],
+        contactName: existing?.contactName || '',
+        contactEmail: existing?.contactEmail || '',
+        contactPhone: existing?.contactPhone || '',
+        website: existing?.website || '',
+        musicUrl: existing?.musicUrl || state.campaign?.musicUrl || '',
+        instagram: existing?.instagram || '',
+        draw: existing?.draw || state.campaign?.draw || '',
+        rate: existing?.rate || state.campaign?.rate || '',
+        availability: existing?.availability || 'ASAP downtown Augusta booking push',
+        preferredMarkets: existing?.preferredMarkets?.length ? existing.preferredMarkets : ['Downtown Augusta', 'Augusta', 'CSRA'],
+        venueHistory: existing?.venueHistory || [],
+        internalNotes: existing?.internalNotes || 'Signed artist; priority is an ASAP downtown Augusta show.',
+        status: existing?.status || 'active'
+      };
+
+      if (existing) {
+        state.content.bands = bands.map(item => item.id === existing.id ? { ...existing, ...band } : item);
+      } else {
+        state.content.bands = [...bands, band];
+      }
+    }
+
+    function upsertCampaign() {
+      state.content.bookingCampaigns = state.content.bookingCampaigns || [];
+      const index = state.content.bookingCampaigns.findIndex(campaign => campaign.id === CAMPAIGN_ID);
+      if (index >= 0) state.content.bookingCampaigns[index] = state.campaign;
+      else state.content.bookingCampaigns.push(state.campaign);
+    }
+
+    function selectedTarget() {
+      return state.campaign?.targets?.find(target => target.id === state.selectedTargetId) || state.campaign?.targets?.[0] || null;
+    }
+
+    function setSelectedTarget(targetId) {
+      state.selectedTargetId = targetId;
+      const target = selectedTarget();
+      state.selectedVenue = target ? getVenueByTarget(target) : null;
+      render();
+    }
+
+    function campaignStats() {
+      const targets = state.campaign?.targets || [];
+      return {
+        total: targets.length,
+        contacted: targets.filter(target => ['contacted', 'followed_up', 'hold', 'confirmed'].includes(target.status)).length,
+        confirmed: targets.filter(target => target.status === 'confirmed').length
+      };
+    }
+
+    function renderQueue() {
+      const targets = state.campaign?.targets || [];
+      const stats = campaignStats();
+      elements.targetCount.textContent = String(stats.total);
+      elements.contactedCount.textContent = String(stats.contacted);
+      elements.confirmedCount.textContent = String(stats.confirmed);
+
+      if (!targets.length) {
+        elements.targetQueue.innerHTML = '<div class="empty">No target venues yet.</div>';
+        return;
+      }
+
+      elements.targetQueue.innerHTML = targets.map(target => {
+        const venue = getVenueByTarget(target);
+        const score = scoreVenue(venue);
+        const isSelected = target.id === state.selectedTargetId;
+        const hasMapLink = (state.content.venues || []).some(item => item.id === venue.id || normalizeName(item.name) === normalizeName(venue.name));
+        const meta = [venue.address, venue.type, venue.contactEmail || venue.contactPhone || 'Find direct booker'].filter(Boolean).join(' | ');
+        return `
+          <button class="target-card ${isSelected ? 'selected' : ''}" type="button" data-target-id="${escapeHtml(target.id)}">
+            <span>
+              <span class="target-title">${escapeHtml(venue.name || target.venueName)}</span>
+              <span class="target-meta">
+                <span class="status-pill ${target.status === 'confirmed' ? 'active' : ''}">${escapeHtml(STATUS_LABELS[target.status] || target.status)}</span>
+                <span class="pill ${hasMapLink ? '' : 'warn'}">${hasMapLink ? 'Venue Map' : 'Map Prospect'}</span>
+                <span>${escapeHtml(meta)}</span>
+              </span>
+            </span>
+            <span class="score">
+              <strong>${score}</strong>
+              <span class="pill">${escapeHtml(target.priority || 'normal')}</span>
+            </span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function renderTargetEditor() {
+      const target = selectedTarget();
+
+      if (!target) {
+        elements.targetEditor.hidden = true;
+        return;
+      }
+
+      const venue = getVenueByTarget(target);
+      elements.targetEditor.hidden = false;
+      elements.targetEditorTitle.textContent = venue.name || target.venueName || 'Selected Venue';
+      elements.targetStatusInput.value = target.status || 'target';
+      elements.targetContactMethodInput.value = target.contactMethod || '';
+      elements.targetNextStepInput.value = target.nextStep || '';
+      elements.targetFitNotesInput.value = target.fitNotes || '';
+      elements.targetThreadUrlInput.value = target.threadUrl || '';
+    }
+
+    function renderVenueDetails() {
+      const target = selectedTarget();
+      const venue = target ? getVenueByTarget(target) : null;
+
+      if (!venue) {
+        elements.venueDetails.innerHTML = '<div class="empty">Select a venue target.</div>';
+        return;
+      }
+
+      const contact = venue.contactEmail || venue.contactPhone || venue.website || 'Find direct booker';
+      const notes = [venue.typicalNights, venue.dealNotes, target.fitNotes].filter(Boolean).join(' ');
+      elements.venueDetails.innerHTML = `
+        <div class="detail-line"><strong>Venue</strong><span>${escapeHtml(venue.name)}</span></div>
+        <div class="detail-line"><strong>Address</strong><span>${escapeHtml(venue.address || 'Address needed')}</span></div>
+        <div class="detail-line"><strong>Contact</strong><span>${escapeHtml(contact)}</span></div>
+        <div class="detail-line"><strong>Fit</strong><span>${escapeHtml(notes || 'Fast local booking target.')}</span></div>
+      `;
+    }
+
+    function draftSubject(campaign, venue) {
+      return `${campaign.artistName} at ${venue.name} - ${campaign.market} date`;
+    }
+
+    function draftBody(campaign, venue) {
+      const music = campaign.musicUrl || '[music link]';
+      const draw = campaign.draw || '[current draw / promo plan]';
+      const rate = campaign.rate || '[flexible on guarantee, split, or support slot]';
+      const dateWindow = campaign.dateWindow || 'ASAP';
+      const fit = venue.dealNotes || venue.sourceNote || 'it feels like a strong downtown Augusta fit.';
+
+      return `Hey ${venue.contactName || `${venue.name} team`},
+
+This is Grayson with Magnolia Booking Co. I am routing an artist I signed, ${campaign.artistName}, for a ${campaign.market} date ${dateWindow} and thought ${venue.name} could be a strong fit.
+
+Quick details:
+- Artist: ${campaign.artistName}
+- Music: ${music}
+- Expected draw / promo plan: ${draw}
+- Date window: ${dateWindow}
+- Deal range: ${rate}
+
+Why I am reaching out to you: ${fit}
+
+If you have an open support slot, weeknight hold, showcase, or local bill coming up, I would love to get ${campaign.artistName} considered. We can move quickly on promo assets and confirmation.
+
+Would you be open to taking a look?
+
+Best,
+Grayson
+Magnolia Booking Co.`;
+    }
+
+    function callScript(campaign, venue, target) {
+      const contact = venue.contactPhone || 'the venue';
+      return `
+        <strong>Call target:</strong> ${escapeHtml(contact)}<br>
+        <strong>Open:</strong> Hey, this is Grayson with Magnolia Booking Co. I am trying to reach whoever handles live music booking for ${escapeHtml(venue.name)}.<br>
+        <strong>Pitch:</strong> I signed an artist, ${escapeHtml(campaign.artistName)}, and I am routing a downtown Augusta date ${escapeHtml(campaign.dateWindow || 'ASAP')}. I wanted to see if you have any open support slots, weeknight holds, showcases, or local bills coming up.<br>
+        <strong>Ask:</strong> What is the best email or DM to send the music link and quick details to?<br>
+        <strong>Log after call:</strong> ${escapeHtml(target.nextStep || 'Update target status and next step.')}
+      `;
+    }
+
+    function renderOutreach() {
+      const target = selectedTarget();
+      const venue = target ? getVenueByTarget(target) : null;
+
+      if (!target || !venue) return;
+
+      const campaign = formToCampaign();
+      const subject = draftSubject(campaign, venue);
+      const body = draftBody(campaign, venue);
+      elements.subjectInput.value = subject;
+      elements.bodyInput.value = body;
+
+      if (venue.contactEmail) {
+        elements.mailtoLink.href = `mailto:${encodeURIComponent(venue.contactEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        elements.mailtoLink.textContent = 'Open Email';
+        elements.mailtoLink.removeAttribute('aria-disabled');
+      } else {
+        elements.mailtoLink.href = venue.website || '#';
+        elements.mailtoLink.textContent = venue.website ? 'Open Venue Link' : 'No Email Yet';
+        if (!venue.website) elements.mailtoLink.setAttribute('aria-disabled', 'true');
+      }
+
+      elements.callScript.innerHTML = callScript(campaign, venue, target);
+    }
+
+    function render() {
+      fillCampaignForm(state.campaign);
+      renderQueue();
+      renderTargetEditor();
+      renderVenueDetails();
+      renderOutreach();
+    }
+
+    async function loadContent() {
+      const response = await fetch('/api/content');
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message || 'Could not load Magnolia content.');
+
+      state.content = {
+        venues: payload.venues || [],
+        bands: payload.bands || [],
+        bookingCampaigns: payload.bookingCampaigns || []
+      };
+      state.campaign = state.content.bookingCampaigns.find(campaign => campaign.id === CAMPAIGN_ID) || defaultCampaign();
+      ensureTargetCoverage(state.campaign);
+      state.selectedTargetId = state.campaign.targets?.[0]?.id || null;
+      state.selectedVenue = selectedTarget() ? getVenueByTarget(selectedTarget()) : null;
+      render();
+      setStatus('Loaded AE the cool downtown Augusta booking queue.', 'success');
+    }
+
+    async function saveContent() {
+      state.campaign = formToCampaign();
+      ensureTargetCoverage(state.campaign);
+      ensureAeBand();
+      upsertCampaign();
+
+      const adminKey = elements.adminKeyInput.value.trim();
+      const response = await fetch('/api/content', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminKey
+        },
+        body: JSON.stringify(state.content)
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message || 'Could not save campaign.');
+
+      state.content = {
+        venues: payload.venues || [],
+        bands: payload.bands || [],
+        bookingCampaigns: payload.bookingCampaigns || []
+      };
+      state.campaign = state.content.bookingCampaigns.find(campaign => campaign.id === CAMPAIGN_ID) || state.campaign;
+      render();
+      setStatus('Saved campaign, target queue, and AE the cool band record.', 'success');
+    }
+
+    elements.rememberKeyButton.addEventListener('click', () => {
+      localStorage.setItem('magnoliaAdminKey', elements.adminKeyInput.value.trim());
+      setStatus('Admin key saved in this browser.', 'success');
+    });
+
+    elements.reloadButton.addEventListener('click', () => {
+      loadContent().catch(error => setStatus(error.message));
+    });
+
+    elements.resetCampaignButton.addEventListener('click', () => {
+      state.campaign = defaultCampaign();
+      state.selectedTargetId = state.campaign.targets?.[0]?.id || null;
+      render();
+      setStatus('Reset local AE campaign brief. Save to publish it.', 'success');
+    });
+
+    elements.campaignForm.addEventListener('input', () => {
+      state.campaign = formToCampaign();
+      renderOutreach();
+    });
+
+    elements.campaignForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      await saveContent().catch(error => setStatus(error.message));
+    });
+
+    elements.targetQueue.addEventListener('click', event => {
+      const button = event.target.closest('[data-target-id]');
+      if (button) setSelectedTarget(button.dataset.targetId);
+    });
+
+    elements.applyTargetButton.addEventListener('click', () => {
+      const target = selectedTarget();
+      if (!target) return;
+      target.status = elements.targetStatusInput.value;
+      target.contactMethod = elements.targetContactMethodInput.value.trim();
+      target.nextStep = elements.targetNextStepInput.value.trim();
+      target.fitNotes = elements.targetFitNotesInput.value.trim();
+      target.threadUrl = elements.targetThreadUrlInput.value.trim();
+      state.campaign.updatedAt = new Date().toISOString();
+      render();
+      setStatus('Updated target locally. Save campaign to publish.', 'success');
+    });
+
+    elements.emailModeButton.addEventListener('click', () => {
+      elements.emailModeButton.classList.add('active');
+      elements.callModeButton.classList.remove('active');
+      elements.emailDraft.hidden = false;
+      elements.callScript.hidden = true;
+    });
+
+    elements.callModeButton.addEventListener('click', () => {
+      elements.callModeButton.classList.add('active');
+      elements.emailModeButton.classList.remove('active');
+      elements.emailDraft.hidden = true;
+      elements.callScript.hidden = false;
+    });
+
+    elements.copyDraftButton.addEventListener('click', async () => {
+      const text = `Subject: ${elements.subjectInput.value}\n\n${elements.bodyInput.value}`;
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus('Draft copied.', 'success');
+      } catch {
+        elements.bodyInput.focus();
+        elements.bodyInput.select();
+        setStatus('Copy blocked by browser. Draft body selected.');
+      }
+    });
+
+    loadContent().catch(error => setStatus(error.message));
+  </script>
+</body>
+</html>

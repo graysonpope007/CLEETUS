@@ -55,7 +55,9 @@ function resolveRequestPath(urlPathname) {
           ? "/bands.html"
           : decodedPathname === "/manage"
             ? "/manage.html"
-        : decodedPathname;
+            : decodedPathname === "/book"
+              ? "/book.html"
+              : decodedPathname;
   const resolvedPath = path.resolve(rootDir, `.${pathname}`);
 
   if (!resolvedPath.startsWith(`${rootDir}${path.sep}`)) {
@@ -177,6 +179,57 @@ function normalizeBand(band, index = 0) {
   };
 }
 
+function normalizeBookingTarget(target, index = 0) {
+  const venueName = normalizeText(target?.venueName);
+  const venueId = normalizeText(target?.venueId);
+
+  return {
+    id:
+      normalizeText(target?.id) ||
+      slugify(`${venueName || venueId}-${index + 1}`, `target-${index + 1}`),
+    venueId,
+    venueName,
+    status: normalizeText(target?.status) || "target",
+    priority: normalizeText(target?.priority) || "normal",
+    fitNotes: normalizeText(target?.fitNotes),
+    lastContactedAt: normalizeText(target?.lastContactedAt),
+    nextStep: normalizeText(target?.nextStep),
+    contactMethod: normalizeText(target?.contactMethod),
+    threadUrl: normalizeText(target?.threadUrl),
+    internalNotes: normalizeText(target?.internalNotes)
+  };
+}
+
+function normalizeBookingCampaign(campaign, index = 0) {
+  const artistName = normalizeText(campaign?.artistName);
+  const market = normalizeText(campaign?.market);
+  const dateWindow = normalizeText(campaign?.dateWindow);
+
+  return {
+    id:
+      normalizeText(campaign?.id) ||
+      slugify(`${artistName}-${market}-${dateWindow}`, `campaign-${index + 1}`),
+    artistId: normalizeText(campaign?.artistId),
+    artistName,
+    market,
+    dateWindow,
+    goal: normalizeText(campaign?.goal),
+    pitchAngle: normalizeText(campaign?.pitchAngle),
+    musicUrl: normalizeText(campaign?.musicUrl),
+    draw: normalizeText(campaign?.draw),
+    rate: normalizeText(campaign?.rate),
+    priority: normalizeText(campaign?.priority) || "normal",
+    status: normalizeText(campaign?.status) || "active",
+    targets: Array.isArray(campaign?.targets)
+      ? campaign.targets
+          .map(normalizeBookingTarget)
+          .filter((target) => target.venueName || target.venueId)
+      : [],
+    internalNotes: normalizeText(campaign?.internalNotes),
+    updatedAt: normalizeText(campaign?.updatedAt) || new Date().toISOString()
+  };
+}
+
 function normalizeContent(content) {
   return {
     updatedAt: new Date().toISOString(),
@@ -185,6 +238,11 @@ function normalizeContent(content) {
       : [],
     bands: Array.isArray(content?.bands)
       ? content.bands.map(normalizeBand).filter((band) => band.name)
+      : [],
+    bookingCampaigns: Array.isArray(content?.bookingCampaigns)
+      ? content.bookingCampaigns
+          .map(normalizeBookingCampaign)
+          .filter((campaign) => campaign.artistName)
       : []
   };
 }
@@ -199,7 +257,8 @@ async function loadDefaultContent() {
   return normalizeContent({
     updatedAt: null,
     venues,
-    bands: []
+    bands: [],
+    bookingCampaigns: []
   });
 }
 

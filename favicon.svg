@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Magnolia M">
+  <rect width="64" height="64" rx="14" fill="#152E1E"/>
+  <path d="M9 55L15 9H25L32 30L39 9H49L55 55H44L41 29L33 52H31L23 29L20 55H9Z" fill="#FEFAE0"/>
+  <path d="M18 9H25L32 30L39 9H46L33 46H31L18 9Z" fill="#C9A052" fill-opacity="0.9"/>
+  <path d="M21 55L24 34L31 55H21Z" fill="#FEFAE0"/>
+  <path d="M43 55L40 34L33 55H43Z" fill="#FEFAE0"/>
+</svg>
