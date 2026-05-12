@@ -1,8 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Magnolia M">
   <rect width="64" height="64" rx="18" fill="#152E1E"/>
-  <path d="M14 51V14h7.4L32 41.3 42.6 14H50v37" fill="none" stroke="#FEFAE0" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M22 14 32 41.3 42 14" fill="none" stroke="#C9A052" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M32 9.5C25.8 14.2 24.3 20.8 32 27.7 39.7 20.8 38.2 14.2 32 9.5Z" fill="#FEFAE0"/>
-  <path d="M32 10.9C28.2 14.7 27.7 19.3 32 24.1 36.3 19.3 35.8 14.7 32 10.9Z" fill="#C9A052"/>
-  <path d="M12.5 53.5h39" fill="none" stroke="#C9A052" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M8.8 44C14.1 43.7 15.7 34.2 17.3 26.2C19.1 17.3 21.8 10.8 26.1 11.5C30.1 12.1 29.8 20.5 28.8 31.2C27.9 40.4 28.4 47.4 32.6 46.6C36.6 45.9 38.4 34.3 40.4 25.2C41.8 18.8 44.5 15.1 47.2 16.3C50.8 17.9 49.2 28.4 48.1 36.1C47.2 43 48.4 47.5 52 47.1C55.2 46.8 57.1 42.9 58.6 39.2" fill="none" stroke="#C9A052" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M8.8 44C14.1 43.7 15.7 34.2 17.3 26.2C19.1 17.3 21.8 10.8 26.1 11.5C30.1 12.1 29.8 20.5 28.8 31.2C27.9 40.4 28.4 47.4 32.6 46.6C36.6 45.9 38.4 34.3 40.4 25.2C41.8 18.8 44.5 15.1 47.2 16.3C50.8 17.9 49.2 28.4 48.1 36.1C47.2 43 48.4 47.5 52 47.1C55.2 46.8 57.1 42.9 58.6 39.2" fill="none" stroke="#FEFAE0" stroke-width="4.8" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
