@@ -57,6 +57,8 @@ function resolveRequestPath(urlPathname) {
             ? "/manage.html"
             : decodedPathname === "/book"
               ? "/book.html"
+              : decodedPathname === "/artists/ae-the-cool"
+                ? "/artist-ae-the-cool.html"
               : decodedPathname;
   const resolvedPath = path.resolve(rootDir, `.${pathname}`);
 

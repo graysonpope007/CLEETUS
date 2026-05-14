@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Bands and artists working with Magnolia Booking Co. across Georgia.">
+  <meta name="description" content="Artists and bands represented or developed by Magnolia Booking Co. for Augusta, Athens, and Georgia venues.">
   <meta property="og:title" content="Bands We Work With - Magnolia Booking Co.">
-  <meta property="og:description" content="A roster view of artists and bands connected to Magnolia Booking Co.">
+  <meta property="og:description" content="Venue-ready artists, live assets, and booking notes from Magnolia Booking Co.">
   <meta property="og:type" content="website">
   <title>Bands We Work With — Magnolia Booking Co.</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -61,6 +61,7 @@
       display: flex;
       align-items: baseline;
       gap: 0.55rem;
+      color: var(--cream);
       text-decoration: none;
     }
 
@@ -139,6 +140,43 @@
       line-height: 1.2;
     }
 
+    .roster-tools {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0 0 28px;
+      padding: 16px;
+      border: 1px solid rgba(201,160,82,0.22);
+      background: rgba(10,20,10,0.24);
+    }
+
+    .tool-field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .tool-field label {
+      color: rgba(254,250,224,0.42);
+      font-size: 0.54rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    .tool-field input,
+    .tool-field select {
+      width: 100%;
+      border: 1px solid rgba(201,160,82,0.24);
+      background: rgba(255,255,255,0.035);
+      color: var(--cream);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 1rem;
+      padding: 0.8rem 0.9rem;
+    }
+
+    .tool-field input::placeholder { color: rgba(254,250,224,0.24); }
+    .tool-field select option { background: var(--forest); color: var(--cream); }
+
     .band-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -185,6 +223,28 @@
       line-height: 1.55;
     }
 
+    .booking-notes {
+      display: grid;
+      gap: 8px;
+      border-top: 1px solid rgba(201,160,82,0.16);
+      padding-top: 14px;
+    }
+
+    .booking-notes span {
+      color: rgba(254,250,224,0.6);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 0.98rem;
+      line-height: 1.45;
+    }
+
+    .booking-notes strong {
+      color: var(--gold);
+      font-family: Oswald, system-ui, sans-serif;
+      font-size: 0.58rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
     .band-links {
       display: flex;
       flex-wrap: wrap;
@@ -212,6 +272,7 @@
     @media (max-width: 760px) {
       nav { align-items: flex-start; flex-direction: column; }
       .nav-links { gap: 1rem; }
+      .roster-tools { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -225,6 +286,7 @@
     <ul class="nav-links">
       <li><a href="/#about">About</a></li>
       <li><a href="/#services">Services</a></li>
+      <li><a href="/#process">Process</a></li>
       <li><a href="/venues">Venue Map</a></li>
       <li><a href="/bands" class="active">Bands</a></li>
       <li><a href="/#contact">Contact</a></li>
@@ -235,7 +297,26 @@
     <section class="hero">
       <p class="eyebrow">Roster</p>
       <h1>Bands We Work With</h1>
-      <p>Artists, bands, and live projects connected to Magnolia Booking Co. across Georgia stages.</p>
+      <p>Venue-ready artists, booking notes, and live projects Magnolia can place into Augusta, Athens, and Georgia rooms.</p>
+    </section>
+
+    <section class="roster-tools" aria-label="Roster filters">
+      <div class="tool-field">
+        <label for="searchInput">Search</label>
+        <input id="searchInput" type="search" placeholder="Artist, genre, market">
+      </div>
+      <div class="tool-field">
+        <label for="genreFilter">Genre</label>
+        <select id="genreFilter">
+          <option value="">All genres</option>
+        </select>
+      </div>
+      <div class="tool-field">
+        <label for="marketFilter">Market</label>
+        <select id="marketFilter">
+          <option value="">All markets</option>
+        </select>
+      </div>
     </section>
 
     <section id="bandGrid" class="band-grid" aria-live="polite"></section>
@@ -265,19 +346,78 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
 
-    function renderBands(bands) {
+    const fallbackBands = [
+      {
+        name: 'AE the cool',
+        hometown: 'Augusta, Georgia',
+        genres: ['Independent artist', 'Hip-hop', 'Live performance'],
+        preferredMarkets: ['Augusta', 'Athens'],
+        bio: 'An Augusta artist Magnolia is actively developing and booking for downtown rooms, support slots, and venue partnerships that make sense for the room.',
+        draw: 'Contact Magnolia for current campaign notes.',
+        availability: 'Actively booking ASAP Augusta dates.',
+        status: 'active'
+      }
+    ];
+
+    const rosterState = {
+      bands: [],
+      query: '',
+      genre: '',
+      market: ''
+    };
+
+    const artistPath = band => {
+      const normalized = String(band.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      return normalized === 'ae-the-cool' ? '/artists/ae-the-cool' : '';
+    };
+
+    function uniqueValues(items, getter) {
+      return [...new Set(items.flatMap(item => getter(item) || []).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+    }
+
+    function populateFilters(bands) {
+      const genreFilter = document.getElementById('genreFilter');
+      const marketFilter = document.getElementById('marketFilter');
+      const genres = uniqueValues(bands, band => band.genres);
+      const markets = uniqueValues(bands, band => band.preferredMarkets);
+
+      genreFilter.innerHTML = '<option value="">All genres</option>' + genres.map(genre => `<option value="${escapeHtml(genre)}">${escapeHtml(genre)}</option>`).join('');
+      marketFilter.innerHTML = '<option value="">All markets</option>' + markets.map(market => `<option value="${escapeHtml(market)}">${escapeHtml(market)}</option>`).join('');
+    }
+
+    function currentBands() {
+      const query = rosterState.query.toLowerCase();
+      return rosterState.bands.filter(band => {
+        const haystack = [
+          band.name,
+          band.hometown,
+          band.bio,
+          ...(band.genres || []),
+          ...(band.preferredMarkets || [])
+        ].join(' ').toLowerCase();
+        const matchesQuery = !query || haystack.includes(query);
+        const matchesGenre = !rosterState.genre || (band.genres || []).includes(rosterState.genre);
+        const matchesMarket = !rosterState.market || (band.preferredMarkets || []).includes(rosterState.market);
+        return matchesQuery && matchesGenre && matchesMarket;
+      });
+    }
+
+    function renderBands() {
       const grid = document.getElementById('bandGrid');
-      const visibleBands = (bands || []).filter(band => band.status !== 'archived');
+      const visibleBands = currentBands();
 
       if (!visibleBands.length) {
-        grid.innerHTML = '<div class="empty">No bands have been published yet. Add them from the Magnolia manager page.</div>';
+        grid.innerHTML = '<div class="empty">No matching artists yet. Clear a filter or add a new artist from the Magnolia manager page.</div>';
         return;
       }
 
       grid.innerHTML = visibleBands.map(band => {
         const genreHtml = (band.genres || []).slice(0, 4).map(genre => `<span class="pill">${escapeHtml(genre)}</span>`).join('');
         const marketHtml = (band.preferredMarkets || []).slice(0, 3).map(market => `<span class="pill">${escapeHtml(market)}</span>`).join('');
+        const profilePath = artistPath(band);
         const linkHtml = [
+          profilePath ? `<a href="${profilePath}">Booking Profile</a>` : '',
           band.musicUrl ? `<a href="${escapeHtml(band.musicUrl)}" target="_blank" rel="noreferrer">Music</a>` : '',
           band.website ? `<a href="${escapeHtml(band.website)}" target="_blank" rel="noreferrer">Website</a>` : '',
           band.instagram ? `<a href="${escapeHtml(band.instagram.startsWith('@') ? `https://instagram.com/${band.instagram.slice(1)}` : band.instagram)}" target="_blank" rel="noreferrer">Instagram</a>` : ''
@@ -291,17 +431,43 @@
             </div>
             <div class="meta">${genreHtml}${marketHtml}</div>
             <p class="bio">${escapeHtml(band.bio || 'More information coming soon.')}</p>
+            <div class="booking-notes">
+              <span><strong>Draw</strong> ${escapeHtml(band.draw || 'Contact Magnolia for current booking notes.')}</span>
+              <span><strong>Availability</strong> ${escapeHtml(band.availability || 'Actively booking Georgia dates.')}</span>
+            </div>
             <div class="band-links">${linkHtml}</div>
           </article>
         `;
       }).join('');
     }
 
+    document.getElementById('searchInput').addEventListener('input', event => {
+      rosterState.query = event.target.value;
+      renderBands();
+    });
+
+    document.getElementById('genreFilter').addEventListener('change', event => {
+      rosterState.genre = event.target.value;
+      renderBands();
+    });
+
+    document.getElementById('marketFilter').addEventListener('change', event => {
+      rosterState.market = event.target.value;
+      renderBands();
+    });
+
     fetch('/api/content')
       .then(response => response.json())
-      .then(payload => renderBands(payload.bands || []))
+      .then(payload => {
+        const publishedBands = (payload.bands || []).filter(band => band.status !== 'archived');
+        rosterState.bands = publishedBands.length ? publishedBands : fallbackBands;
+        populateFilters(rosterState.bands);
+        renderBands();
+      })
       .catch(() => {
-        document.getElementById('bandGrid').innerHTML = '<div class="empty">Could not load band data.</div>';
+        rosterState.bands = fallbackBands;
+        populateFilters(rosterState.bands);
+        renderBands();
       });
   </script>
 </body>

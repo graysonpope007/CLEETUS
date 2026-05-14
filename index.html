@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Magnolia Booking Co. books independent artists across Athens, Augusta, and the Georgia live music circuit.">
+    <meta name="description" content="Magnolia Booking Co. is a music-first talent booking and artist development agency for Augusta, Athens, and Georgia venues.">
     <meta property="og:title" content="Magnolia Booking Co.">
-    <meta property="og:description" content="Georgia booking for independent artists, venues, and promoters.">
+    <meta property="og:description" content="Music-first booking, artist development, and venue development across Augusta, Athens, and the Georgia live music circuit.">
     <meta property="og:type" content="website">
     <title>Magnolia Booking Co.</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -202,6 +202,9 @@
 
         .hero-name {
             line-height: 0.88;
+            margin: 0;
+            font-size: inherit;
+            font-weight: inherit;
         }
 
         .hero-magnolia {
@@ -260,7 +263,25 @@
             opacity: 0.65;
         }
 
+        .hero-subline {
+            max-width: 640px;
+            margin-top: 1rem;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: clamp(1rem, 1.5vw, 1.18rem);
+            line-height: 1.65;
+            color: var(--cream);
+            opacity: 0.62;
+        }
+
         /* ── BUTTONS ───────────────────────────────────── */
+        .hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+            margin-top: 2.5rem;
+        }
+
         .btn-outline {
             display: inline-block;
             margin-top: 2.5rem;
@@ -309,6 +330,11 @@
         }
 
         .btn-outline-dk:hover { background: var(--forest); color: var(--paper); }
+
+        .hero-actions .btn-outline,
+        .hero-actions .btn-solid {
+            margin-top: 0;
+        }
 
         /* ── HERO ANIMATIONS ────────────────────────────── */
         .h-anim {
@@ -436,6 +462,39 @@
             text-transform: uppercase;
             color: var(--amber-dim);
             margin-top: 0.25rem;
+        }
+
+        .trust-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            margin-top: 2.5rem;
+            border: 1px solid rgba(122,46,18,0.18);
+            background: rgba(122,46,18,0.12);
+        }
+
+        .trust-item {
+            background: var(--paper);
+            padding: 1.25rem;
+        }
+
+        .trust-item strong {
+            display: block;
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.58rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--amber-dim);
+            margin-bottom: 0.55rem;
+        }
+
+        .trust-item span {
+            display: block;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1rem;
+            line-height: 1.55;
+            color: var(--green);
+            opacity: 0.86;
         }
 
         /* ── SERVICES ───────────────────────────────────── */
@@ -675,6 +734,73 @@
         .cta-panel.dark .cta-panel-body { color: var(--cream); opacity: 0.58; }
         .cta-panel.light .cta-panel-body { color: var(--forest); opacity: 0.72; }
 
+        /* ── PROCESS ───────────────────────────────────── */
+        #process { background: var(--paper-lt); }
+
+        .process-head {
+            max-width: 760px;
+            margin-bottom: 3rem;
+        }
+
+        .process-head h2 {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: clamp(2rem, 4vw, 3rem);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--forest);
+            margin-bottom: 1rem;
+        }
+
+        .process-head p {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.12rem;
+            line-height: 1.8;
+            color: var(--green);
+            opacity: 0.86;
+        }
+
+        .process-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            border-top: 1px solid rgba(122,46,18,0.16);
+            border-left: 1px solid rgba(122,46,18,0.16);
+        }
+
+        .process-step {
+            min-height: 250px;
+            padding: 2rem;
+            border-right: 1px solid rgba(122,46,18,0.16);
+            border-bottom: 1px solid rgba(122,46,18,0.16);
+        }
+
+        .process-step span {
+            display: block;
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 2.4rem;
+            color: var(--amber-dim);
+            opacity: 0.65;
+            margin-bottom: 1rem;
+        }
+
+        .process-step h3 {
+            font-family: 'Oswald', sans-serif;
+            font-size: 0.86rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--forest);
+            margin-bottom: 0.9rem;
+        }
+
+        .process-step p {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1rem;
+            line-height: 1.72;
+            color: var(--green);
+            opacity: 0.82;
+        }
+
         /* ── CONTACT ────────────────────────────────────── */
         #contact { background: var(--forest); }
 
@@ -883,7 +1009,11 @@
             .about-grid,
             .markets-grid,
             .cta-grid,
-            .contact-grid { grid-template-columns: 1fr; gap: 3rem; }
+            .contact-grid,
+            .process-grid,
+            .trust-grid { grid-template-columns: 1fr; gap: 3rem; }
+            .process-grid,
+            .trust-grid { gap: 0; }
             .cta-grid { min-height: auto; }
             .cta-panel { padding: 4rem 2rem; }
             .svc { grid-template-columns: 48px 1fr; }
@@ -918,6 +1048,7 @@
         <li><a href="#about">About</a></li>
         <li><a href="#services">Services</a></li>
         <li><a href="#markets">Markets</a></li>
+        <li><a href="#process">Process</a></li>
         <li><a href="#contact">Contact</a></li>
         <li><a href="venues.html">Venue Map</a></li>
         <li><a href="bands.html">Bands</a></li>
@@ -929,20 +1060,24 @@
     <svg id="badge" xmlns="http://www.w3.org/2000/svg"></svg>
 
     <div class="hero-content">
-        <p class="hero-location h-anim">Athens &middot; Augusta, Georgia</p>
+        <p class="hero-location h-anim">Augusta &middot; Athens, Georgia</p>
 
         <div class="hero-orn h-anim"><span>✦</span></div>
 
-        <div class="hero-name h-anim">
+        <h1 class="hero-name h-anim">
             <span class="hero-magnolia">Magnolia</span>
             <span class="hero-bco">Booking Co.</span>
-        </div>
+        </h1>
 
         <div class="hero-divider h-anim"><span>✦</span></div>
 
-        <p class="hero-tagline h-anim">From the soil to the stage.</p>
+        <p class="hero-tagline h-anim">Music-first booking for artists, venues, and promoters.</p>
+        <p class="hero-subline h-anim">A professional talent agency built in Augusta to develop artists, fill rooms, and help Georgia venues put better shows on the calendar.</p>
 
-        <a href="#contact" class="btn-outline h-anim">Get in Touch</a>
+        <div class="hero-actions h-anim">
+            <a href="#contact" class="btn-solid">Book Talent</a>
+            <a href="bands.html" class="btn-outline">View Artists</a>
+        </div>
     </div>
 </section>
 
@@ -951,12 +1086,26 @@
     <div class="container">
         <div class="about-grid">
             <div class="about-quote reveal">
-                "We put Georgia artists on Georgia stages — and build something real in the process."
+                "We develop artists, strengthen venues, and book shows that make sense for the room."
             </div>
             <div class="about-text reveal">
                 <span class="eyebrow" style="color:var(--amber-dim)">About</span>
-                <p>Magnolia Booking Co. is a Georgia-based booking operation placing independent artists on stages across Athens and Augusta. We work with a focused roster of emerging acts and build long-term relationships with the venues and promoters that matter in this region.</p>
-                <p>We're not a corporation. We're a music-first operation that moves fast, communicates straight, and gets things done without layers of bureaucracy between the artist and the stage.</p>
+                <p>Magnolia Booking Co. is a music-first talent booking and development agency based in Augusta, Georgia. We book artists into the right rooms, help venues build stronger nights, and keep every show focused on growth.</p>
+                <p>We are direct, confident, and practical. Artists can trust us to have their best interest in mind. Venues can trust us to bring professional talent, clear communication, and a plan that helps the night make money and build reputation.</p>
+                <div class="trust-grid" aria-label="Magnolia booking standards">
+                    <div class="trust-item">
+                        <strong>Artists</strong>
+                        <span>Show strategy, venue placement, and development beyond one-off gigs.</span>
+                    </div>
+                    <div class="trust-item">
+                        <strong>Venues</strong>
+                        <span>Reliable talent, clean logistics, and shows built around the room.</span>
+                    </div>
+                    <div class="trust-item">
+                        <strong>Promoters</strong>
+                        <span>Fast communication, useful assets, and confident local execution.</span>
+                    </div>
+                </div>
                 <div class="about-sig">
                     <div class="sig-rule"></div>
                     <div>
@@ -974,34 +1123,43 @@
     <div class="container">
         <div class="services-head reveal">
             <h2 class="services-title">What We Do</h2>
-            <span class="services-of">03 Services</span>
+            <span class="services-of">04 Services</span>
         </div>
 
         <div class="svc reveal">
             <span class="svc-num">01</span>
             <div>
-                <h3 class="svc-name">Artist Booking &amp; Placement</h3>
-                <p class="svc-desc">We secure holds, negotiate deals, and place artists on the right stages at the right time. Focused on building a genuine live presence — not just filling calendar dates.</p>
+                <h3 class="svc-name">Artist Development</h3>
+                <p class="svc-desc">We help artists build a real live path: target rooms, stronger assets, better bills, cleaner pitches, and the next show that actually moves the project forward.</p>
             </div>
-            <span class="svc-tag">Core</span>
+            <span class="svc-tag">Music First</span>
         </div>
 
         <div class="svc reveal">
             <span class="svc-num">02</span>
             <div>
-                <h3 class="svc-name">Show Production &amp; Logistics</h3>
-                <p class="svc-desc">From load-in to last song, we handle the details. Stage times, sound coordination, ticket structure, and night-of logistics so artists can focus on the performance.</p>
+                <h3 class="svc-name">Talent Booking</h3>
+                <p class="svc-desc">We secure holds, pitch artists, negotiate deals, and place talent where they fit. The goal is simple: better shows, better rooms, better outcomes.</p>
             </div>
-            <span class="svc-tag">Full Service</span>
+            <span class="svc-tag">Core</span>
         </div>
 
         <div class="svc reveal">
             <span class="svc-num">03</span>
             <div>
-                <h3 class="svc-name">Venue Relations &amp; Promotion</h3>
-                <p class="svc-desc">We maintain active relationships with bookers across Georgia. We also handle show promotion — Flagpole, social, flyering, and press where relevant.</p>
+                <h3 class="svc-name">Venue Development</h3>
+                <p class="svc-desc">We help venues shape nights that work for their audience. That means matching the right artist, format, support, price, and promotional plan to the room.</p>
             </div>
-            <span class="svc-tag">Growth</span>
+            <span class="svc-tag">Revenue</span>
+        </div>
+
+        <div class="svc reveal">
+            <span class="svc-num">04</span>
+            <div>
+                <h3 class="svc-name">Show Promotion &amp; Logistics</h3>
+                <p class="svc-desc">From stage times to social assets, we handle the details that make a show easier to say yes to: load-in, sound, ticket structure, press, and day-of communication.</p>
+            </div>
+            <span class="svc-tag">Execution</span>
         </div>
     </div>
 </section>
@@ -1015,9 +1173,21 @@
         </div>
         <div class="markets-grid">
             <div class="market reveal">
+                <h3 class="market-city">Augusta</h3>
+                <span class="market-region">CSRA — Richmond &amp; Columbia County</span>
+                <p class="market-desc">Home base. The CSRA has a growing independent scene centered on Broad Street, and Magnolia is building the booking infrastructure to help it scale.</p>
+                <ul class="market-venues">
+                    <li>Edgar's Above Broad</li>
+                    <li>Fox's Lair</li>
+                    <li>Soul Bar</li>
+                    <li>Stillwater Taproom</li>
+                    <li>Joe's Underground</li>
+                </ul>
+            </div>
+            <div class="market reveal">
                 <h3 class="market-city">Athens</h3>
                 <span class="market-region">Northeast Georgia</span>
-                <p class="market-desc">The flagship market. Athens has one of the strongest independent music ecosystems in the South — from 50-cap rooms to 500-seat stages, we're building a presence here first.</p>
+                <p class="market-desc">A proven independent music market with rooms at every level. Magnolia uses Athens as a development market for artists ready to grow beyond Augusta.</p>
                 <ul class="market-venues">
                     <li>Hendershot's</li>
                     <li>Dead Beat Club</li>
@@ -1026,17 +1196,38 @@
                     <li>Georgia Theatre</li>
                 </ul>
             </div>
-            <div class="market reveal">
-                <h3 class="market-city">Augusta</h3>
-                <span class="market-region">CSRA — Richmond &amp; Columbia County</span>
-                <p class="market-desc">Home base. The CSRA has a growing independent scene centered on Broad Street. We know the rooms, we know the people, and we're building the infrastructure to support it.</p>
-                <ul class="market-venues">
-                    <li>Fox's Lair</li>
-                    <li>Soul Bar</li>
-                    <li>Stillwater Taproom</li>
-                    <li>Joe's Underground</li>
-                    <li>The Highlander</li>
-                </ul>
+        </div>
+    </div>
+</section>
+
+<!-- PROCESS -->
+<section id="process" class="section">
+    <div class="container">
+        <div class="process-head reveal">
+            <span class="eyebrow" style="color:var(--amber-dim)">How Booking Works</span>
+            <h2>Clear Steps. Better Shows.</h2>
+            <p>Whether you are a venue owner, concert promoter, band member, or artist, Magnolia keeps the process direct. We define the right opportunity, package the pitch, contact the room, and help move the show from idea to confirmed date.</p>
+        </div>
+        <div class="process-grid">
+            <div class="process-step reveal">
+                <span>01</span>
+                <h3>Define the Fit</h3>
+                <p>We look at the artist, venue, audience, timing, budget, and show format before we pitch anything.</p>
+            </div>
+            <div class="process-step reveal">
+                <span>02</span>
+                <h3>Package the Pitch</h3>
+                <p>We prepare clean artist info, music links, draw notes, promo assets, and a simple reason the show makes sense.</p>
+            </div>
+            <div class="process-step reveal">
+                <span>03</span>
+                <h3>Book the Room</h3>
+                <p>We contact the venue, handle follow-up, negotiate the details, and keep both sides moving toward a confirmed date.</p>
+            </div>
+            <div class="process-step reveal">
+                <span>04</span>
+                <h3>Build the Night</h3>
+                <p>We support promotion, logistics, and day-of communication so the artist and venue can trust the plan.</p>
             </div>
         </div>
     </div>
@@ -1047,14 +1238,14 @@
     <div class="cta-grid">
         <div class="cta-panel dark reveal">
             <p class="eyebrow cta-panel-eyebrow">For Venues</p>
-            <h2 class="cta-panel-title">Looking for Independent Artists That Draw?</h2>
-            <p class="cta-panel-body">We book acts across multiple genres — indie pop, punk, Christian rap, and singer-songwriter. Every artist we work with is stage-ready and actively building their audience.</p>
+            <h2 class="cta-panel-title">Need Talent That Helps the Night Make Money?</h2>
+            <p class="cta-panel-body">We are a professional talent agency that can book shows at your venue, bring the right artists into the room, and help your live music program build a name in Augusta.</p>
             <a href="#contact" class="btn-solid">Submit a Booking Request</a>
         </div>
         <div class="cta-panel light reveal">
             <p class="eyebrow cta-panel-eyebrow">For Artists</p>
-            <h2 class="cta-panel-title">Ready to Play More Shows in Georgia?</h2>
-            <p class="cta-panel-body">We work with a focused roster and build real show histories — not one-off gigs. If you're based in Georgia and serious about your live presence, let's talk.</p>
+            <h2 class="cta-panel-title">Ready to Play More Shows and Grow?</h2>
+            <p class="cta-panel-body">We help artists get shows, make money, and build visibility without losing sight of what is best for the artist long term.</p>
             <a href="#contact" class="btn-outline-dk">Submit Your Music</a>
         </div>
     </div>
@@ -1065,7 +1256,7 @@
     <div class="container">
         <div class="contact-grid">
             <div class="reveal">
-                <h2 class="contact-heading">Let's Put You on a Stage.</h2>
+                <h2 class="contact-heading">Tell Us What You Need Booked.</h2>
                 <div class="contact-info">
                     <div class="info-block">
                         <span class="info-label">Email</span>
@@ -1073,11 +1264,11 @@
                     </div>
                     <div class="info-block">
                         <span class="info-label">Based In</span>
-                        <span class="info-val">Athens &amp; Augusta, Georgia</span>
+                        <span class="info-val">Augusta &amp; Athens, Georgia</span>
                     </div>
                     <div class="info-block">
                         <span class="info-label">Markets</span>
-                        <span class="info-val">Athens · Augusta · Atlanta (2027)</span>
+                        <span class="info-val">Augusta · Athens · Georgia rooms</span>
                     </div>
                     <div class="info-block">
                         <span class="info-label">Response Time</span>
@@ -1090,9 +1281,15 @@
                 <!-- Always visible -->
                 <div class="form-row">
                     <div class="fg">
+                        <label for="name">Your Name</label>
+                        <input type="text" id="name" name="name" placeholder="Your name" autocomplete="name" required>
+                    </div>
+                    <div class="fg">
                         <label for="email">Your Email</label>
                         <input type="email" id="email" name="email" placeholder="your@email.com" autocomplete="email" required>
                     </div>
+                </div>
+                <div class="form-row">
                     <div class="fg">
                         <label for="type">I am a</label>
                         <select id="type" name="type" required onchange="switchForm(this.value)">
@@ -1100,6 +1297,10 @@
                             <option value="artist">Artist / Band</option>
                             <option value="venue">Venue / Promoter</option>
                         </select>
+                    </div>
+                    <div class="fg">
+                        <label for="timeline">Timeline</label>
+                        <input type="text" id="timeline" name="timeline" placeholder="ASAP, target month, or specific date">
                     </div>
                 </div>
 
@@ -1113,9 +1314,19 @@
                         <label for="music">Your Music</label>
                         <input type="text" id="music" name="music" placeholder="Spotify, SoundCloud, Bandcamp link — or describe your sound">
                     </div>
+                    <div class="form-row">
+                        <div class="fg">
+                            <label for="artist-market">Home Market</label>
+                            <input type="text" id="artist-market" name="artist-market" placeholder="Augusta, Athens, Atlanta">
+                        </div>
+                        <div class="fg">
+                            <label for="artist-draw">Current Draw</label>
+                            <input type="text" id="artist-draw" name="artist-draw" placeholder="Expected turnout or ticket history">
+                        </div>
+                    </div>
                     <div class="fg">
                         <label for="artist-info">Additional Info</label>
-                        <textarea id="artist-info" name="artist-info" placeholder="Where are you based? What markets are you trying to play? What does your draw look like?"></textarea>
+                        <textarea id="artist-info" name="artist-info" placeholder="What markets are you trying to play? What kind of rooms fit you? What assets do you have ready?"></textarea>
                     </div>
                 </div>
 
@@ -1131,15 +1342,25 @@
                             <input type="text" id="venue-city" name="venue-city" placeholder="City, State" autocomplete="address-level2">
                         </div>
                     </div>
+                    <div class="form-row">
+                        <div class="fg">
+                            <label for="venue-capacity">Capacity</label>
+                            <input type="text" id="venue-capacity" name="venue-capacity" placeholder="Room cap or expected turnout">
+                        </div>
+                        <div class="fg">
+                            <label for="venue-budget">Budget</label>
+                            <input type="text" id="venue-budget" name="venue-budget" placeholder="Guarantee, door deal, or rental">
+                        </div>
+                    </div>
                     <div class="fg">
                         <label for="venue-info">Additional Info</label>
-                        <textarea id="venue-info" name="venue-info" placeholder="What nights do you run live music? What genres work best for your room?"></textarea>
+                        <textarea id="venue-info" name="venue-info" placeholder="What nights do you run live music? What genres work best? What kind of show would help your room?"></textarea>
                     </div>
                 </div>
 
                 <!-- Submit — hidden until type selected -->
                 <div class="form-foot" id="form-foot" style="display:none">
-                    <span class="form-note">We'll be in touch within 48 hours.</span>
+                    <span class="form-note">Direct booking contact. Response within 48 hours.</span>
                     <button type="submit" class="submit" id="submitBtn">Send It</button>
                 </div>
                 <p class="form-status" id="form-status" role="status" aria-live="polite"></p>
@@ -1300,11 +1521,15 @@ function submitForm(e) {
     const btn = document.getElementById('submitBtn');
     const status = document.getElementById('form-status');
     const type = document.getElementById('type').value;
+    const name = document.getElementById('name').value.trim();
     const email = document.getElementById('email').value.trim();
+    const timeline = document.getElementById('timeline').value.trim();
 
     const lines = [
+        `Name: ${name}`,
         `Email: ${email}`,
         `Type: ${type === 'artist' ? 'Artist / Band' : 'Venue / Promoter'}`,
+        `Timeline: ${timeline || 'Not specified'}`,
         '',
     ];
 
@@ -1312,6 +1537,8 @@ function submitForm(e) {
         lines.push(
             `Artist: ${document.getElementById('artist-name').value.trim()}`,
             `Music: ${document.getElementById('music').value.trim()}`,
+            `Home Market: ${document.getElementById('artist-market').value.trim()}`,
+            `Current Draw: ${document.getElementById('artist-draw').value.trim()}`,
             '',
             document.getElementById('artist-info').value.trim()
         );
@@ -1319,6 +1546,8 @@ function submitForm(e) {
         lines.push(
             `Venue: ${document.getElementById('venue-name').value.trim()}`,
             `City: ${document.getElementById('venue-city').value.trim()}`,
+            `Capacity: ${document.getElementById('venue-capacity').value.trim()}`,
+            `Budget: ${document.getElementById('venue-budget').value.trim()}`,
             '',
             document.getElementById('venue-info').value.trim()
         );
