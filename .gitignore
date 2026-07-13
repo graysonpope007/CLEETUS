@@ -1,0 +1,33 @@
+# /Users/grayson is a git repo (origin: graysonpope007/STEAP).
+# That means an unguarded `git add -A` here would stage your ENTIRE home
+# directory — ~/.ssh private keys, ~/.claude.json, ~/.config, shell history.
+#
+# So: ignore everything by default, then allowlist only the paths STEAP tracks.
+# Adding a new project? Add a matching `!` pair below.
+#
+# Note: this does not untrack anything already tracked; edits and deletions to
+# tracked files still show up in `git status` and still commit normally.
+
+# 1. Deny everything.
+/*
+
+# 2. Allowlist the tracked projects. Each needs the dir unignored AND a
+#    recursive re-ignore/unignore pair, because git will not descend into an
+#    excluded directory to find negations inside it.
+!/README.md
+!/.gitignore
+
+!/calm-therapy-template/
+!/cleetus/
+!/gp-productions-booking/
+
+# 3. Junk that should never be committed even inside an allowlisted project.
+.DS_Store
+*.swp
+node_modules/
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
