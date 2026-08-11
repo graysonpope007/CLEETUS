@@ -1,0 +1,168 @@
+{% comment %}
+  =====================================================
+  SWEET TEA PEDIGREE — Videos Section
+  File: sections/stp-videos.liquid
+  =====================================================
+  HOW TO INSTALL:
+  1. Add new section → name it: stp-videos
+  2. Paste this file and save
+  3. In Customize → Add section → STP Videos
+  4. Add each video as a block with a YouTube link + thumbnail
+  =====================================================
+{% endcomment %}
+
+<section class="stp-videos">
+  <div class="stp-section-head">
+    <h2 class="stp-section-title">{{ section.settings.title | default: 'Videos' }}</h2>
+    {% if section.settings.see_all_link != blank %}
+      <a href="{{ section.settings.see_all_link }}" class="stp-section-link" target="_blank" rel="noopener">
+        See All Videos
+      </a>
+    {% endif %}
+  </div>
+
+  <div class="stp-video-grid">
+    {% for block in section.blocks %}
+      <div class="stp-video-card" {{ block.shopify_attributes }}>
+        <a href="{{ block.settings.video_link }}" class="stp-video-thumb" target="_blank" rel="noopener">
+          {% if block.settings.thumbnail != blank %}
+            <img
+              src="{{ block.settings.thumbnail | image_url: width: 600 }}"
+              alt="{{ block.settings.title | escape }}"
+              loading="lazy"
+              width="600"
+              height="338"
+            >
+          {% else %}
+            <div class="stp-video-thumb-placeholder"></div>
+          {% endif %}
+          <div class="stp-video-play">
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+              <circle cx="18" cy="18" r="17" stroke="#EDD835" stroke-width="1.5"/>
+              <polygon points="15,11 27,18 15,25" fill="#EDD835"/>
+            </svg>
+          </div>
+        </a>
+        <p class="stp-video-name">{{ block.settings.title }}</p>
+      </div>
+    {% else %}
+      <p class="stp-empty-note">Add your videos using the "Add block" button in the theme editor.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<style>
+  .stp-videos {
+    padding: 48px 40px 44px;
+    background: #F4F9FB;
+  }
+  .stp-video-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+  }
+  .stp-video-card {}
+  .stp-video-thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #1A5C45;
+    border: 2px solid #4BAE8A;
+    margin-bottom: 10px;
+    overflow: hidden;
+    position: relative;
+    text-decoration: none;
+  }
+  .stp-video-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: opacity 0.2s;
+  }
+  .stp-video-thumb:hover img {
+    opacity: 0.8;
+  }
+  .stp-video-thumb-placeholder {
+    width: 100%;
+    height: 100%;
+    background: #2D7A5F;
+  }
+  .stp-video-play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .stp-video-name {
+    font-family: 'Alfa Slab One', serif;
+    font-size: 13px;
+    color: #1A5C45;
+    line-height: 1.3;
+  }
+  @media (max-width: 899px) {
+    .stp-video-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stp-videos { padding: 36px 20px; }
+  }
+  @media (max-width: 499px) {
+    .stp-video-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+{% schema %}
+{
+  "name": "STP Videos",
+  "settings": [
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Section title",
+      "default": "Videos"
+    },
+    {
+      "type": "url",
+      "id": "see_all_link",
+      "label": "See all link",
+      "info": "Link to your YouTube channel"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "video",
+      "name": "Video",
+      "settings": [
+        {
+          "type": "text",
+          "id": "title",
+          "label": "Video title",
+          "default": "New Single (Official Video)"
+        },
+        {
+          "type": "url",
+          "id": "video_link",
+          "label": "YouTube link",
+          "info": "Full YouTube URL e.g. https://youtube.com/watch?v=..."
+        },
+        {
+          "type": "image_picker",
+          "id": "thumbnail",
+          "label": "Thumbnail image",
+          "info": "Upload a screenshot from the video. 16:9 ratio works best."
+        }
+      ]
+    }
+  ],
+  "max_blocks": 9,
+  "presets": [
+    {
+      "name": "STP Videos",
+      "blocks": [
+        { "type": "video" },
+        { "type": "video" },
+        { "type": "video" }
+      ]
+    }
+  ]
+}
+{% endschema %}

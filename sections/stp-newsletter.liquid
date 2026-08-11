@@ -1,0 +1,185 @@
+{% comment %}
+  =====================================================
+  SWEET TEA PEDIGREE — Newsletter Signup Section
+  File: sections/stp-newsletter.liquid
+  =====================================================
+  HOW TO INSTALL:
+  1. Add new section → name it: stp-newsletter
+  2. Paste this file and save
+  3. In Customize → Add section → STP Newsletter
+  NOTE: Connects to Shopify's built-in email list.
+  Go to Customers → Email subscribers to see signups.
+  =====================================================
+{% endcomment %}
+
+<section class="stp-newsletter">
+  <p class="stp-newsletter-eyebrow">{{ section.settings.eyebrow | default: 'Join The Pedigree' }}</p>
+  <h2 class="stp-newsletter-title">
+    {{ section.settings.line1 | default: "Get ahead of the game with" }}<br>{{ section.settings.line2 | default: "all things" }} <span>{{ section.settings.line3 | default: "STEAP" }}</span>
+  </h2>
+
+  {% form 'customer', id: 'stp-newsletter-form' %}
+    {% if form.posted_successfully? %}
+      <p class="stp-newsletter-success">Thanks for signing up! We'll be in touch.</p>
+    {% else %}
+      <div class="stp-email-row">
+        <input
+          type="hidden"
+          name="contact[tags]"
+          value="newsletter"
+        >
+        <input
+          class="stp-email-input"
+          type="email"
+          name="contact[email]"
+          placeholder="{{ section.settings.placeholder | default: 'Your email address' }}"
+          required
+          autocomplete="email"
+        >
+        <button type="submit" class="stp-email-submit">
+          {{ section.settings.button_label | default: 'Join The Pedigree' }}
+        </button>
+      </div>
+      {% if form.errors %}
+        <p class="stp-newsletter-error">{{ form.errors.translated_fields['email'] | capitalize }} {{ form.errors.messages['email'] }}</p>
+      {% endif %}
+    {% endif %}
+  {% endform %}
+</section>
+
+<style>
+  .stp-newsletter {
+    padding: 56px 40px;
+    text-align: center;
+    background: #1A5C45;
+    border-top: 3px solid #EDD835;
+  }
+  .stp-newsletter-eyebrow {
+    font-family: 'Josefin Sans', sans-serif;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: #A8CEDE;
+    margin-bottom: 12px;
+  }
+  .stp-newsletter-title {
+    font-family: 'Alfa Slab One', serif;
+    font-size: 30px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #FFFFFF;
+    line-height: 1.3;
+    margin-bottom: 28px;
+  }
+  .stp-newsletter-title span {
+    color: #EDD835;
+  }
+  .stp-email-row {
+    display: flex;
+    justify-content: center;
+    max-width: 440px;
+    margin: 0 auto;
+  }
+  .stp-email-input {
+    flex: 1;
+    background: #2D7A5F;
+    border: 1px solid #4BAE8A;
+    border-right: none;
+    padding: 12px 16px;
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 13px;
+    color: #FFFFFF;
+    outline: none;
+    border-radius: 0;
+    -webkit-appearance: none;
+  }
+  .stp-email-input::placeholder {
+    color: #4BAE8A;
+  }
+  .stp-email-submit {
+    font-family: 'Josefin Sans', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: #EDD835;
+    border: none;
+    color: #1A5C45;
+    padding: 12px 20px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .stp-email-submit:hover {
+    background: #F5E85A;
+  }
+  .stp-newsletter-success {
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 14px;
+    color: #EDD835;
+    letter-spacing: 1px;
+    margin-top: 8px;
+  }
+  .stp-newsletter-error {
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 12px;
+    color: #F0A0A0;
+    margin-top: 8px;
+  }
+  @media (max-width: 749px) {
+    .stp-newsletter { padding: 40px 20px; }
+    .stp-newsletter-title { font-size: 22px; }
+    .stp-email-row { flex-direction: column; max-width: 300px; }
+    .stp-email-input { border-right: 1px solid #4BAE8A; border-bottom: none; }
+  }
+</style>
+
+{% schema %}
+{
+  "name": "STP Newsletter",
+  "settings": [
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow text",
+      "default": "Join The Pedigree"
+    },
+    {
+      "type": "text",
+      "id": "line1",
+      "label": "Title line 1",
+      "default": "Get ahead of the game with"
+    },
+    {
+      "type": "text",
+      "id": "line2",
+      "label": "Title line 2",
+      "default": "all things"
+    },
+    {
+      "type": "text",
+      "id": "line3",
+      "label": "Title line 3 (highlighted in yellow)",
+      "default": "STEAP"
+    },
+    {
+      "type": "text",
+      "id": "placeholder",
+      "label": "Input placeholder text",
+      "default": "Your email address"
+    },
+    {
+      "type": "text",
+      "id": "button_label",
+      "label": "Button text",
+      "default": "Join The Pedigree"
+    }
+  ],
+  "presets": [
+    {
+      "name": "STP Newsletter"
+    }
+  ]
+}
+{% endschema %}

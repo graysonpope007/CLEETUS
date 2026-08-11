@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Magnolia Booking Manager</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,600&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --forest: #152E1E;
+      --green: #1C3829;
+      --paper: #FEFAE0;
+      --paper-soft: #FFF8D6;
+      --gold: #C9A052;
+      --line: rgba(21,46,30,0.25);
+      --ink: #152E1E;
+      --muted: #5F604E;
+      --rust: #7A2E12;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: Oswald, system-ui, sans-serif;
+    }
+
+    a { color: inherit; }
+
+    .shell {
+      width: min(1280px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 24px 0 48px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 20px;
+      border: 2px solid var(--forest);
+      background: var(--paper-soft);
+      box-shadow: 6px 6px 0 var(--forest);
+    }
+
+    .brand {
+      font-family: "Cormorant Garamond", serif;
+      font-size: clamp(2.4rem, 6vw, 5.2rem);
+      font-style: italic;
+      line-height: 0.9;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--rust);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .button,
+    button {
+      min-height: 42px;
+      padding: 10px 14px;
+      border: 2px solid var(--forest);
+      background: var(--forest);
+      color: var(--paper);
+      font: inherit;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-decoration: none;
+      cursor: pointer;
+      box-shadow: 3px 3px 0 rgba(21,46,30,0.25);
+    }
+
+    .button.secondary,
+    button.secondary {
+      background: transparent;
+      color: var(--forest);
+    }
+
+    .button.danger,
+    button.danger {
+      background: var(--rust);
+      border-color: var(--rust);
+    }
+
+    .status {
+      min-height: 24px;
+      margin: 18px 0 0;
+      color: var(--rust);
+      font-weight: 700;
+    }
+
+    .admin-key {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 10px;
+      margin: 22px 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.82fr) minmax(360px, 1.18fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      padding: 18px;
+      border: 2px solid var(--forest);
+      background: var(--paper-soft);
+      box-shadow: 5px 5px 0 rgba(21,46,30,0.2);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1;
+    }
+
+    h2 {
+      margin-bottom: 14px;
+      font-family: "Cormorant Garamond", serif;
+      font-size: 2.2rem;
+      font-style: italic;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .tab.active {
+      background: var(--gold);
+      color: var(--forest);
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      max-height: 62vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .row-card {
+      display: grid;
+      gap: 3px;
+      width: 100%;
+      padding: 12px;
+      border: 2px solid var(--line);
+      background: rgba(255,255,255,0.45);
+      color: var(--ink);
+      text-align: left;
+      box-shadow: none;
+    }
+
+    .row-card strong { font-size: 1rem; }
+    .row-card span { color: var(--muted); font-size: 0.86rem; }
+    .row-card.active { border-color: var(--rust); background: rgba(201,160,82,0.2); }
+
+    form {
+      display: grid;
+      gap: 14px;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 42px;
+      padding: 10px;
+      border: 2px solid var(--forest);
+      background: #fff;
+      color: var(--ink);
+      font: 500 1rem Oswald, system-ui, sans-serif;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+    }
+
+    .wide { grid-column: 1 / -1; }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    [hidden] { display: none !important; }
+
+    @media (max-width: 860px) {
+      header,
+      .grid,
+      .admin-key,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      header { display: grid; }
+      .nav { justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <p class="eyebrow">Magnolia Booking Co.</p>
+        <h1 class="brand">Roster Manager</h1>
+      </div>
+      <nav class="nav" aria-label="Manager links">
+        <a class="button secondary" href="/">Home</a>
+        <a class="button secondary" href="/book">Show Booker</a>
+        <a class="button secondary" href="/venues">Venue Map</a>
+        <a class="button secondary" href="/bands">Bands</a>
+      </nav>
+    </header>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <section class="admin-key" aria-label="Admin key">
+      <label>
+        Admin key
+        <input id="adminKeyInput" type="password" autocomplete="current-password" placeholder="Required to save changes">
+      </label>
+      <button id="rememberKeyButton" class="secondary" type="button">Remember Key</button>
+    </section>
+
+    <section class="tabs" aria-label="Content type">
+      <button id="venuesTab" class="tab active" type="button">Venues</button>
+      <button id="bandsTab" class="tab" type="button">Bands</button>
+    </section>
+
+    <section id="venuesSection" class="grid">
+      <aside class="panel">
+        <p class="eyebrow">Venue Map Data</p>
+        <h2>Venues</h2>
+        <div id="venueList" class="list"></div>
+      </aside>
+
+      <section class="panel">
+        <p class="eyebrow">Input Venue Info</p>
+        <h2 id="venueFormTitle">New Venue</h2>
+        <form id="venueForm">
+          <input type="hidden" name="id">
+          <div class="form-grid">
+            <label>Name <input name="name" required></label>
+            <label>Status
+              <select name="status">
+                <option value="active">Active</option>
+                <option value="prospect">Prospect</option>
+                <option value="paused">Paused</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+            <label>City <input name="city" required></label>
+            <label>Address <input name="address"></label>
+            <label>Venue Type <input name="type" placeholder="Bar / Music Venue"></label>
+            <label>Capacity <input name="capacity" type="number" min="0"></label>
+            <label>Founded <input name="founded" type="number" min="0"></label>
+            <label>Website <input name="website" type="url"></label>
+            <label>Latitude <input name="lat" type="number" step="any"></label>
+            <label>Longitude <input name="lng" type="number" step="any"></label>
+            <label>Contact Name <input name="contactName"></label>
+            <label>Contact Email <input name="contactEmail" type="email"></label>
+            <label>Contact Phone <input name="contactPhone"></label>
+            <label>Typical Nights <input name="typicalNights" placeholder="Fridays, acoustic Tuesdays"></label>
+            <label class="wide">Preferred Genres <textarea name="preferredGenres" placeholder="One per line"></textarea></label>
+            <label class="wide">Notable Acts <textarea name="notable" placeholder="One per line"></textarea></label>
+            <label class="wide">Public Description <textarea name="description" required></textarea></label>
+            <label class="wide">Deal Notes <textarea name="dealNotes" placeholder="Guarantees, splits, production, load-in"></textarea></label>
+            <label class="wide">Internal Notes <textarea name="internalNotes" placeholder="Private booking notes"></textarea></label>
+          </div>
+          <div class="actions">
+            <button class="secondary" id="newVenueButton" type="button">New Venue</button>
+            <button class="danger" id="deleteVenueButton" type="button">Delete</button>
+            <button type="submit">Save Venue</button>
+          </div>
+        </form>
+      </section>
+    </section>
+
+    <section id="bandsSection" class="grid" hidden>
+      <aside class="panel">
+        <p class="eyebrow">Public Band Page Data</p>
+        <h2>Bands</h2>
+        <div id="bandList" class="list"></div>
+      </aside>
+
+      <section class="panel">
+        <p class="eyebrow">Input Band Info</p>
+        <h2 id="bandFormTitle">New Band</h2>
+        <form id="bandForm">
+          <input type="hidden" name="id">
+          <div class="form-grid">
+            <label>Name <input name="name" required></label>
+            <label>Status
+              <select name="status">
+                <option value="active">Active</option>
+                <option value="prospect">Prospect</option>
+                <option value="paused">Paused</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+            <label>Hometown <input name="hometown"></label>
+            <label>Contact Name <input name="contactName"></label>
+            <label>Contact Email <input name="contactEmail" type="email"></label>
+            <label>Contact Phone <input name="contactPhone"></label>
+            <label>Website <input name="website" type="url"></label>
+            <label>Music Link <input name="musicUrl" type="url" placeholder="Spotify, Bandcamp, SoundCloud"></label>
+            <label>Instagram <input name="instagram" placeholder="@bandname or URL"></label>
+            <label>Draw <input name="draw" placeholder="Local draw, ticket history"></label>
+            <label>Rate <input name="rate" placeholder="$300 guarantee, door split, etc."></label>
+            <label>Availability <input name="availability" placeholder="Weekends, touring windows"></label>
+            <label class="wide">Genres <textarea name="genres" placeholder="One per line"></textarea></label>
+            <label class="wide">Members <textarea name="members" placeholder="One per line"></textarea></label>
+            <label class="wide">Preferred Markets <textarea name="preferredMarkets" placeholder="Athens, Augusta, Atlanta"></textarea></label>
+            <label class="wide">Venue History <textarea name="venueHistory" placeholder="Venues played or target venues"></textarea></label>
+            <label class="wide">Public Bio <textarea name="bio" required></textarea></label>
+            <label class="wide">Internal Notes <textarea name="internalNotes" placeholder="Private booking notes"></textarea></label>
+          </div>
+          <div class="actions">
+            <button class="secondary" id="newBandButton" type="button">New Band</button>
+            <button class="danger" id="deleteBandButton" type="button">Delete</button>
+            <button type="submit">Save Band</button>
+          </div>
+        </form>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const listFields = new Set([
+      'notable',
+      'preferredGenres',
+      'genres',
+      'members',
+      'preferredMarkets',
+      'venueHistory'
+    ]);
+    const state = { content: { venues: [], bands: [] }, active: 'venues', selectedVenueId: null, selectedBandId: null };
+
+    const elements = {
+      status: document.getElementById('status'),
+      adminKeyInput: document.getElementById('adminKeyInput'),
+      rememberKeyButton: document.getElementById('rememberKeyButton'),
+      venuesTab: document.getElementById('venuesTab'),
+      bandsTab: document.getElementById('bandsTab'),
+      venuesSection: document.getElementById('venuesSection'),
+      bandsSection: document.getElementById('bandsSection'),
+      venueList: document.getElementById('venueList'),
+      bandList: document.getElementById('bandList'),
+      venueForm: document.getElementById('venueForm'),
+      bandForm: document.getElementById('bandForm'),
+      venueFormTitle: document.getElementById('venueFormTitle'),
+      bandFormTitle: document.getElementById('bandFormTitle')
+    };
+
+    elements.adminKeyInput.value = localStorage.getItem('magnoliaAdminKey') || '';
+
+    const escapeHtml = value => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+    function setStatus(message, tone = 'info') {
+      elements.status.textContent = message;
+      elements.status.style.color = tone === 'success' ? '#1C3829' : '#7A2E12';
+    }
+
+    function slugify(value, fallback) {
+      const slug = String(value || '')
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      return slug || fallback;
+    }
+
+    function splitList(value) {
+      return String(value || '').split(/\n|,/).map(item => item.trim()).filter(Boolean);
+    }
+
+    function joinList(value) {
+      return Array.isArray(value) ? value.join('\n') : '';
+    }
+
+    function formToObject(form, type) {
+      const formData = new FormData(form);
+      const item = {};
+
+      for (const [key, value] of formData.entries()) {
+        item[key] = listFields.has(key) ? splitList(value) : String(value).trim();
+      }
+
+      item.id = item.id || `${type}-${slugify(item.name, Date.now())}`;
+      return item;
+    }
+
+    function fillForm(form, item = {}) {
+      for (const element of form.elements) {
+        if (!element.name) continue;
+        element.value = listFields.has(element.name)
+          ? joinList(item[element.name])
+          : item[element.name] ?? '';
+      }
+    }
+
+    function switchTab(tab) {
+      state.active = tab;
+      elements.venuesSection.hidden = tab !== 'venues';
+      elements.bandsSection.hidden = tab !== 'bands';
+      elements.venuesTab.classList.toggle('active', tab === 'venues');
+      elements.bandsTab.classList.toggle('active', tab === 'bands');
+    }
+
+    function renderLists() {
+      elements.venueList.innerHTML = state.content.venues.length
+        ? state.content.venues.map(venue => `
+            <button class="row-card ${venue.id === state.selectedVenueId ? 'active' : ''}" type="button" data-venue-id="${escapeHtml(venue.id)}">
+              <strong>${escapeHtml(venue.name)}</strong>
+              <span>${escapeHtml([venue.city, venue.type, venue.status].filter(Boolean).join(' · '))}</span>
+            </button>
+          `).join('')
+        : '<p>No venues saved yet.</p>';
+
+      elements.bandList.innerHTML = state.content.bands.length
+        ? state.content.bands.map(band => `
+            <button class="row-card ${band.id === state.selectedBandId ? 'active' : ''}" type="button" data-band-id="${escapeHtml(band.id)}">
+              <strong>${escapeHtml(band.name)}</strong>
+              <span>${escapeHtml([band.hometown, (band.genres || []).join(', '), band.status].filter(Boolean).join(' · '))}</span>
+            </button>
+          `).join('')
+        : '<p>No bands saved yet.</p>';
+    }
+
+    function loadVenue(id) {
+      const venue = state.content.venues.find(item => item.id === id);
+      state.selectedVenueId = venue?.id || null;
+      fillForm(elements.venueForm, venue);
+      elements.venueFormTitle.textContent = venue ? `Edit ${venue.name}` : 'New Venue';
+      renderLists();
+    }
+
+    function loadBand(id) {
+      const band = state.content.bands.find(item => item.id === id);
+      state.selectedBandId = band?.id || null;
+      fillForm(elements.bandForm, band);
+      elements.bandFormTitle.textContent = band ? `Edit ${band.name}` : 'New Band';
+      renderLists();
+    }
+
+    async function loadContent() {
+      const response = await fetch('/api/content');
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message || 'Could not load content.');
+      state.content = payload;
+      renderLists();
+      setStatus('Loaded current Magnolia venue and band data.', 'success');
+    }
+
+    async function saveContent() {
+      const adminKey = elements.adminKeyInput.value.trim();
+      const response = await fetch('/api/content', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': adminKey
+        },
+        body: JSON.stringify(state.content)
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message || 'Could not save content.');
+      state.content = payload;
+      renderLists();
+      setStatus('Saved. Venue Map and Bands page now use this data.', 'success');
+    }
+
+    elements.rememberKeyButton.addEventListener('click', () => {
+      localStorage.setItem('magnoliaAdminKey', elements.adminKeyInput.value.trim());
+      setStatus('Admin key saved in this browser.', 'success');
+    });
+
+    elements.venuesTab.addEventListener('click', () => switchTab('venues'));
+    elements.bandsTab.addEventListener('click', () => switchTab('bands'));
+
+    elements.venueList.addEventListener('click', event => {
+      const button = event.target.closest('[data-venue-id]');
+      if (button) loadVenue(button.dataset.venueId);
+    });
+
+    elements.bandList.addEventListener('click', event => {
+      const button = event.target.closest('[data-band-id]');
+      if (button) loadBand(button.dataset.bandId);
+    });
+
+    document.getElementById('newVenueButton').addEventListener('click', () => loadVenue(null));
+    document.getElementById('newBandButton').addEventListener('click', () => loadBand(null));
+
+    document.getElementById('deleteVenueButton').addEventListener('click', async () => {
+      if (!state.selectedVenueId || !confirm('Delete this venue?')) return;
+      state.content.venues = state.content.venues.filter(venue => venue.id !== state.selectedVenueId);
+      loadVenue(null);
+      await saveContent().catch(error => setStatus(error.message));
+    });
+
+    document.getElementById('deleteBandButton').addEventListener('click', async () => {
+      if (!state.selectedBandId || !confirm('Delete this band?')) return;
+      state.content.bands = state.content.bands.filter(band => band.id !== state.selectedBandId);
+      loadBand(null);
+      await saveContent().catch(error => setStatus(error.message));
+    });
+
+    elements.venueForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const venue = formToObject(elements.venueForm, 'venue');
+      const index = state.content.venues.findIndex(item => item.id === venue.id);
+      if (index >= 0) state.content.venues[index] = venue;
+      else state.content.venues.push(venue);
+      state.selectedVenueId = venue.id;
+      renderLists();
+      await saveContent().catch(error => setStatus(error.message));
+    });
+
+    elements.bandForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const band = formToObject(elements.bandForm, 'band');
+      const index = state.content.bands.findIndex(item => item.id === band.id);
+      if (index >= 0) state.content.bands[index] = band;
+      else state.content.bands.push(band);
+      state.selectedBandId = band.id;
+      renderLists();
+      await saveContent().catch(error => setStatus(error.message));
+    });
+
+    loadContent().catch(error => setStatus(error.message));
+  </script>
+</body>
+</html>

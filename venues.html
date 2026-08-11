@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Venue atlas for Magnolia Booking Co. across Athens, Augusta, Evans, and North Augusta.">
+    <meta property="og:title" content="Venue Map - Magnolia Booking Co.">
+    <meta property="og:description" content="A Georgia venue map for independent music booking.">
+    <meta property="og:type" content="website">
+    <title>Venue Map — Magnolia Booking Co.</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+
+        /* ── TOKENS ─────────────────────────────────────── */
+        :root {
+            --forest:     #0E1A0D;
+            --green:      #182818;
+            --green-mid:  #253D25;
+            --paper:      #EDD9A3;
+            --paper-lt:   #F5EAC5;
+            --amber:      #C88C1A;
+            --amber-dim:  #9A6C14;
+            --cream:      #F8EDD0;
+            --nav-h:      60px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            font-family: 'Oswald', sans-serif;
+            background: var(--forest);
+            color: var(--cream);
+            overflow: hidden;
+        }
+
+        /* ── GRAIN ──────────────────────────────────────── */
+        #grain {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.4;
+            mix-blend-mode: overlay;
+        }
+
+        /* ── NAV ───────────────────────────────────────── */
+        #nav {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 500;
+            height: var(--nav-h);
+            padding: 0 2.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(10, 20, 10, 0.96);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(200,140,26,0.18);
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: baseline;
+            gap: 0.55rem;
+            text-decoration: none;
+        }
+
+        .nav-logo .magnolia {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-weight: 600;
+            font-size: 1.4rem;
+            color: var(--cream);
+        }
+
+        .nav-logo .co {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.48rem;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+            color: var(--amber);
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 2.5rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+            align-items: center;
+        }
+
+        .nav-links a {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 500;
+            font-size: 0.6rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--cream);
+            opacity: 0.5;
+            text-decoration: none;
+            transition: opacity 0.2s, color 0.2s;
+        }
+
+        .nav-links a:hover, .nav-links a.active { opacity: 1; color: var(--amber); }
+
+        a:focus-visible,
+        button:focus-visible {
+            outline: 2px solid var(--amber);
+            outline-offset: 4px;
+        }
+
+        .back-link {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 500;
+            font-size: 0.58rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--amber);
+            opacity: 0.7;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: opacity 0.2s;
+        }
+
+        .back-link:hover { opacity: 1; }
+
+        /* ── LAYOUT ─────────────────────────────────────── */
+        .venue-layout {
+            display: flex;
+            height: 100vh;
+            padding-top: var(--nav-h);
+        }
+
+        /* ── MAP ────────────────────────────────────────── */
+        #map {
+            flex: 1;
+            height: 100%;
+            background: #FFF8DC;
+        }
+
+        /* Cornsilk warmth on light tiles */
+        .leaflet-tile-pane {
+            filter: sepia(35%) hue-rotate(-5deg) saturate(0.85) brightness(1.04);
+        }
+
+        /* Hide Leaflet attribution (tiny) */
+        .leaflet-control-attribution {
+            font-size: 0.5rem;
+            opacity: 0.6;
+            background: rgba(255,248,220,0.88) !important;
+            color: rgba(75,96,67,0.7) !important;
+        }
+
+        .leaflet-control-attribution a { color: rgba(75,96,67,0.7) !important; }
+
+        /* Zoom controls — Essex green */
+        .leaflet-control-zoom a {
+            background: rgba(75,96,67,0.92) !important;
+            border-color: rgba(75,96,67,0.4) !important;
+            color: #FFF8DC !important;
+            font-family: 'Oswald', sans-serif !important;
+        }
+
+        .leaflet-control-zoom a:hover { background: rgba(55,76,47,1) !important; }
+
+        /* ── CUSTOM MARKERS ─────────────────────────────── */
+        .map-dot {
+            width: 14px;
+            height: 14px;
+            background: #4B6043;
+            border-radius: 50%;
+            border: 2px solid rgba(255,248,220,0.9);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.35), 0 0 0 0 rgba(75,96,67,0.4);
+            cursor: pointer;
+            transition: transform 0.2s, background 0.2s, box-shadow 0.2s;
+        }
+
+        .map-dot:hover {
+            transform: scale(1.5);
+            box-shadow: 0 3px 12px rgba(0,0,0,0.4), 0 0 0 4px rgba(75,96,67,0.25);
+        }
+
+        .map-dot.selected {
+            background: #FFF8DC;
+            border-color: #4B6043;
+            transform: scale(1.7);
+            box-shadow: 0 3px 14px rgba(0,0,0,0.4), 0 0 0 5px rgba(75,96,67,0.3);
+        }
+
+        /* City label tooltips on map */
+        .city-label {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        .city-label-inner {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: 0.6rem;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: rgba(75,96,67,0.65);
+            white-space: nowrap;
+            pointer-events: none;
+            text-shadow: 0 1px 2px rgba(255,248,220,0.9);
+        }
+
+        /* ── PANEL ──────────────────────────────────────── */
+        #panel {
+            width: 400px;
+            flex-shrink: 0;
+            height: 100%;
+            background: var(--forest);
+            border-left: 1px solid rgba(200,140,26,0.12);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Panel header */
+        .panel-header {
+            padding: 2rem 2rem 1.5rem;
+            border-bottom: 1px solid rgba(200,140,26,0.1);
+            flex-shrink: 0;
+        }
+
+        .panel-eyebrow {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.55rem;
+            letter-spacing: 0.4em;
+            text-transform: uppercase;
+            color: var(--amber);
+            display: block;
+            margin-bottom: 0.4rem;
+        }
+
+        .panel-title {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: 1.4rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--cream);
+        }
+
+        .panel-sub {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 0.9rem;
+            color: var(--cream);
+            opacity: 0.4;
+            margin-top: 0.25rem;
+        }
+
+        /* ── LIST VIEW ──────────────────────────────────── */
+        #list-view {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem 0 2rem;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(200,140,26,0.2) transparent;
+        }
+
+        #list-view::-webkit-scrollbar { width: 4px; }
+        #list-view::-webkit-scrollbar-track { background: transparent; }
+        #list-view::-webkit-scrollbar-thumb { background: rgba(200,140,26,0.2); border-radius: 2px; }
+
+        .market-group {
+            margin-bottom: 0.5rem;
+        }
+
+        .market-label {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: 0.55rem;
+            letter-spacing: 0.4em;
+            text-transform: uppercase;
+            color: var(--amber);
+            opacity: 0.6;
+            padding: 1rem 2rem 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .market-label::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(200,140,26,0.12);
+        }
+
+        .venue-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.9rem 2rem;
+            cursor: pointer;
+            transition: background 0.18s;
+            border-bottom: 1px solid rgba(200,140,26,0.05);
+        }
+
+        .venue-row:hover { background: rgba(200,140,26,0.06); }
+        .venue-row.selected { background: rgba(200,140,26,0.1); }
+
+        .venue-row-left { flex: 1; min-width: 0; }
+
+        .venue-row-name {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.88rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--cream);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .venue-row.selected .venue-row-name { color: var(--amber); }
+
+        .venue-row-type {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 0.82rem;
+            color: var(--cream);
+            opacity: 0.38;
+            margin-top: 0.1rem;
+        }
+
+        .venue-row-cap {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 400;
+            font-size: 0.55rem;
+            letter-spacing: 0.12em;
+            color: var(--amber);
+            opacity: 0.5;
+            text-align: right;
+            flex-shrink: 0;
+            margin-left: 1rem;
+        }
+
+        /* ── DETAIL VIEW ────────────────────────────────── */
+        #detail-view {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 0 2rem;
+            display: none;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(200,140,26,0.2) transparent;
+        }
+
+        #detail-view::-webkit-scrollbar { width: 4px; }
+        #detail-view::-webkit-scrollbar-track { background: transparent; }
+        #detail-view::-webkit-scrollbar-thumb { background: rgba(200,140,26,0.2); border-radius: 2px; }
+
+        #detail-view.visible { display: block; }
+
+        .back-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1.2rem 2rem 0.8rem;
+            font-family: 'Oswald', sans-serif;
+            font-weight: 500;
+            font-size: 0.56rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--amber);
+            opacity: 0.6;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(200,140,26,0.08);
+            transition: opacity 0.2s;
+            background: none;
+            border-top: none;
+            border-left: none;
+            border-right: none;
+            width: 100%;
+            text-align: left;
+        }
+
+        .back-btn:hover { opacity: 1; }
+
+        .detail-body { padding: 1.75rem 2rem 0; }
+
+        .detail-city-tag {
+            display: inline-block;
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.5rem;
+            letter-spacing: 0.35em;
+            text-transform: uppercase;
+            color: var(--forest);
+            background: var(--amber);
+            padding: 0.2rem 0.6rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .detail-name {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            font-size: 1.65rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--cream);
+            line-height: 1.1;
+            margin-bottom: 0.5rem;
+        }
+
+        .detail-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-meta span {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 400;
+            font-size: 0.58rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--cream);
+            opacity: 0.38;
+        }
+
+        .detail-meta .dot {
+            width: 3px;
+            height: 3px;
+            background: var(--amber);
+            opacity: 0.4;
+            border-radius: 50%;
+        }
+
+        .detail-address {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 0.9rem;
+            color: var(--cream);
+            opacity: 0.42;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .detail-divider {
+            height: 1px;
+            background: rgba(200,140,26,0.12);
+            margin: 1.5rem 0;
+        }
+
+        .detail-desc {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 1.05rem;
+            line-height: 1.85;
+            color: var(--cream);
+            opacity: 0.72;
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-acts-label {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            font-size: 0.55rem;
+            letter-spacing: 0.38em;
+            text-transform: uppercase;
+            color: var(--amber);
+            display: block;
+            margin-bottom: 0.85rem;
+        }
+
+        .detail-acts {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .detail-acts li {
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 1rem;
+            color: var(--cream);
+            opacity: 0.62;
+            padding: 0.35rem 0;
+            border-bottom: 1px solid rgba(200,140,26,0.06);
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+        }
+
+        .detail-acts li::before {
+            content: '◆';
+            font-size: 0.3rem;
+            color: var(--amber);
+            opacity: 0.6;
+            flex-shrink: 0;
+        }
+
+        /* ── MOBILE ─────────────────────────────────────── */
+        @media (max-width: 768px) {
+            :root { --nav-h: 116px; }
+            body { overflow: auto; }
+            #nav {
+                height: var(--nav-h);
+                padding: 0.85rem 1.2rem;
+                flex-direction: column;
+                align-items: flex-start;
+                justify-content: center;
+                gap: 0.75rem;
+            }
+            .nav-right,
+            .nav-links {
+                width: 100%;
+            }
+            .nav-links {
+                flex-wrap: wrap;
+                gap: 0.75rem 1rem;
+            }
+            .nav-links a {
+                font-size: 0.52rem;
+                letter-spacing: 0.15em;
+            }
+            .venue-layout { flex-direction: column; height: auto; overflow: auto; }
+            #map { height: 55vw; min-height: 280px; flex: none; width: 100%; }
+            #panel { width: 100%; height: auto; max-height: 60vh; overflow-y: auto; }
+            html, body { overflow: auto; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="grain"></div>
+
+<!-- NAV -->
+<nav id="nav">
+    <a href="index.html" class="nav-logo">
+        <span class="magnolia">Magnolia</span>
+        <span class="co">Booking Co.</span>
+    </a>
+    <div class="nav-right">
+        <ul class="nav-links">
+            <li><a href="index.html#about">About</a></li>
+            <li><a href="index.html#services">Services</a></li>
+            <li><a href="index.html#markets">Markets</a></li>
+            <li><a href="index.html#process">Process</a></li>
+            <li><a href="venues.html" class="active">Venue Map</a></li>
+            <li><a href="bands.html">Bands</a></li>
+            <li><a href="index.html#contact">Contact</a></li>
+        </ul>
+    </div>
+</nav>
+
+<!-- MAIN -->
+<div class="venue-layout">
+
+    <!-- MAP -->
+    <div id="map"></div>
+
+    <!-- PANEL -->
+    <aside id="panel">
+
+        <div class="panel-header">
+            <span class="panel-eyebrow">Georgia Markets</span>
+            <div class="panel-title">Venue Atlas</div>
+            <div class="panel-sub">Athens &amp; Augusta</div>
+        </div>
+
+        <!-- LIST VIEW (default) -->
+        <div id="list-view">
+            <div class="market-group" id="group-athens">
+                <div class="market-label">Athens</div>
+            </div>
+            <div class="market-group" id="group-augusta">
+                <div class="market-label">Augusta</div>
+            </div>
+            <div class="market-group" id="group-evans">
+                <div class="market-label">Evans / Columbia County</div>
+            </div>
+            <div class="market-group" id="group-northaugusta">
+                <div class="market-label">North Augusta, SC</div>
+            </div>
+        </div>
+
+        <!-- DETAIL VIEW (shown on selection) -->
+        <div id="detail-view">
+            <button class="back-btn" id="back-btn">&#8592; &nbsp; All Venues</button>
+            <div class="detail-body" id="detail-body"></div>
+        </div>
+
+    </aside>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+
+// ── GRAIN ───────────────────────────────────────────────────
+(function () {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(256, 256);
+    for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.floor(Math.random() * 255);
+        img.data[i] = img.data[i+1] = img.data[i+2] = v;
+        img.data[i+3] = Math.floor(Math.random() * 22);
+    }
+    ctx.putImageData(img, 0, 0);
+    const grain = document.getElementById('grain');
+    grain.style.backgroundImage  = `url(${c.toDataURL()})`;
+    grain.style.backgroundSize   = '256px 256px';
+    grain.style.backgroundRepeat = 'repeat';
+})();
+
+
+// ── VENUE DATA ───────────────────────────────────────────────
+let venues = [
+    {
+        id: 1,
+        name: "40 Watt Club",
+        city: "Athens",
+        address: "285 W Washington St, Athens, GA 30601",
+        type: "Bar / Music Venue",
+        capacity: 600,
+        founded: 1978,
+        lat: 33.9613, lng: -83.3773,
+        description: "The 40 Watt Club is the heartbeat of the Athens music scene — a venue that has been launching Georgia bands since 1978. Named for the single bare bulb that lit the original space, it became ground zero for the college-rock explosion of the early 1980s. R.E.M., the B-52s, and Pylon all cut their teeth here before carrying Athens music to the world. Today it remains an essential mid-size room and an undeniable piece of American rock history.",
+        notable: ["R.E.M.", "B-52s", "Pylon", "Drive-By Truckers", "Of Montreal", "Neutral Milk Hotel", "Widespread Panic", "Vampire Weekend", "The Black Crowes"]
+    },
+    {
+        id: 2,
+        name: "Georgia Theatre",
+        city: "Athens",
+        address: "215 N Lumpkin St, Athens, GA 30601",
+        type: "Concert Hall",
+        capacity: 1000,
+        founded: 1889,
+        lat: 33.9622, lng: -83.3761,
+        description: "Georgia Theatre is one of the Southeast's most iconic venues, housed in a building that dates to 1889 as a YMCA. After years as a movie house and live venue, it was devastated by fire in 2009 but lovingly rebuilt and reopened in 2011 with a stunning rooftop bar overlooking downtown Athens. It now hosts national touring acts and sold-out local headliners at 1,000 capacity.",
+        notable: ["Widespread Panic", "Drive-By Truckers", "Manchester Orchestra", "Vampire Weekend", "Tame Impala", "The Avett Brothers", "Futurebirds", "St. Paul & the Broken Bones"]
+    },
+    {
+        id: 3,
+        name: "Flicker Theatre & Bar",
+        city: "Athens",
+        address: "263 W Washington St, Athens, GA 30601",
+        type: "Bar / Intimate Venue",
+        capacity: 150,
+        founded: 2000,
+        lat: 33.9605, lng: -83.3779,
+        description: "Flicker Theatre & Bar is Athens' go-to room for intimate indie folk, experimental, and singer-songwriter bookings. A two-story bar with a small stage, you can stand six feet from your favorite touring act and still get a drink. Known for eclectic, curatorial bookings and an atmosphere that respects the music.",
+        notable: ["Phosphorescent", "Damien Jurado", "Strand of Oaks", "William Tyler", "Hand Habits", "Jake Xerxes Fussell", "Various Athens scene regulars"]
+    },
+    {
+        id: 4,
+        name: "Hendershot's",
+        city: "Athens",
+        address: "1260 Baxter St, Athens, GA 30606",
+        type: "Coffee Shop / Venue",
+        capacity: 100,
+        founded: 2007,
+        lat: 33.9520, lng: -83.3870,
+        description: "Hendershot's is a coffee shop by day and music venue by night in the Five Points neighborhood. Known for its neighborhood warmth and strong community ties, it books mostly acoustic, folk, and Americana acts. A favorite for touring singer-songwriters who want an intimate, genuinely attentive Athens crowd.",
+        notable: ["John Moreland", "Futurebirds (early shows)", "Lera Lynn", "Various Athens acoustic acts"]
+    },
+    {
+        id: 5,
+        name: "Dead Beat Club",
+        city: "Athens",
+        address: "152 W Clayton St, Athens, GA 30601",
+        type: "Bar / Music Venue",
+        capacity: 200,
+        founded: 2018,
+        lat: 33.9609, lng: -83.3758,
+        description: "Dead Beat Club is Athens' punk and indie rock stronghold — a no-frills bar with a serious commitment to underground music. Since opening it has become essential for touring punk, hardcore, and indie bands hunting for an Athens date. Small, sweaty, and loud in all the right ways.",
+        notable: ["Chastity", "Dehd", "Chat Pile", "Deeper", "Local Athens punk and indie acts"]
+    },
+    {
+        id: 6,
+        name: "Soul Bar",
+        city: "Augusta",
+        address: "984 Broad St, Augusta, GA 30901",
+        type: "Bar / Music Venue",
+        capacity: 200,
+        founded: 1994,
+        lat: 33.4736, lng: -81.9741,
+        description: "Soul Bar is an Augusta institution — a no-frills Broad Street bar serving cold beer and live music since 1994. A diverse booking calendar spanning blues, funk, rock, and country keeps it one of the most reliable stages in the CSRA. The kind of place where the bartender knows your name and the band loads in through the back.",
+        notable: ["Various Augusta and touring regional blues and funk acts", "CSRA blues scene staples", "Touring roots and Americana acts"]
+    },
+    {
+        id: 7,
+        name: "Fox's Lair",
+        city: "Augusta",
+        address: "1184 Broad St, Augusta, GA 30901",
+        type: "Bar / Music Venue",
+        capacity: 300,
+        founded: 2015,
+        lat: 33.4740, lng: -81.9723,
+        description: "Fox's Lair is one of Augusta's premier independent stages, occupying a refurbished space on historic Broad Street. With a larger stage and professional sound system than most CSRA rooms, it has become the go-to for regional touring acts and local headliners. Represents the newer wave of Augusta's growing live music infrastructure.",
+        notable: ["Regional touring indie, rock, and Americana acts", "Augusta local headliners", "Touring country acts"]
+    },
+    {
+        id: 8,
+        name: "Joe's Underground",
+        city: "Augusta",
+        address: "142 Georgia Ave, Augusta, GA 30901",
+        type: "Underground Venue",
+        capacity: 250,
+        founded: 2010,
+        lat: 33.4729, lng: -81.9750,
+        description: "As the name suggests, Joe's Underground is Augusta's literal basement venue — and unapologetically DIY. It has cultivated a loyal following in the Augusta punk, metal, and experimental scene. Low ceilings, raw concrete walls, and a bone-rattling sound system make for an immersive live experience unlike anywhere else in the CSRA.",
+        notable: ["Augusta punk and metal acts", "Touring underground and hardcore acts", "Experimental and noise acts"]
+    },
+    {
+        id: 9,
+        name: "The Highlander",
+        city: "North Augusta",
+        address: "133-B Georgia Ave, North Augusta, SC 29841",
+        type: "British Pub / Music Venue",
+        capacity: 150,
+        founded: 1978,
+        lat: 33.5015, lng: -81.9638,
+        description: "The Highlander is the only British pub in the Augusta River Region — operating since 1978. Located in North Augusta, SC, just across the Savannah River from downtown Augusta. Open mic every Wednesday at 8pm; live music every Friday. An area institution with decades of history supporting the local folk, acoustic, and indie music scene.",
+        notable: ["Acoustic and folk touring acts", "Area open mic regulars", "Americana and roots acts"]
+    },
+    {
+        id: 10,
+        name: "Stillwater Taproom",
+        city: "Augusta",
+        address: "974 Broad St, Augusta, GA 30901",
+        type: "Taproom / Venue",
+        capacity: 150,
+        founded: 2016,
+        lat: 33.4727, lng: -81.9757,
+        description: "Stillwater Taproom is Augusta's craft beer hub doubling as a live music stage. With a rotating tap list and consistent live booking calendar, it has become a neighborhood staple. The relaxed beer-garden atmosphere is ideal for Americana, folk, and indie acts that work well with a social crowd.",
+        notable: ["Americana and folk touring acts", "Augusta local and regional acts", "Acoustic and roots acts"]
+    },
+    {
+        id: 12,
+        name: "Columbia County Performing Arts Center",
+        city: "Evans",
+        address: "1000 Market St, Evans, GA 30809",
+        type: "Performing Arts Center",
+        capacity: 2100,
+        founded: 2010,
+        lat: 33.5339, lng: -82.1276,
+        description: "The Columbia County Performing Arts Center is the crown jewel of Columbia County's arts scene — a 2,100-seat modern venue in Evans that hosts Broadway tours, national touring acts, comedy specials, and local showcases. Managed through Live Nation and booked for a wide range of genres, it represents the largest dedicated performance space in the greater Augusta area outside of the Bell Auditorium.",
+        notable: ["Touring Broadway productions", "National comedy acts", "Regional and national music acts", "Community showcases and galas"]
+    },
+    {
+        id: 13,
+        name: "Winston's Tavern",
+        city: "Evans",
+        address: "880 Ronald Reagan Dr, Evans, GA 30809",
+        type: "Upscale Bar / Venue",
+        capacity: 150,
+        founded: 2026,
+        lat: 33.5400, lng: -82.1380,
+        description: "Winston's Tavern is Evans' newest upscale dining and bar destination, bringing elevated cocktails and a refined atmosphere to Columbia County. As one of the freshest spaces in the area, it represents an emerging opportunity for acoustic, jazz, and singer-songwriter bookings in the Evans market — where venues with ambition are rare.",
+        notable: ["Emerging live music programming", "Acoustic and jazz acts"]
+    },
+    {
+        id: 14,
+        name: "Cork & Flame",
+        city: "Evans",
+        address: "4414 Evans To Locks Rd, Evans, GA 30809",
+        type: "Fine Dining / Wine Bar",
+        capacity: 100,
+        founded: 2018,
+        lat: 33.5360, lng: -82.1320,
+        description: "Cork & Flame is Evans' upscale fine dining destination and wine bar, featuring progressive American cuisine by Executive Chef Justin Hayes. While primarily a restaurant, its date-night atmosphere and music-forward ambiance make it a strong candidate for ambient acoustic and jazz programming — a sophisticated option in the Columbia County market.",
+        notable: ["Acoustic and ambient sets", "Local Augusta and Evans artists", "Jazz and instrumental acts"]
+    },
+    {
+        id: 15,
+        name: "Finch & Fifth",
+        city: "Augusta",
+        address: "379 Highland Ave, Augusta, GA 30909",
+        type: "Bar / Music Venue",
+        capacity: 175,
+        founded: 2019,
+        lat: 33.4800, lng: -82.0100,
+        description: "Finch & Fifth is an upscale-casual bar and live music spot in Augusta's Summerville area. Craft cocktails, artisanal cheeses, and a creative take on southern classics make it one of Augusta's most livable rooms. Consistently ranked among Augusta's best bars with live music — draws a younger professional crowd with real energy.",
+        notable: ["Regional touring indie and pop acts", "Augusta local originals", "Cover bands and upscale bar acts"]
+    },
+    {
+        id: 11,
+        name: "Miller Theater",
+        city: "Augusta",
+        address: "708 Broad St, Augusta, GA 30901",
+        type: "Historic Theater",
+        capacity: 1200,
+        founded: 1940,
+        lat: 33.4739, lng: -81.9778,
+        description: "The Miller Theater is Augusta's grande dame — a fully restored 1940s Art Deco theater on Broad Street that stands as one of the most beautiful rooms in the Southeast. Originally a movie palace and vaudeville house, it sat dark for decades before a multi-million dollar restoration brought it back to life. Now hosting everything from orchestral performances to headline rock acts, it's the crown jewel of Augusta's live venue landscape.",
+        notable: ["Various classical and orchestral acts", "Touring headline acts", "Local Augusta galas and special events", "Augusta Symphony Orchestra"]
+    }
+];
+
+
+// ── MAP INIT ─────────────────────────────────────────────────
+const map = L.map('map', {
+    center: [33.72, -82.18],
+    zoom: 8,
+    zoomControl: true,
+    attributionControl: true,
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 19,
+}).addTo(map);
+
+// Move zoom control to bottom-right
+map.zoomControl.setPosition('bottomright');
+
+// City labels
+const makeCityLabel = (lat, lng, name) => {
+    L.marker([lat, lng], {
+        icon: L.divIcon({
+            className: 'city-label',
+            html: `<div class="city-label-inner">${name}</div>`,
+            iconAnchor: [0, 0],
+        }),
+        interactive: false,
+        zIndexOffset: -100,
+    }).addTo(map);
+};
+
+makeCityLabel(33.9700, -83.3750, 'ATHENS');
+makeCityLabel(33.4800, -81.9680, 'AUGUSTA');
+makeCityLabel(33.5480, -82.1200, 'EVANS / COLUMBIA CO.');
+
+
+// ── MARKERS & LIST ──────────────────────────────────────────
+const markers = {};
+let selectedId = null;
+
+const escapeHtml = value => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+function makeMarkerIcon(selected = false) {
+    return L.divIcon({
+        className: '',
+        html: `<div class="map-dot${selected ? ' selected' : ''}"></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+    });
+}
+
+function formatCapacity(value) {
+    const capacity = Number(value);
+    return Number.isFinite(capacity) && capacity > 0
+        ? `Cap. ${capacity.toLocaleString()}`
+        : 'Capacity TBD';
+}
+
+function hasCoordinates(v) {
+    return Number.isFinite(Number(v.lat)) && Number.isFinite(Number(v.lng));
+}
+
+function groupIdForVenue(v) {
+    const city = String(v.city || '').toLowerCase();
+    if (city.includes('athens')) return 'group-athens';
+    if (city.includes('evans') || city.includes('columbia')) return 'group-evans';
+    if (city.includes('north augusta')) return 'group-northaugusta';
+    return 'group-augusta';
+}
+
+function clearVenueRows() {
+    Object.values(markers).forEach(marker => map.removeLayer(marker));
+    Object.keys(markers).forEach(key => delete markers[key]);
+    document.querySelectorAll('.venue-row').forEach(row => row.remove());
+    selectedId = null;
+    document.getElementById('detail-view').classList.remove('visible');
+    document.getElementById('list-view').style.display = '';
+}
+
+function renderVenues(nextVenues = venues) {
+    venues = (nextVenues || []).filter(v => v && v.name);
+    clearVenueRows();
+
+    venues.forEach(v => {
+        if (hasCoordinates(v)) {
+            const marker = L.marker([Number(v.lat), Number(v.lng)], {
+                icon: makeMarkerIcon(false),
+                title: v.name,
+            }).addTo(map);
+
+            marker.on('click', () => selectVenue(v.id));
+            markers[v.id] = marker;
+        }
+
+        const group = document.getElementById(groupIdForVenue(v));
+        const row = document.createElement('div');
+        row.className = 'venue-row';
+        row.id = `row-${v.id}`;
+        row.innerHTML = `
+            <div class="venue-row-left">
+                <div class="venue-row-name">${escapeHtml(v.name)}</div>
+                <div class="venue-row-type">${escapeHtml([v.city, v.type].filter(Boolean).join(' · '))}</div>
+            </div>
+            <div class="venue-row-cap">${escapeHtml(formatCapacity(v.capacity))}</div>
+        `;
+        row.addEventListener('click', () => selectVenue(v.id));
+        group.appendChild(row);
+    });
+}
+
+renderVenues(venues);
+
+fetch('/api/content')
+    .then(response => response.ok ? response.json() : null)
+    .then(payload => {
+        if (payload?.venues?.length) renderVenues(payload.venues);
+    })
+    .catch(() => {});
+
+
+// ── SELECT VENUE ─────────────────────────────────────────────
+function selectVenue(id) {
+    const v = venues.find(x => x.id === id);
+    if (!v) return;
+
+    // Deselect previous
+    if (selectedId !== null) {
+        if (markers[selectedId]) markers[selectedId].setIcon(makeMarkerIcon(false));
+        const prevRow = document.getElementById(`row-${selectedId}`);
+        if (prevRow) prevRow.classList.remove('selected');
+    }
+
+    selectedId = id;
+
+    // Highlight marker
+    if (markers[id]) markers[id].setIcon(makeMarkerIcon(true));
+    document.getElementById(`row-${id}`)?.classList.add('selected');
+
+    // Fly to venue
+    if (hasCoordinates(v)) {
+        map.flyTo([Number(v.lat), Number(v.lng)], 15, { duration: 1.2, easeLinearity: 0.4 });
+    }
+
+    // Show detail panel
+    showDetail(v);
+}
+
+function showDetail(v) {
+    document.getElementById('list-view').style.display = 'none';
+    const detail = document.getElementById('detail-view');
+    detail.classList.add('visible');
+
+    const notableHtml = (v.notable || [])
+        .map(act => `<li>${escapeHtml(act)}</li>`)
+        .join('');
+    const metaParts = [
+        v.type,
+        v.founded ? `Est. ${v.founded}` : '',
+        Number(v.capacity) ? formatCapacity(v.capacity) : ''
+    ].filter(Boolean);
+    const metaHtml = metaParts
+        .map((part, index) => `${index ? '<div class="dot"></div>' : ''}<span>${escapeHtml(part)}</span>`)
+        .join('');
+
+    document.getElementById('detail-body').innerHTML = `
+        <div class="detail-city-tag">${escapeHtml(v.city)}</div>
+        <div class="detail-name">${escapeHtml(v.name)}</div>
+        <div class="detail-meta">
+            ${metaHtml}
+        </div>
+        <div class="detail-address">
+            <svg width="11" height="14" viewBox="0 0 11 14" fill="none" style="margin-top:2px;flex-shrink:0">
+                <path d="M5.5 0C2.46 0 0 2.46 0 5.5c0 3.85 5.5 8.5 5.5 8.5S11 9.35 11 5.5C11 2.46 8.54 0 5.5 0zm0 7.5a2 2 0 110-4 2 2 0 010 4z" fill="rgba(200,140,26,0.45)"/>
+            </svg>
+            ${escapeHtml(v.address || 'Address pending')}
+        </div>
+        <div class="detail-divider"></div>
+        <p class="detail-desc">${escapeHtml(v.description)}</p>
+        <div class="detail-divider"></div>
+        <span class="detail-acts-label">Notable Acts / Fit</span>
+        <ul class="detail-acts">${notableHtml}</ul>
+    `;
+
+    detail.scrollTop = 0;
+}
+
+// Back button
+document.getElementById('back-btn').addEventListener('click', () => {
+    // Deselect
+    if (selectedId !== null) {
+        if (markers[selectedId]) markers[selectedId].setIcon(makeMarkerIcon(false));
+        const row = document.getElementById(`row-${selectedId}`);
+        if (row) row.classList.remove('selected');
+        selectedId = null;
+    }
+
+    document.getElementById('detail-view').classList.remove('visible');
+    document.getElementById('list-view').style.display = '';
+
+    // Zoom back to overview
+    map.flyTo([33.72, -82.18], 8, { duration: 1.4, easeLinearity: 0.4 });
+});
+
+</script>
+</body>
+</html>

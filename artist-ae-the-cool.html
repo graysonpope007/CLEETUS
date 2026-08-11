@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Booking profile for AE the cool, an Augusta artist represented by Magnolia Booking Co.">
+  <meta property="og:title" content="AE the cool - Magnolia Booking Co.">
+  <meta property="og:description" content="Booking profile, live fit, and contact details for AE the cool.">
+  <meta property="og:type" content="website">
+  <title>AE the cool - Magnolia Booking Co.</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,600;1,500;1,600&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --forest: #152E1E;
+      --green: #1C3829;
+      --green-mid: #274A36;
+      --cream: #FEFAE0;
+      --paper: #FFF8D6;
+      --gold: #C9A052;
+      --gold-dim: #9B7A3D;
+      --rust: #7A2E12;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: var(--forest);
+      color: var(--cream);
+      font-family: Oswald, system-ui, sans-serif;
+    }
+
+    #grain {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      opacity: 0.35;
+      mix-blend-mode: overlay;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      padding: 18px clamp(18px, 5vw, 54px);
+      background: rgba(10,20,10,0.94);
+      border-bottom: 1px solid rgba(201,160,82,0.2);
+      backdrop-filter: blur(14px);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: baseline;
+      gap: 0.55rem;
+      color: var(--cream);
+      text-decoration: none;
+    }
+
+    .nav-logo .magnolia {
+      font-family: "Cormorant Garamond", serif;
+      font-size: 1.48rem;
+      font-style: italic;
+      font-weight: 600;
+    }
+
+    .nav-logo .co {
+      color: var(--gold);
+      font-size: 0.5rem;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.6rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--cream);
+      opacity: 0.62;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+
+    .nav-links a:hover,
+    .nav-links a.active {
+      color: var(--gold);
+      opacity: 1;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: clamp(44px, 8vw, 94px) 0 72px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+      gap: clamp(28px, 6vw, 70px);
+      align-items: end;
+      min-height: 560px;
+      padding: clamp(20px, 4vw, 48px) 0;
+    }
+
+    .eyebrow {
+      color: var(--gold);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin-top: 16px;
+      font-family: "Cormorant Garamond", serif;
+      font-size: clamp(4.8rem, 12vw, 10rem);
+      font-style: italic;
+      font-weight: 600;
+      line-height: 0.82;
+    }
+
+    .hero-copy {
+      max-width: 700px;
+      margin-top: 26px;
+      color: rgba(254,250,224,0.74);
+      font-family: "Cormorant Garamond", serif;
+      font-size: clamp(1.28rem, 2.3vw, 1.9rem);
+      line-height: 1.22;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 32px;
+    }
+
+    .button {
+      display: inline-block;
+      padding: 0.9rem 1.25rem;
+      border: 1px solid var(--gold);
+      color: var(--gold);
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+
+    .button.primary {
+      background: var(--gold);
+      color: var(--forest);
+    }
+
+    .profile-panel {
+      display: grid;
+      gap: 20px;
+      padding: 28px;
+      border: 1px solid rgba(201,160,82,0.26);
+      background:
+        linear-gradient(180deg, rgba(254,250,224,0.08), rgba(254,250,224,0.03)),
+        rgba(10,20,10,0.3);
+    }
+
+    .profile-panel h2 {
+      font-family: "Cormorant Garamond", serif;
+      font-size: 2.1rem;
+      font-style: italic;
+      font-weight: 500;
+      line-height: 1;
+    }
+
+    .quick-facts {
+      display: grid;
+      gap: 14px;
+    }
+
+    .fact {
+      display: grid;
+      gap: 4px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(201,160,82,0.16);
+    }
+
+    .fact strong {
+      color: var(--gold);
+      font-size: 0.58rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .fact span {
+      color: rgba(254,250,224,0.7);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 1.05rem;
+      line-height: 1.45;
+    }
+
+    .section {
+      padding: 72px 0;
+      border-top: 1px solid rgba(201,160,82,0.12);
+    }
+
+    .section-head {
+      display: grid;
+      gap: 12px;
+      max-width: 760px;
+      margin-bottom: 30px;
+    }
+
+    .section-head h2 {
+      font-size: clamp(2rem, 4vw, 3.1rem);
+      letter-spacing: 0.08em;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .section-head p,
+    .copy-block p {
+      color: rgba(254,250,224,0.72);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 1.12rem;
+      line-height: 1.75;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      border: 1px solid rgba(201,160,82,0.18);
+      background: rgba(201,160,82,0.18);
+    }
+
+    .card {
+      min-height: 210px;
+      padding: 24px;
+      background: var(--green);
+    }
+
+    .card h3 {
+      color: var(--cream);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 1.8rem;
+      font-style: italic;
+      font-weight: 500;
+      line-height: 1.05;
+      margin-bottom: 14px;
+    }
+
+    .card p,
+    .target-list li {
+      color: rgba(254,250,224,0.66);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    .target-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 28px;
+      list-style: none;
+    }
+
+    .target-list li {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      border-top: 1px solid rgba(201,160,82,0.14);
+      padding-top: 10px;
+    }
+
+    .target-list li::before {
+      content: "◆";
+      color: var(--gold);
+      font-size: 0.38rem;
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 28px clamp(18px, 5vw, 54px);
+      border-top: 1px solid rgba(201,160,82,0.12);
+      color: rgba(254,250,224,0.36);
+      font-size: 0.58rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 860px) {
+      nav { align-items: flex-start; flex-direction: column; }
+      .nav-links { gap: 1rem; }
+      .hero,
+      .card-grid,
+      .target-list {
+        grid-template-columns: 1fr;
+      }
+      .hero { min-height: auto; }
+      footer { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div id="grain"></div>
+  <nav>
+    <a href="/" class="nav-logo">
+      <span class="magnolia">Magnolia</span>
+      <span class="co">Booking Co.</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="/#services">Services</a></li>
+      <li><a href="/#process">Process</a></li>
+      <li><a href="/venues">Venue Map</a></li>
+      <li><a href="/bands" class="active">Bands</a></li>
+      <li><a href="/#contact">Contact</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Booking Profile</p>
+        <h1 id="artistName">AE the cool</h1>
+        <p class="hero-copy" id="artistBio">An Augusta artist Magnolia is actively developing and booking for downtown rooms, support slots, and venue partnerships that make sense for the room.</p>
+        <div class="actions">
+          <a class="button primary" href="mailto:gpope@goodlifemusicllc.com?subject=Booking%20AE%20the%20cool">Book AE the cool</a>
+          <a class="button" id="musicLink" href="/bands">View Music</a>
+        </div>
+      </div>
+      <aside class="profile-panel" aria-label="AE the cool quick facts">
+        <h2>Quick Booking Notes</h2>
+        <div class="quick-facts">
+          <div class="fact">
+            <strong>Home Market</strong>
+            <span id="hometown">Augusta, Georgia</span>
+          </div>
+          <div class="fact">
+            <strong>Genres</strong>
+            <span id="genres">Independent artist, hip-hop, live performance</span>
+          </div>
+          <div class="fact">
+            <strong>Best Fit</strong>
+            <span>Downtown Augusta rooms, private events, support slots, and curated local bills.</span>
+          </div>
+          <div class="fact">
+            <strong>Availability</strong>
+            <span id="availability">Actively booking ASAP Augusta dates.</span>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">For Venues</p>
+        <h2>Why Book This Artist</h2>
+        <p>Magnolia handles the professional side of the booking so the venue has a direct point of contact, useful show information, and a plan for the room.</p>
+      </div>
+      <div class="card-grid">
+        <article class="card">
+          <h3>Local Growth</h3>
+          <p>AE the cool is an Augusta priority, which makes the artist a strong fit for venues that want to build local culture instead of only filling empty dates.</p>
+        </article>
+        <article class="card">
+          <h3>Clean Pitch</h3>
+          <p>Magnolia can send music, draw notes, show fit, timeline, and promotional assets in one place so the booking decision is easier.</p>
+        </article>
+        <article class="card">
+          <h3>Show Support</h3>
+          <p>We help with promotion, support acts, day-of communication, and the small details that keep artists and venues aligned.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <p class="eyebrow">Augusta Targets</p>
+        <h2>Rooms We Are Working Toward</h2>
+        <p>These rooms are active targets for the current Augusta campaign. Magnolia can also shape a custom bill for private events, promoter nights, and rooms outside this list.</p>
+      </div>
+      <ul class="target-list">
+        <li>Edgar's Above Broad</li>
+        <li>Fox's Lair</li>
+        <li>Soul Bar</li>
+        <li>Metro Coffeehouse &amp; Pub</li>
+        <li>Stillwater Taproom</li>
+        <li>Joe's Underground</li>
+      </ul>
+    </section>
+
+    <section class="section copy-block">
+      <div class="section-head">
+        <p class="eyebrow">Contact</p>
+        <h2>Book AE the cool</h2>
+      </div>
+      <p>Venue owner, concert promoter, or band member looking to build a bill: email Magnolia with the date, room, budget, and show idea. We will respond directly and tell you what makes sense.</p>
+      <div class="actions">
+        <a class="button primary" href="mailto:gpope@goodlifemusicllc.com?subject=Booking%20AE%20the%20cool">Email Magnolia</a>
+        <a class="button" href="/venues">View Venue Map</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Magnolia Booking Co.</span>
+    <span>Augusta &middot; Athens &middot; Georgia</span>
+  </footer>
+
+  <script>
+    (function () {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      const img = ctx.createImageData(256, 256);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.floor(Math.random() * 255);
+        img.data[i] = img.data[i+1] = img.data[i+2] = v;
+        img.data[i+3] = Math.floor(Math.random() * 20);
+      }
+      ctx.putImageData(img, 0, 0);
+      const grain = document.getElementById('grain');
+      grain.style.backgroundImage = `url(${c.toDataURL()})`;
+      grain.style.backgroundSize = '256px 256px';
+    })();
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    fetch('/api/content')
+      .then(response => response.json())
+      .then(payload => {
+        const band = (payload.bands || []).find(item => String(item.name || '').toLowerCase() === 'ae the cool');
+        if (!band) return;
+
+        document.getElementById('artistName').textContent = band.name || 'AE the cool';
+        document.getElementById('artistBio').textContent = band.bio || document.getElementById('artistBio').textContent;
+        document.getElementById('hometown').textContent = band.hometown || 'Augusta, Georgia';
+        document.getElementById('genres').textContent = (band.genres || []).join(', ') || 'Independent artist, live performance';
+        document.getElementById('availability').textContent = band.availability || 'Actively booking Georgia dates.';
+
+        const musicLink = document.getElementById('musicLink');
+        if (band.musicUrl) {
+          musicLink.href = band.musicUrl;
+          musicLink.target = '_blank';
+          musicLink.rel = 'noreferrer';
+        }
+
+        const mailtoSubject = encodeURIComponent(`Booking ${band.name}`);
+        document.querySelectorAll('a[href^="mailto:gpope@goodlifemusicllc.com"]').forEach(link => {
+          link.href = `mailto:gpope@goodlifemusicllc.com?subject=${mailtoSubject}`;
+        });
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>

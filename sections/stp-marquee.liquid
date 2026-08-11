@@ -1,0 +1,125 @@
+{% comment %}
+  STP Marquee Banner — sections/stp-marquee.liquid
+  A continuously scrolling banner strip.
+  Add it to your homepage via Customize → Add section → STP Marquee Banner
+  Drag it to sit right below the header / above the hero photo.
+{% endcomment %}
+
+<div class="stp-marquee-outer">
+  <div class="stp-marquee-track">
+    {% assign repeat = 12 %}
+    {% for i in (1..repeat) %}
+      <span class="stp-marquee-item">
+        {{ section.settings.text | default: 'STEAP BABY STEAP' }}
+      </span>
+      <span class="stp-marquee-dot" aria-hidden="true">✦</span>
+    {% endfor %}
+  </div>
+</div>
+
+<style>
+  .stp-marquee-outer {
+    background: {{ section.settings.bg_color | default: '#EDD835' }};
+    overflow: hidden;
+    white-space: nowrap;
+    padding: {{ section.settings.padding | default: 9 }}px 0;
+    
+    border-bottom: 2px solid {{ section.settings.border_color | default: '#C4B000' }};
+  }
+  .stp-marquee-track {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    animation: stp-scroll {{ section.settings.speed | default: 22 }}s linear infinite;
+    will-change: transform;
+  }
+  .stp-marquee-outer:hover .stp-marquee-track {
+    animation-play-state: paused;
+  }
+  .stp-marquee-item {
+    font-family: 'Brim Narrow', 'Alfa Slab One', serif;
+    font-size: {{ section.settings.font_size | default: 14 }}px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: {{ section.settings.text_color | default: '#1A5C45' }};
+    padding: 0 24px;
+  }
+  .stp-marquee-dot {
+    font-size: 10px;
+    color: {{ section.settings.text_color | default: '#1A5C45' }};
+    opacity: 0.5;
+    flex-shrink: 0;
+  }
+  @keyframes stp-scroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+</style>
+
+{% schema %}
+{
+  "name": "STP Marquee Banner",
+  "settings": [
+    {
+      "type": "text",
+      "id": "text",
+      "label": "Marquee text",
+      "default": "STEAP BABY STEAP",
+      "info": "This text repeats across the full banner."
+    },
+    {
+      "type": "color",
+      "id": "bg_color",
+      "label": "Background color",
+      "default": "#EDD835"
+    },
+    {
+      "type": "color",
+      "id": "text_color",
+      "label": "Text color",
+      "default": "#1A5C45"
+    },
+    {
+      "type": "color",
+      "id": "border_color",
+      "label": "Border color",
+      "default": "#C4B000"
+    },
+    {
+      "type": "range",
+      "id": "font_size",
+      "label": "Font size",
+      "min": 10,
+      "max": 24,
+      "step": 1,
+      "unit": "px",
+      "default": 14
+    },
+    {
+      "type": "range",
+      "id": "speed",
+      "label": "Scroll speed (lower = faster)",
+      "min": 8,
+      "max": 60,
+      "step": 1,
+      "unit": "s",
+      "default": 22
+    },
+    {
+      "type": "range",
+      "id": "padding",
+      "label": "Banner height padding",
+      "min": 4,
+      "max": 24,
+      "step": 1,
+      "unit": "px",
+      "default": 9
+    }
+  ],
+  "presets": [
+    {
+      "name": "STP Marquee Banner"
+    }
+  ]
+}
+{% endschema %}

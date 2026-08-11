@@ -1,0 +1,211 @@
+{% comment %}
+  =====================================================
+  SWEET TEA PEDIGREE — Tour Dates Section
+  File: sections/stp-tour.liquid
+  =====================================================
+  HOW TO INSTALL:
+  1. Add new section → name it: stp-tour
+  2. Paste this file and save
+  3. In Customize → Add section → STP Tour
+  4. Add each show as a block — fill in date, venue, city, ticket link
+  =====================================================
+{% endcomment %}
+
+<section class="stp-tour">
+  <div class="stp-section-head">
+    <h2 class="stp-section-title stp-section-title--yellow">
+      {{ section.settings.title | default: 'Tour' }}
+    </h2>
+    {% if section.settings.see_all_link != blank %}
+      <a href="{{ section.settings.see_all_link }}" class="stp-section-link stp-section-link--sky">
+        See All Dates
+      </a>
+    {% endif %}
+  </div>
+
+  <div class="stp-tour-list">
+    {% for block in section.blocks %}
+      <div class="stp-show-row" {{ block.shopify_attributes }}>
+        <div class="stp-show-date">{{ block.settings.date }}</div>
+        <div class="stp-show-info">
+          <div class="stp-show-venue">{{ block.settings.venue }}</div>
+          <div class="stp-show-city">{{ block.settings.city }}</div>
+        </div>
+        {% if block.settings.ticket_link != blank %}
+          <a href="{{ block.settings.ticket_link }}" class="stp-show-btn" target="_blank" rel="noopener">
+            Tickets
+          </a>
+        {% elsif block.settings.sold_out %}
+          <span class="stp-show-btn stp-show-btn--sold-out">Sold Out</span>
+        {% else %}
+          <span class="stp-show-btn stp-show-btn--tba">TBA</span>
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="stp-tour-empty">No upcoming shows — check back soon.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<style>
+  .stp-tour {
+    padding: 48px 40px 44px;
+    background: #1A5C45;
+    border-top: 3px solid #EDD835;
+    border-bottom: 3px solid #EDD835;
+  }
+  .stp-tour-list {
+    max-width: 800px;
+  }
+  .stp-show-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    border-bottom: 1px solid #2D7A5F;
+    padding: 16px 0;
+  }
+  .stp-show-date {
+    font-family: 'Alfa Slab One', serif;
+    font-size: 14px;
+    color: #EDD835;
+    min-width: 88px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .stp-show-info {
+    flex: 1;
+  }
+  .stp-show-venue {
+    font-family: 'Alfa Slab One', serif;
+    font-size: 16px;
+    color: #FFFFFF;
+    letter-spacing: 0.5px;
+  }
+  .stp-show-city {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-style: italic;
+    font-size: 13px;
+    color: #A8CEDE;
+    margin-top: 3px;
+  }
+  .stp-show-btn {
+    font-family: 'Josefin Sans', sans-serif;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid #A8CEDE;
+    color: #A8CEDE;
+    padding: 9px 18px;
+    cursor: pointer;
+    white-space: nowrap;
+    text-decoration: none;
+    display: inline-block;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+  }
+  .stp-show-btn:hover {
+    background: #EDD835;
+    border-color: #EDD835;
+    color: #1A5C45;
+  }
+  .stp-show-btn--sold-out {
+    border-color: #2D7A5F;
+    color: #2D7A5F;
+    cursor: default;
+  }
+  .stp-show-btn--sold-out:hover {
+    background: transparent;
+    border-color: #2D7A5F;
+    color: #2D7A5F;
+  }
+  .stp-show-btn--tba {
+    border-color: #2D7A5F;
+    color: #2D7A5F;
+    cursor: default;
+  }
+  .stp-tour-empty {
+    font-family: 'Josefin Sans', sans-serif;
+    font-size: 13px;
+    color: #4BAE8A;
+    font-style: italic;
+    padding: 32px 0;
+  }
+  @media (max-width: 749px) {
+    .stp-tour { padding: 36px 20px; }
+    .stp-show-row { flex-wrap: wrap; gap: 10px; }
+    .stp-show-date { min-width: 70px; font-size: 12px; }
+    .stp-show-venue { font-size: 14px; }
+  }
+</style>
+
+{% schema %}
+{
+  "name": "STP Tour Dates",
+  "settings": [
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Section title",
+      "default": "Tour"
+    },
+    {
+      "type": "url",
+      "id": "see_all_link",
+      "label": "See all dates link",
+      "info": "Link to Bandsintown, Songkick, or your full tour page"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "show",
+      "name": "Show",
+      "settings": [
+        {
+          "type": "text",
+          "id": "date",
+          "label": "Date",
+          "default": "Apr 12",
+          "info": "e.g. Apr 12 or Apr 12, 2025"
+        },
+        {
+          "type": "text",
+          "id": "venue",
+          "label": "Venue name",
+          "default": "Trees"
+        },
+        {
+          "type": "text",
+          "id": "city",
+          "label": "City, State",
+          "default": "Dallas, TX"
+        },
+        {
+          "type": "url",
+          "id": "ticket_link",
+          "label": "Ticket link",
+          "info": "Leave blank if TBA or sold out"
+        },
+        {
+          "type": "checkbox",
+          "id": "sold_out",
+          "label": "Mark as sold out",
+          "default": false
+        }
+      ]
+    }
+  ],
+  "max_blocks": 30,
+  "presets": [
+    {
+      "name": "STP Tour Dates",
+      "blocks": [
+        { "type": "show" },
+        { "type": "show" },
+        { "type": "show" }
+      ]
+    }
+  ]
+}
+{% endschema %}

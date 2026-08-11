@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Artists and bands represented or developed by Magnolia Booking Co. for Augusta, Athens, and Georgia venues.">
+  <meta property="og:title" content="Bands We Work With - Magnolia Booking Co.">
+  <meta property="og:description" content="Venue-ready artists, live assets, and booking notes from Magnolia Booking Co.">
+  <meta property="og:type" content="website">
+  <title>Bands We Work With — Magnolia Booking Co.</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,500;0,600;1,500;1,600&family=Oswald:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --forest: #152E1E;
+      --green: #1C3829;
+      --cream: #FEFAE0;
+      --paper: #FFF8D6;
+      --gold: #C9A052;
+      --gold-dim: #9B7A3D;
+      --rust: #7A2E12;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(21,46,30,0.94), rgba(21,46,30,0.82)),
+        var(--forest);
+      color: var(--cream);
+      font-family: Oswald, system-ui, sans-serif;
+    }
+
+    #grain {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      opacity: 0.35;
+      mix-blend-mode: overlay;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 24px;
+      padding: 18px clamp(18px, 5vw, 54px);
+      background: rgba(10,20,10,0.94);
+      border-bottom: 1px solid rgba(201,160,82,0.2);
+      backdrop-filter: blur(14px);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: baseline;
+      gap: 0.55rem;
+      color: var(--cream);
+      text-decoration: none;
+    }
+
+    .nav-logo .magnolia {
+      font-family: "Cormorant Garamond", serif;
+      font-size: 1.48rem;
+      font-style: italic;
+      font-weight: 600;
+    }
+
+    .nav-logo .co {
+      color: var(--gold);
+      font-size: 0.5rem;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.6rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--cream);
+      opacity: 0.62;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-decoration: none;
+      text-transform: uppercase;
+    }
+
+    .nav-links a:hover,
+    .nav-links a.active {
+      color: var(--gold);
+      opacity: 1;
+    }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: clamp(44px, 8vw, 94px) 0 70px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 18px;
+      max-width: 850px;
+      margin-bottom: 42px;
+    }
+
+    .eyebrow {
+      color: var(--gold);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-family: "Cormorant Garamond", serif;
+      font-size: clamp(4rem, 11vw, 9rem);
+      font-style: italic;
+      font-weight: 500;
+      line-height: 0.85;
+    }
+
+    .hero p {
+      max-width: 720px;
+      color: rgba(254,250,224,0.72);
+      font-family: "Cormorant Garamond", serif;
+      font-size: clamp(1.25rem, 2.5vw, 2rem);
+      line-height: 1.2;
+    }
+
+    .roster-tools {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin: 0 0 28px;
+      padding: 16px;
+      border: 1px solid rgba(201,160,82,0.22);
+      background: rgba(10,20,10,0.24);
+    }
+
+    .tool-field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .tool-field label {
+      color: rgba(254,250,224,0.42);
+      font-size: 0.54rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    .tool-field input,
+    .tool-field select {
+      width: 100%;
+      border: 1px solid rgba(201,160,82,0.24);
+      background: rgba(255,255,255,0.035);
+      color: var(--cream);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 1rem;
+      padding: 0.8rem 0.9rem;
+    }
+
+    .tool-field input::placeholder { color: rgba(254,250,224,0.24); }
+    .tool-field select option { background: var(--forest); color: var(--cream); }
+
+    .band-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+
+    .band-card {
+      display: grid;
+      gap: 14px;
+      min-height: 320px;
+      padding: 22px;
+      border: 1px solid rgba(201,160,82,0.25);
+      background:
+        linear-gradient(180deg, rgba(254,250,224,0.08), rgba(254,250,224,0.03)),
+        rgba(10,20,10,0.3);
+    }
+
+    .band-card h2 {
+      color: var(--cream);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 2.3rem;
+      font-style: italic;
+      line-height: 0.95;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      padding: 5px 8px;
+      border: 1px solid rgba(201,160,82,0.32);
+      color: var(--gold);
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .bio {
+      color: rgba(254,250,224,0.74);
+      line-height: 1.55;
+    }
+
+    .booking-notes {
+      display: grid;
+      gap: 8px;
+      border-top: 1px solid rgba(201,160,82,0.16);
+      padding-top: 14px;
+    }
+
+    .booking-notes span {
+      color: rgba(254,250,224,0.6);
+      font-family: "Cormorant Garamond", serif;
+      font-size: 0.98rem;
+      line-height: 1.45;
+    }
+
+    .booking-notes strong {
+      color: var(--gold);
+      font-family: Oswald, system-ui, sans-serif;
+      font-size: 0.58rem;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .band-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: auto;
+    }
+
+    .band-links a {
+      color: var(--cream);
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      text-decoration: none;
+      border-bottom: 1px solid var(--gold);
+    }
+
+    .empty {
+      padding: 28px;
+      border: 1px solid rgba(201,160,82,0.25);
+      color: rgba(254,250,224,0.7);
+      background: rgba(10,20,10,0.3);
+    }
+
+    @media (max-width: 760px) {
+      nav { align-items: flex-start; flex-direction: column; }
+      .nav-links { gap: 1rem; }
+      .roster-tools { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="grain"></div>
+  <nav>
+    <a href="/" class="nav-logo">
+      <span class="magnolia">Magnolia</span>
+      <span class="co">Booking Co.</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="/#about">About</a></li>
+      <li><a href="/#services">Services</a></li>
+      <li><a href="/#process">Process</a></li>
+      <li><a href="/venues">Venue Map</a></li>
+      <li><a href="/bands" class="active">Bands</a></li>
+      <li><a href="/#contact">Contact</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Roster</p>
+      <h1>Bands We Work With</h1>
+      <p>Venue-ready artists, booking notes, and live projects Magnolia can place into Augusta, Athens, and Georgia rooms.</p>
+    </section>
+
+    <section class="roster-tools" aria-label="Roster filters">
+      <div class="tool-field">
+        <label for="searchInput">Search</label>
+        <input id="searchInput" type="search" placeholder="Artist, genre, market">
+      </div>
+      <div class="tool-field">
+        <label for="genreFilter">Genre</label>
+        <select id="genreFilter">
+          <option value="">All genres</option>
+        </select>
+      </div>
+      <div class="tool-field">
+        <label for="marketFilter">Market</label>
+        <select id="marketFilter">
+          <option value="">All markets</option>
+        </select>
+      </div>
+    </section>
+
+    <section id="bandGrid" class="band-grid" aria-live="polite"></section>
+  </main>
+
+  <script>
+    (function () {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d');
+      const img = ctx.createImageData(256, 256);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.floor(Math.random() * 255);
+        img.data[i] = img.data[i+1] = img.data[i+2] = v;
+        img.data[i+3] = Math.floor(Math.random() * 20);
+      }
+      ctx.putImageData(img, 0, 0);
+      const grain = document.getElementById('grain');
+      grain.style.backgroundImage = `url(${c.toDataURL()})`;
+      grain.style.backgroundSize = '256px 256px';
+    })();
+
+    const escapeHtml = value => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+    const fallbackBands = [
+      {
+        name: 'AE the cool',
+        hometown: 'Augusta, Georgia',
+        genres: ['Independent artist', 'Hip-hop', 'Live performance'],
+        preferredMarkets: ['Augusta', 'Athens'],
+        bio: 'An Augusta artist Magnolia is actively developing and booking for downtown rooms, support slots, and venue partnerships that make sense for the room.',
+        draw: 'Contact Magnolia for current campaign notes.',
+        availability: 'Actively booking ASAP Augusta dates.',
+        status: 'active'
+      }
+    ];
+
+    const rosterState = {
+      bands: [],
+      query: '',
+      genre: '',
+      market: ''
+    };
+
+    const artistPath = band => {
+      const normalized = String(band.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      return normalized === 'ae-the-cool' ? '/artists/ae-the-cool' : '';
+    };
+
+    function uniqueValues(items, getter) {
+      return [...new Set(items.flatMap(item => getter(item) || []).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+    }
+
+    function populateFilters(bands) {
+      const genreFilter = document.getElementById('genreFilter');
+      const marketFilter = document.getElementById('marketFilter');
+      const genres = uniqueValues(bands, band => band.genres);
+      const markets = uniqueValues(bands, band => band.preferredMarkets);
+
+      genreFilter.innerHTML = '<option value="">All genres</option>' + genres.map(genre => `<option value="${escapeHtml(genre)}">${escapeHtml(genre)}</option>`).join('');
+      marketFilter.innerHTML = '<option value="">All markets</option>' + markets.map(market => `<option value="${escapeHtml(market)}">${escapeHtml(market)}</option>`).join('');
+    }
+
+    function currentBands() {
+      const query = rosterState.query.toLowerCase();
+      return rosterState.bands.filter(band => {
+        const haystack = [
+          band.name,
+          band.hometown,
+          band.bio,
+          ...(band.genres || []),
+          ...(band.preferredMarkets || [])
+        ].join(' ').toLowerCase();
+        const matchesQuery = !query || haystack.includes(query);
+        const matchesGenre = !rosterState.genre || (band.genres || []).includes(rosterState.genre);
+        const matchesMarket = !rosterState.market || (band.preferredMarkets || []).includes(rosterState.market);
+        return matchesQuery && matchesGenre && matchesMarket;
+      });
+    }
+
+    function renderBands() {
+      const grid = document.getElementById('bandGrid');
+      const visibleBands = currentBands();
+
+      if (!visibleBands.length) {
+        grid.innerHTML = '<div class="empty">No matching artists yet. Clear a filter or add a new artist from the Magnolia manager page.</div>';
+        return;
+      }
+
+      grid.innerHTML = visibleBands.map(band => {
+        const genreHtml = (band.genres || []).slice(0, 4).map(genre => `<span class="pill">${escapeHtml(genre)}</span>`).join('');
+        const marketHtml = (band.preferredMarkets || []).slice(0, 3).map(market => `<span class="pill">${escapeHtml(market)}</span>`).join('');
+        const profilePath = artistPath(band);
+        const linkHtml = [
+          profilePath ? `<a href="${profilePath}">Booking Profile</a>` : '',
+          band.musicUrl ? `<a href="${escapeHtml(band.musicUrl)}" target="_blank" rel="noreferrer">Music</a>` : '',
+          band.website ? `<a href="${escapeHtml(band.website)}" target="_blank" rel="noreferrer">Website</a>` : '',
+          band.instagram ? `<a href="${escapeHtml(band.instagram.startsWith('@') ? `https://instagram.com/${band.instagram.slice(1)}` : band.instagram)}" target="_blank" rel="noreferrer">Instagram</a>` : ''
+        ].filter(Boolean).join('');
+
+        return `
+          <article class="band-card">
+            <div>
+              <p class="eyebrow">${escapeHtml(band.hometown || 'Georgia')}</p>
+              <h2>${escapeHtml(band.name)}</h2>
+            </div>
+            <div class="meta">${genreHtml}${marketHtml}</div>
+            <p class="bio">${escapeHtml(band.bio || 'More information coming soon.')}</p>
+            <div class="booking-notes">
+              <span><strong>Draw</strong> ${escapeHtml(band.draw || 'Contact Magnolia for current booking notes.')}</span>
+              <span><strong>Availability</strong> ${escapeHtml(band.availability || 'Actively booking Georgia dates.')}</span>
+            </div>
+            <div class="band-links">${linkHtml}</div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    document.getElementById('searchInput').addEventListener('input', event => {
+      rosterState.query = event.target.value;
+      renderBands();
+    });
+
+    document.getElementById('genreFilter').addEventListener('change', event => {
+      rosterState.genre = event.target.value;
+      renderBands();
+    });
+
+    document.getElementById('marketFilter').addEventListener('change', event => {
+      rosterState.market = event.target.value;
+      renderBands();
+    });
+
+    fetch('/api/content')
+      .then(response => response.json())
+      .then(payload => {
+        const publishedBands = (payload.bands || []).filter(band => band.status !== 'archived');
+        rosterState.bands = publishedBands.length ? publishedBands : fallbackBands;
+        populateFilters(rosterState.bands);
+        renderBands();
+      })
+      .catch(() => {
+        rosterState.bands = fallbackBands;
+        populateFilters(rosterState.bands);
+        renderBands();
+      });
+  </script>
+</body>
+</html>
