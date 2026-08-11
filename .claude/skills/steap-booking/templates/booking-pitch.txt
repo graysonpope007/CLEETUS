@@ -1,0 +1,14 @@
+Subject: Sweet Tea Pedigree — Booking Inquiry / {AVAILABILITY_WINDOW}
+
+Hello {CONTACT_NAME},
+
+I'm reaching out on behalf of Sweet Tea Pedigree, an Athens-based soulful blues rock band that's been building serious momentum this year. {CREDENTIAL_LEAD} We're looking to book {SHOW_TYPE} at {VENUE_NAME} {TIMEFRAME} and would love to talk about what that might look like.
+
+{VENUE_SPECIFIC_NOTE}
+
+You can find our music, bio, and one sheet at sweetteapedigree.com — or I'm happy to send our full press kit directly. We're flexible on dates and structure; let me know what works for your calendar.
+
+Thanks for your time,
+Grayson
+sweetteapedigree@gmail.com
+(706) 847-5109

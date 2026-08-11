@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cleetus.brain-analysis</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/python3</string>
+    <string>/Users/grayson/cleetus/.claude/worktrees/naughty-fermat-4efa9a/.claude/scripts/weekly_brain_analysis.py</string>
+  </array>
+
+  <!-- Every Friday at 6:00 PM ET -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>5</integer>
+    <key>Hour</key>
+    <integer>18</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/cleetus-brain-analysis.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/cleetus-brain-analysis.err</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>CLEETUS_VAULT</key>
+    <string>/Users/grayson/Library/Mobile Documents/iCloud~md~obsidian/Documents/Cleetus</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

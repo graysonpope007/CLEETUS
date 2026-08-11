@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.cleetus.heartbeat</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/grayson/cleetus/.claude/worktrees/naughty-fermat-4efa9a/.claude/scripts/heartbeat.py</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>CLEETUS_ROOT</key>
+        <string>/Users/grayson/cleetus</string>
+    </dict>
+
+    <!-- Every 30 minutes -->
+    <key>StartInterval</key>
+    <integer>1800</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/grayson/cleetus/.claude/worktrees/naughty-fermat-4efa9a/.claude/data/heartbeat.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/grayson/cleetus/.claude/worktrees/naughty-fermat-4efa9a/.claude/data/heartbeat.err</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

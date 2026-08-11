@@ -1,12 +1,15 @@
-# /Users/grayson is a git repo (origin: graysonpope007/STEAP).
+# /Users/grayson is a git repo (origin: graysonpope007/CLEETUS).
 # That means an unguarded `git add -A` here would stage your ENTIRE home
 # directory — ~/.ssh private keys, ~/.claude.json, ~/.config, shell history.
 #
-# So: ignore everything by default, then allowlist only the paths STEAP tracks.
-# Adding a new project? Add a matching `!` pair below.
+# So: ignore everything by default, then allowlist only the paths this repo
+# tracks. Adding a new project? Add a matching `!` pair below.
 #
 # Note: this does not untrack anything already tracked; edits and deletions to
-# tracked files still show up in `git status` and still commit normally.
+# tracked files still show up in `git status` and still commit normally. The
+# merged `.claude/` and `.agent/` trees are tracked but deliberately NOT
+# allowlisted — that keeps the rest of your live ~/.claude (sessions, history,
+# projects, todos) invisible to git.
 
 # 1. Deny everything.
 /*
@@ -25,9 +28,19 @@
 .DS_Store
 *.swp
 node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
 .env
 .env.*
+credentials.json
+token.json
 *.pem
 *.key
 id_rsa*
 id_ed25519*
+
+# 4. The Obsidian vault is its own git repo — tracked separately, not a submodule.
+vault/
