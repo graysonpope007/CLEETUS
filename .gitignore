@@ -24,6 +24,12 @@
 !/cleetus/
 !/gp-productions-booking/
 
+# cleetusd — the Cleetus that has the disk. It had never been tracked ANYWHERE,
+# which for the process holding run_shell and the tool loop is a bad place to
+# leave it. Its secrets are not in the tree: config.mjs reads them out of
+# Documents/Claude/Projects/Cleetus V2/cleetus.env, which this repo never sees.
+!/cleetusd/
+
 # 3. Junk that should never be committed even inside an allowlisted project.
 .DS_Store
 *.swp

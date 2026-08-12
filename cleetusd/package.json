@@ -1,0 +1,14 @@
+{
+  "name": "cleetusd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cleetus as a process on the Mac Studio: the local model, the disk, the vault, and the loop that joins them.",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "ask": "node bin/ask.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0"
+  }
+}
