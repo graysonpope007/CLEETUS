@@ -231,11 +231,32 @@ export async function route(question) {
         // generalist, so the skin brief and skin memory never loaded and the
         // entire specialist design was bypassed. Measured 4/12 before this.
         // It is now described as the last resort it is.
+        // And then it over-corrected, which took longer to see because the
+        // benchmark could not show it: every case in routing-check had a
+        // correct specialist, so a router that forced EVERY question onto a
+        // specialist scored perfectly. Measured on the demo rehearsal —
+        //
+        //   "is anyone in the room with me"      -> skin
+        //   "how much free disk space do I have" -> finance
+        //   "what have we been talking about"    -> hair
+        //
+        // Each answered correctly, because the tools are shared. But the deck
+        // prints "working as the skin agent" while it does it, and a specialist
+        // answering outside its speciality is carrying the wrong brief and the
+        // wrong memory into the answer.
+        //
+        // The fix is not to weaken the preference — that is what produced 4/12.
+        // It is to say what the generalist's OWN territory is, so choosing it is
+        // a positive match rather than a failure to match.
         system:
           `You route a message to the ONE agent whose speciality fits best.\n` +
-          `${agentMenu()}\n- cleetus: ONLY if no agent above fits at all.\n\n` +
-          `Always prefer a specific agent over cleetus. A question about his body, ` +
-          `money, clothes, food or work belongs to a specialist, not the generalist. ` +
+          `${agentMenu()}\n- cleetus: the machine itself and everything with no ` +
+          `speciality — this Mac, files, disks, the shell, the room, the cameras, ` +
+          `who is present, what you talked about before, and ordinary conversation.\n\n` +
+          `A question about his body, money, clothes, food or work belongs to a ` +
+          `specialist. A question about the computer you are running on, the room ` +
+          `you can see, or your own past conversations belongs to cleetus. Pick the ` +
+          `one that is actually about that agent's subject; do not stretch.\n` +
           `Reply with the id alone.`,
         maxWords: 3,
       },

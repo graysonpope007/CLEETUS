@@ -47,15 +47,27 @@ const CASES = [
   // and describe or name what is there. Slow (a model call per look), so one
   // sample each rather than a sweep.
   ["known_faces", {}, (o) => /nobody|no one|none|:/i.test(o) ? null : o.slice(0, 90)],
-  ["look", { camera: "brio" }, (o) => /cannot|not running|failed|error/i.test(o) ? o.slice(0, 90) : null],
-  ["who_is_there", {}, (o) => /cannot|not running|failed|error/i.test(o) ? o.slice(0, 90) : null],
+  // "brio" IS NOT A CAMERA NAME. The two are desk and room, and these cases
+  // passed for weeks while calling neither: `look` answered "[object Object]"
+  // and the verdict matched none of its words, so a tool that could not
+  // possibly have worked was reported green three times over. A checker that
+  // asks for something that does not exist tests nothing.
+  //
+  // The verdicts now assert the SHAPE OF A REAL ANSWER — the camera's own
+  // description, which only appears when a frame was actually looked at —
+  // rather than the absence of words that mean failure.
+  ["look", { camera: "desk" }, (o) => /looking (straight )?down at the desk/i.test(o) ? null : o.slice(0, 120)],
+  ["look", { camera: "room" }, (o) => /across the room/i.test(o) ? null : o.slice(0, 120)],
+  ["look", { camera: "brio" }, (o) => /no camera called/i.test(o) ? null : "a bad camera name did not produce a usable error: " + o.slice(0, 90)],
+  ["who_is_there", { camera: "room" }, (o) => /through the room camera|recognise|enrolled/i.test(o) ? null : o.slice(0, 120)],
   // ── added by the other session, classified here ──
   // Read-only: they report state and take no action on the world.
   ["list_repos", {}, (o) => /cleetus|repo|\//i.test(o) ? null : o.slice(0, 90)],
   ["repo_status", { repo: "cleetusv2" }, (o) => /## \w|\/Users\/|clean|uncommitted/i.test(o) ? null : o.slice(0, 90)],
   ["list_secrets", {}, (o) => /secret|key|holding|\[/i.test(o) ? null : o.slice(0, 90)],
   ["recall_chat", { query: "desk light" }, (o) => /cannot|failed|error/i.test(o) ? o.slice(0, 90) : null],
-  ["detect", { camera: "brio" }, (o) => /cannot|not running|failed|error/i.test(o) ? o.slice(0, 90) : null],
+  ["detect", { camera: "desk" }, (o) => /one frame, detector|nothing the detector knows/i.test(o) ? null : o.slice(0, 120)],
+  ["watch", { camera: "room", seconds: 3 }, (o) => /frames over .*s at .*fps|Nothing tracked/i.test(o) ? null : o.slice(0, 120)],
   ["cloud_api", { path: "/api/health" }, (o) => {
     if (/^(?!\{).*(not set|unauthorized)/i.test(o)) return o.slice(0, 160);
     try { JSON.parse(o); return null; } catch { return "not JSON: " + o.slice(0, 120); }
@@ -69,8 +81,19 @@ const broken = [];
 for (const [name, args, verdict] of CASES) {
   if (!TOOLS[name]) { broken.push([name, "NOT REGISTERED"]); continue; }
   let out;
-  try { out = String(await callTool(name, args, { agentId: "builder" })); }
-  catch (e) { out = "THREW: " + e.message; }
+  let raw;
+  try { raw = await callTool(name, args, { agentId: "builder" }); out = String(raw); }
+  catch (e) { raw = null; out = "THREW: " + e.message; }
+  // The whole class, caught once rather than per tool. Anything that is not a
+  // string reaches the model as "[object Object]", and the model does not
+  // report an empty tool result — it invents a plausible one. This is checked
+  // before the verdict runs, because a verdict looking for words cannot see
+  // this failure at all.
+  if (raw !== null && typeof raw !== "string") {
+    broken.push([name, `returned a ${typeof raw}, not a string — the model would receive "[object Object]"`]);
+    console.log(`FAIL ${name}\n       returned ${typeof raw}, not a string`);
+    continue;
+  }
   const bad = out.startsWith("THREW:") ? out : verdict(out);
   const label = `${name}(${Object.keys(args).join(",") || ""})`;
   if (bad) { broken.push([label, bad]); console.log(`FAIL ${label}\n       ${String(bad).replace(/\n/g, " ").slice(0, 200)}`); }

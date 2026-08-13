@@ -73,13 +73,24 @@ export const visionTools = {
     },
     run: async ({ camera, question }) => {
       const cam = CAMERAS[String(camera || "").toLowerCase()];
-      if (!cam) return { ok: false, error: `no camera called "${camera}". Use desk or room.` };
+      // A STRING, on every path including this one.
+      //
+      // The comment sixty lines below already says why the SUCCESS path returns
+      // a string: the loop does String(result), an object becomes the literal
+      // text "[object Object]", and the model does not report an empty tool
+      // result — it fills the gap with what a desk usually has. It invented an
+      // MX Master 3 and an iPhone 15 Pro Max that way.
+      //
+      // The fix was applied to the success path and not to the three error
+      // paths, so every camera failure still handed the model "[object Object]"
+      // — which is the case where invention is most likely, because the model
+      // has nothing at all to go on. Caught by calling look with a camera name
+      // that does not exist and reading what came back.
+      if (!cam) return `There is no camera called "${camera}". The two are: desk (the BRIO looking down at the desk) and room (the C920 across the room). Call it again with one of those. Do not answer as though you had looked.`;
       if (!(await visionReady())) {
-        return {
-          ok: false,
-          error: `the vision model ${CONFIG.visionModel} is not pulled, so nothing can be looked at. ` +
-                 `Run: ollama pull ${CONFIG.visionModel}`,
-        };
+        return `The vision model ${CONFIG.visionModel} is not pulled on this machine, so nothing can ` +
+               `be looked at. Tell him to run: ollama pull ${CONFIG.visionModel}. Do not guess at what ` +
+               `the camera would have shown.`;
       }
       let shot;
       try {
@@ -87,7 +98,8 @@ export const visionTools = {
       } catch (e) {
         // Naming the camera matters: one of these being down is an ordinary
         // event and "I cannot see" without saying WHICH eye is unhelpful.
-        return { ok: false, error: `could not get a frame from the ${camera} camera (${cam.what}): ${e.message}` };
+        return `Could not get a frame from the ${camera} camera (${cam.what}): ${e.message}. ` +
+               `Say that you could not see, and which camera failed. Do not describe the room from memory.`;
       }
       const prompt = question
         ? `${DESCRIBE}\n\nThe specific question is: ${question}. Answer it from the picture alone; ` +
@@ -115,7 +127,8 @@ export const visionTools = {
           "that are not in it, and do not fill in what a desk like this usually has. If he asked " +
           "about something not mentioned, say it is not visible.";
       } catch (e) {
-        return { ok: false, error: `the vision model failed: ${e.message}` };
+        return `The vision model failed: ${e.message}. You did not see anything. Say so plainly ` +
+               `rather than describing what is usually there.`;
       }
     },
   },

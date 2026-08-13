@@ -22,12 +22,31 @@ const raw = await readFile(join(import.meta.dirname, "../src/agent.mjs"), "utf8"
 const src = raw.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
 const route = src.slice(src.indexOf("export async function route"));
 
-test("the generalist is offered as a last resort, not a peer", () => {
-  // "- cleetus: anything else, or general conversation." sat in the menu
-  // looking like a normal choice, and the gate took it constantly.
-  assert.doesNotMatch(route.slice(0, 900), /cleetus: anything else/);
-  assert.match(route, /ONLY if no agent above fits/);
-  assert.match(route, /prefer a specific agent over cleetus/i);
+test("the generalist has a described domain, not a vague catch-all", () => {
+  // This test used to require the words "ONLY if no agent above fits", from
+  // when cleetus was framed as a last resort. That framing was replaced
+  // deliberately, and the reasoning is in the source: pushed hard enough away
+  // from the generalist, the router sent "is anyone in the room with me" to
+  // skin and "how much free disk space do I have" to finance. Each answered
+  // correctly — the tools are shared — while the deck announced the wrong
+  // agent and the wrong brief was loaded.
+  //
+  // So the requirement is not "cleetus last". It is that cleetus is neither an
+  // "anything else" bucket NOR crowded out: it owns the machine, the room and
+  // the history, and specialists own their subjects.
+  assert.doesNotMatch(route.slice(0, 900), /cleetus: anything else/,
+    "the vague catch-all wording is what the gate used to grab");
+  assert.match(route, /cleetus: the machine itself/,
+    "the generalist needs a stated domain or the router cannot pick it on purpose");
+  assert.match(route, /this Mac, files, disks, the shell, the room, the cameras/,
+    "those are the things no specialist covers");
+  // Matched on a run of text that is contiguous in the SOURCE. "belongs to a
+  // specialist" is split across a string concatenation there, so asserting the
+  // readable phrase would silently never match.
+  assert.match(route, /body, money, clothes, food or work belongs to a/,
+    "specialists must still be preferred for their own subjects");
+  assert.match(route, /do not stretch/,
+    "the instruction against forcing a specialist onto an unrelated question");
 });
 
 test("a decorated reply is read through, not thrown away", () => {

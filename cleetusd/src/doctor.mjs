@@ -46,13 +46,29 @@ export async function runDoctor() {
   results.push({ area, name, ok, detail, fix });
   }
 
+  /**
+   * One probe of a local service is one sample, and these services do real work
+   * — studio-locate is decoding camera frames. Under load it blocks past six
+   * seconds and the panel calls it down: twice this session it was reported
+   * broken and then answered in 0.19s when asked directly a minute later. A
+   * check that cries wolf is a check he stops reading.
+   *
+   * A TIMEOUT is ambiguous, so it is worth asking twice. A refused connection
+   * is not — nothing is listening — so that returns immediately and the doctor
+   * stays fast when a service really is down.
+   */
   async function get(url, ms = 6000) {
-  try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(ms) });
-    return { status: r.status, headers: r.headers, body: await r.text() };
-  } catch (e) {
-    return { status: 0, error: e.message };
-  }
+    let last = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(ms) });
+        return { status: r.status, headers: r.headers, body: await r.text() };
+      } catch (e) {
+        last = e;
+        if (!/timeout|abort/i.test(String(e.message))) break;
+      }
+    }
+    return { status: 0, error: last ? last.message : "unknown" };
   }
 
   // ── launchd agents ──────────────────────────────────────────────────────────
@@ -479,7 +495,12 @@ export async function runDoctor() {
           model: CONFIG.model, max_tokens: 64, reasoning_effort: "none",
           messages: [{ role: "user", content: "Reply with the single word: ready" }],
         }),
-        signal: AbortSignal.timeout(45_000),
+        // A COLD model load is not a fault. Measured against this exact
+        // endpoint while it was failing: 93 seconds, correct answer, and the
+        // check went green the moment the model was warm. At 45s this called a
+        // working model broken — which contradicts the comment above it, where
+        // the failure it exists to catch is a BLANK answer, not a slow one.
+        signal: AbortSignal.timeout(180_000),
       });
       const j = await r.json();
       const msg = j?.choices?.[0]?.message || {};
@@ -490,7 +511,13 @@ export async function runDoctor() {
              : `EMPTY answer · ${reasoned} chars of reasoning`,
         "reasoning_effort:\"none\" is missing or LLM_THINK=1 — every answer will come back blank");
     } catch (e) {
-      check("cloud", "model answers over /v1 without burning the budget", false, e.message);
+      // Name which KIND of failure this is. A bare "The operation was aborted
+      // due to timeout" sent this session hunting the cloudflared tunnel, which
+      // was answering in 0.17s throughout — the model was simply cold.
+      check("cloud", "model answers over /v1 without burning the budget", false,
+        /timeout|abort/i.test(String(e.message))
+          ? `no answer within 180s — a cold load measured 93s, so this is a stall rather than a cold start (${e.message})`
+          : e.message);
     }
   } else {
     skip("cloud", "model answers over /v1 without burning the budget", "LLM_API_KEY not set");
