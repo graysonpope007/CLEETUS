@@ -108,12 +108,15 @@ export async function runDoctor() {
   }
   check("services", "every launch agent's program exists", broken.length === 0,
     broken.length ? `${broken.length} dead: ${broken.map(b => b.split(" -> ")[0]).join(", ")}` : `${plists.length} agents, all resolve`,
-    // NOT "just rewrite the paths". That was the first guess and it is wrong:
-    // these scripts compute their vault as Path(__file__).parents[2]/"vault",
-    // so moving them moves the vault to /Users/grayson/vault, which does not
-    // exist. A repointed morning brief runs, succeeds, and writes where nobody
-    // looks — and this check would go green. See handoff section 18.
-    "4 of these have no script left anywhere: bootout. The other 6 need more than a repoint — read handoff section 18 before touching them");
+    // The ten that were dead here for three months are rebuilt: they point at
+    // cleetusd/bin/job.mjs now, one binary that cannot go missing without the
+    // whole daemon going with it (see src/jobs.mjs). If this goes red again it
+    // is a NEW agent, and the same rule applies — a repoint is not a fix unless
+    // the thing being pointed at still does the job. The originals computed
+    // their vault as Path(__file__).parents[2]/"vault", so repointing them
+    // would have moved the vault to a directory that does not exist, and this
+    // check would have gone green over a brief written where nobody looks.
+    "point it at something that exists AND still works from there; `node ~/cleetusd/bin/job.mjs --list` for the rebuilt ones");
 
   // ── every plist is valid XML ────────────────────────────────────────────────
   //
@@ -394,6 +397,33 @@ export async function runDoctor() {
       a.fix?.steps?.join(" ") || "");
   } catch (e) {
     check("access", "macOS is not refusing him anything", false, e.message);
+  }
+
+  // ── the scheduled jobs actually ran ────────────────────────────────────────
+  //
+  // The check above asks whether each agent points at a file that exists. That
+  // is necessary and it is not sufficient, and the difference is the entire
+  // history of this system: ten agents pointed at nothing for three months and
+  // the only reason anybody found out was a check written after the fact.
+  //
+  // A job that runs on schedule and FAILS every time looks identical from
+  // launchd's side to one that is working. So this reads what each job wrote
+  // about itself. `text-monitor` is expected to fail until Full Disk Access is
+  // granted and is called out by name rather than being allowed to keep this
+  // permanently red — a check that is always red is one people stop reading.
+  try {
+    const { JOBS, jobHistory } = await import("./jobs.mjs");
+    const hist = await jobHistory();
+    const ids = Object.keys(JOBS);
+    const failing = ids.filter((id) => hist[id]?.ok === false && id !== "text-monitor");
+    const never = ids.filter((id) => !hist[id]);
+    check("jobs", "the scheduled jobs are working", failing.length === 0,
+      failing.length ? `failing: ${failing.map((id) => `${id} (${hist[id].summary.slice(0, 60)})`).join("; ")}`
+        : `${ids.length - never.length}/${ids.length} have run, none failing` +
+          (never.length ? ` · not yet run: ${never.join(", ")}` : ""),
+      "node ~/cleetusd/bin/job.mjs <id> to run one by hand; ~/cleetus-memory/jobs.log is the record");
+  } catch (e) {
+    check("jobs", "the scheduled jobs are working", false, e.message);
   }
 
   // ── the object tracker ─────────────────────────────────────────────────────

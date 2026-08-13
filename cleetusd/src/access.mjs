@@ -17,7 +17,7 @@
 // your Desktop".
 
 import { execFile } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { realpathSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
 
@@ -46,7 +46,26 @@ function grantTarget() {
   // versioned" and the caveat never fired, on the one machine where it is the
   // whole problem. The comparison has to run the other way: take the path a
   // person would type, resolve THAT, and see whether it lands somewhere else.
-  const real = process.execPath || "/opt/homebrew/bin/node";
+  // The binary that needs the grant is the one LAUNCHD runs, not the one
+  // running this code.
+  //
+  // accessReport() is called in-process by the doctor, and the doctor gets run
+  // by hand from a terminal as often as by the daemon. In a shell using fnm,
+  // process.execPath is fnm's node — so the report said "grant Full Disk Access
+  // to ~/.local/share/fnm/.../node", which is true of nothing that matters:
+  // cleetusd runs under /opt/homebrew/bin/node and would still be denied after
+  // following that advice to the letter.
+  //
+  // The subject of this whole report is cleetusd, so the plist is the authority
+  // on which binary it is. process.execPath is the fallback for when the plist
+  // cannot be read, and is correct in the case that matters most anyway: the
+  // daemon asking about itself.
+  let real = process.execPath || "/opt/homebrew/bin/node";
+  try {
+    const plist = readFileSync(join(CONFIG.home, "Library/LaunchAgents/com.cleetus.cleetusd.plist"), "utf8");
+    const first = plist.match(/<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]+)<\/string>/);
+    if (first) real = realpathSync(first[1]);
+  } catch { /* fall back to this process */ }
   const candidates = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"];
   for (const link of candidates) {
     try {

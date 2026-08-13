@@ -31,7 +31,21 @@ import { CONFIG, secrets as envSecrets } from "./config.mjs";
 
 const FILE = join(CONFIG.memoryRoot, "keyring.json");
 
-const clean = (s) => String(s || "").trim().replace(/[^A-Za-z0-9_.-]/g, "_").toUpperCase();
+/**
+ * One canonical name per secret.
+ *
+ * Everything that is not a letter or a digit becomes an underscore. That is
+ * blunter than it looks and it is deliberate: the model writes the same key as
+ * OPENAI_API_KEY, openai-api-key and "openai api key" depending on the
+ * sentence, and a store that treats those as three different secrets answers
+ * "no secret called that" while holding it. The first version kept dashes and
+ * dots as themselves, which is exactly the case that failed.
+ *
+ * Collapsed and trimmed so "openai  api  key" and "OPENAI_API_KEY_" land on
+ * the same name as well.
+ */
+const clean = (s) =>
+  String(s || "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 
 async function load() {
   const raw = await readFile(FILE, "utf8").catch(() => null);
