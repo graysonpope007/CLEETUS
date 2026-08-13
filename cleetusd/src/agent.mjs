@@ -175,6 +175,13 @@ async function buildSystem(agentId, question) {
     "Two exceptions only: a document that is meant to be formatted, like a contract, and technical work where structure is the content — code, a file walkthrough, a command sequence, a side-by-side comparison. Nothing else. Unsure? Plain text.",
     "",
     "Use your tools rather than guessing. If he mentions a project, a file or a person, go and look before you answer. If you learn something durable about him, call remember_fact. If you work out how to do something repeatable, call save_skill.",
+    // Asked about a product name it had never seen, the nutrition agent invented
+    // a confident history for it — origin, era, what it superseded — with no
+    // hedge and no tool calls. The style rule above is part of why: "no
+    // hedging, no disclaimers" reads as a instruction never to say "I don't
+    // know", and the model resolved the conflict by producing something that
+    // sounded right. So the two are reconciled here rather than left to fight.
+    "If you do not know something, say so in one short sentence and stop. A product, a person, a term, a number you have not seen — say you have not seen it, then look it up if a tool can. Never fill the gap with something that merely sounds right; a confident invention is the single worst thing you can hand him, because he will act on it. 'No hedging' means do not pad an answer you actually have. It is not permission to manufacture one you do not.",
     hints.length ? "\n" + hints.join("\n") : "",
     memory ? `\n## What you know about Grayson\n(Shared. Everything here was told to Cleetus or to one of the agents, and every agent sees it.)\n${memory}` : "",
     own ? `\n## What YOU have learned as the ${agentId} agent\n(Yours specifically. He told you these; no other agent sees them.)\n${own}` : "",
@@ -226,11 +233,30 @@ export async function route(question) {
 export function looksFailed({ answer = "", used = [] }) {
   if (used.length > 0 && !answer) return true;      // ran tools, said nothing
   if (!answer.trim()) return true;                  // said nothing at all
+
+  // An answer that stops on a promise is not an answer. "Let me check the
+  // Cleetus V2 project:" was being recorded as a successful run, so the one
+  // failure mode a user actually complains about — half an answer — was the
+  // only one the teacher never saw. Checked before the did-some-work exit
+  // below, which used to pass every one of these straight through.
+  const tail = answer.trim().slice(-220);
+  if (/(?:^|[\s>])(?:let me|i(?:'ll| will)|now i(?:'ll| will)|next,? i(?:'ll| will))\b[^.!?]*:?\s*$/i.test(tail)
+      || /\b(?:checking|looking|searching|let me see)\b[^.!?]*:\s*$/i.test(tail)) {
+    return true;
+  }
+
   if (used.length > 0) return false;                // it did some work
 
   const disclaims = /\bI (cannot|can't|can not|don't have|do not have|am unable)\b/i.test(answer);
   if (!disclaims) return false;
-  return /\b(file|files|folder|directory|directories|disk|drive|computer|machine|laptop|mac|shell|terminal|command|script|vault|obsidian|note|notes|memory|remember|desk light|camera|codebase|repo)\b/i
+  // Browsing joined this list the day it started working. Asked about a tax
+  // credit it had never heard of, the tax agent correctly declined to invent
+  // one — and then said it "cannot access the Georgia DOR website", while
+  // holding web_open and carrying a brief that tells it to check rates against
+  // dor.georgia.gov. Refusing a capability it has is the same failure as
+  // refusing to read a file, and it was going unrecorded because the words for
+  // it were missing here.
+  return /\b(file|files|folder|directory|directories|disk|drive|computer|machine|laptop|mac|shell|terminal|command|script|vault|obsidian|note|notes|memory|remember|desk light|camera|codebase|repo|website|web|browser|browse|internet|online|url|page)\b/i
     .test(answer);
 }
 
@@ -245,11 +271,27 @@ export async function ask({ history, agent, onStep }) {
   const used = [];
   let answer = "";
 
+  // Why these are tracked separately: this model narrates before it acts, so a
+  // turn that calls tools usually ALSO carries a line of text — "Let me check
+  // the Cleetus V2 project:". That is a preamble, not an answer. The loop used
+  // to assign `answer = res.text || answer` on every pass, so each preamble
+  // overwrote the last, and a run that used all its steps returned the final
+  // preamble as its result: an answer that stops mid-thought on a colon, which
+  // is exactly what it looked like from the outside.
+  //
+  // Only a turn that calls NO tools is an answer. Everything else is narration.
+  let ranOut = true;
+  const preambles = [];
+
   for (let step = 0; step < CONFIG.maxSteps; step++) {
     const res = await chat({ messages, tools: toolSchemas() });
-    answer = res.text || answer;
 
-    if (!res.toolCalls.length) break;
+    if (!res.toolCalls.length) {
+      answer = res.text || answer;
+      ranOut = false;
+      break;
+    }
+    if (res.text && res.text.trim()) preambles.push(res.text.trim());
 
     // Record the assistant turn verbatim so tool ids line up on the next pass.
     messages.push(res.raw);
@@ -265,21 +307,37 @@ export async function ask({ history, agent, onStep }) {
     }
   }
 
-  // Ran out of steps still holding the tools, and never wrote a sentence. All
-  // that work — twelve searches through the vault — was about to be thrown away
-  // and returned as an empty string, which reads as Cleetus ignoring you.
+  // Ran out of steps still holding the tools. All that work — a dozen searches
+  // through the vault — used to be thrown away.
   //
-  // One more pass with NO tools offered. He cannot call anything, so the only
-  // move left is to answer from what he already found.
-  if (!answer.trim() && used.length) {
+  // This used to fire only when the answer was EMPTY, which is the case it
+  // never actually caught: the model almost always leaves a preamble behind, so
+  // `answer` was a non-empty half-sentence and the salvage was skipped. Running
+  // out of steps is itself the trigger now, whatever text is sitting there.
+  //
+  // One more pass with NO tools offered. It cannot call anything, so the only
+  // move left is to answer from what it already found.
+  if (ranOut && used.length) {
     messages.push({
       role: "user",
       content:
-        "You are out of tool calls. Answer now from what you already found above. " +
-        "If it was not enough, say what you looked at and what is still missing.",
+        "You are out of tool calls — no more are available, so do not announce " +
+        "another one. Write the complete answer now, from what you already found " +
+        "above. State the conclusion first. If what you found was not enough, say " +
+        "plainly what you checked, what you concluded, and what is still unknown. " +
+        "Do not end on a promise to look at something else.",
     });
     const res = await chat({ messages }).catch(() => null);
-    answer = res?.text || answer;
+    const finalText = res?.text?.trim();
+    // Falling back to a preamble is a last resort, and it is still better than
+    // an empty bubble — but it is marked, so a truncated answer is never passed
+    // off as a finished one.
+    answer = finalText
+      || (preambles.length
+            ? `${preambles[preambles.length - 1]}\n\n[Ran out of tool calls after ${used.length} of them and could not finish. Ask again to continue from here.]`
+            : answer);
+  } else if (!answer.trim() && preambles.length) {
+    answer = preambles[preambles.length - 1];
   }
 
   // Anything he stated about himself, kept without him having to ask. The model

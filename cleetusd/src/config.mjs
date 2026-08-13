@@ -113,7 +113,14 @@ export const CONFIG = {
   sitePassword: env.SITE_PASSWORD || "",
 
   // Tool-loop ceiling. A loop that cannot end is worse than one that gives up.
-  maxSteps: Number(env.CLEETUSD_MAX_STEPS || 12),
+  //
+  // Was 12, and that was under what real questions cost: "can you fix studio
+  // locate" spent fourteen calls just locating the project before it had
+  // anything to say, then hit the ceiling with the answer still unwritten.
+  // Twenty is chosen against that observed shape rather than as a round number.
+  // The ceiling is also much less sharp now — running out triggers a final
+  // no-tools pass, so the work already done still becomes an answer.
+  maxSteps: Number(env.CLEETUSD_MAX_STEPS || 20),
 
   // Kill switch for the shell tool specifically. Everything else stays usable.
   // Set CLEETUSD_NO_SHELL=1 to take the machine out of his hands without
