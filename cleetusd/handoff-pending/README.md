@@ -1,5 +1,12 @@
 # Pending handoff updates
 
+> **APPLIED 12 Aug 2026, 22:5x ET.** Desktop access was granted and
+> `apply-pending-handoff.py` ran clean: sections 17-25 written, table of contents
+> complete, no unbalanced tags, rendered and checked in a browser. The handoff went
+> from 9 sections to 18 (s08-s25) and 115,202 to 153,090 characters. A timestamped
+> `.bak` sits beside it. Nothing below is outstanding; it is kept as the record of
+> what was queued and why. Re-running exits on its own (`id="s25"` guard).
+
 macOS keeps revoking this background session's access to `~/Desktop`. Everything outside
 Desktop is unaffected, so the work is done and verified — only the write to the handoff is
 blocked.
