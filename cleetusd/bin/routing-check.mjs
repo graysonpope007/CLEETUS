@@ -76,7 +76,11 @@ const CASES = [
 const accepts = (want) => (Array.isArray(want) ? want : [want]);
 const GENERALIST = new Set(CASES.filter(([, want]) => accepts(want).includes("cleetus")).map(([q]) => q));
 
-let exact = 0, fellBack = 0, total = 0, forced = 0, forcedTotal = 0;
+// exactTotal counts EVERY sample; `total` counts only the specialist ones,
+// because the fallback rate is meaningless on a case where the generalist is a
+// correct answer. Sharing one denominator between them printed "exact 41/36
+// (114%)" — the numerator ran over all 18 cases and the denominator over 12.
+let exact = 0, exactTotal = 0, fellBack = 0, total = 0, forced = 0, forcedTotal = 0;
 for (const [q, want] of CASES) {
   const generalistCase = GENERALIST.has(q);
   const got = [];
@@ -84,7 +88,7 @@ for (const [q, want] of CASES) {
   const ok = accepts(want);
   const hits = got.filter((g) => ok.includes(g)).length;
   const backs = got.filter((g) => g === "cleetus").length;
-  exact += hits;
+  exact += hits; exactTotal += SAMPLES;
   // On a case where cleetus is acceptable, landing there is not a fallback —
   // it is one of the right answers, and counting it as a fault is what made
   // the relabelled camera questions read as a 24% regression.
@@ -101,7 +105,7 @@ for (const [q, want] of CASES) {
   console.log(`  ${mark} ${String(hits + "/" + SAMPLES).padEnd(5)} ${spread.padEnd(22)} ${q.slice(0, 40)}`);
 }
 
-console.log(`\n  exact ${exact}/${total} (${Math.round((exact / total) * 100)}%)`);
+console.log(`\n  exact ${exact}/${exactTotal} (${Math.round((exact / exactTotal) * 100)}%)`);
 console.log(`  fell back to the generalist ${fellBack}/${total} (${Math.round((fellBack / total) * 100)}%)  ← on specialist questions, the one that matters`);
 console.log(`  forced onto a specialist ${forced}/${forcedTotal} (${forcedTotal ? Math.round((forced / forcedTotal) * 100) : 0}%)  ← on generalist questions, the same fault backwards`);
 
