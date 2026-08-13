@@ -73,7 +73,32 @@ function isLocalBrowser(req) {
   return loopback && !proxied;
 }
 
-const server = createServer(async (req, res) => {
+// One bad request must not take the assistant down.
+//
+// An exception inside an async handler becomes an unhandled rejection, and Node
+// exits the process on those. That is the correct default for a script and the
+// wrong one for a daemon somebody talks to: a single malformed request, or a
+// camera proxy tripping over its own headers, killed cleetusd and every
+// unrelated conversation in flight with it.
+//
+// So the handler is wrapped. Genuine faults still get logged loudly and still
+// show up in the run files and the doctor; they just stop being fatal to
+// everything else happening at the time.
+const server = createServer((req, res) => {
+  handle(req, res).catch((e) => {
+    console.error("[cleetusd] request failed:", req.method, req.url, e?.stack || e);
+    try {
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "handler_failed", detail: String(e?.message || e) }));
+      } else {
+        res.end();
+      }
+    } catch { /* the socket is already gone; nothing left to say */ }
+  });
+});
+
+async function handle(req, res) {
   const url = new URL(req.url, `http://${CONFIG.host}:${CONFIG.port}`);
 
   // ── CORS preflight ──
@@ -156,7 +181,11 @@ const server = createServer(async (req, res) => {
   // than picking one — so it answers to this Mac only, token or no token.
   const CURSOR_ROUTES = ["/airpad/control", "/airpad/display", "/airpad/span",
                          "/airpad/accessibility"];
-  if (CURSOR_ROUTES.includes(url.pathname)) {
+  // Calibration writes thresholds that decide what the cursor does, so it lives
+  // behind the same local-only gate — and it is a prefix rather than a list
+  // because these are nested (/airpad/calibrate/scroll/fit) and there are eight
+  // of them. The studio page drives all of them from the browser.
+  if (CURSOR_ROUTES.includes(url.pathname) || url.pathname.startsWith("/airpad/calibrate/")) {
     if (!isLocalBrowser(req)) {
       return json(res, {
         ok: false,
@@ -241,9 +270,24 @@ const server = createServer(async (req, res) => {
       }
       return res.end();
     } catch {
-      // A 502 is honest here: this endpoint exists, the thing behind it does not.
-      res.writeHead(502, { "Content-Type": "text/plain" });
-      return res.end("airpad not reachable on 127.0.0.1:8768");
+      // The failure can happen at two completely different moments and only one
+      // of them can still send a status.
+      //
+      // Before the pump starts, nothing has been written and a 502 is honest:
+      // this endpoint exists, the thing behind it does not. Once the 200 above
+      // has gone out, the headers are spent — and calling writeHead again
+      // throws ERR_HTTP_HEADERS_SENT, from inside an async handler, which takes
+      // the WHOLE DAEMON down. It did: airpad hiccupped mid-stream, cleetusd
+      // exited 1, and every unrelated request in flight died with it, including
+      // three long-running chat calls that had nothing to do with the camera.
+      //
+      // A video that stops is a video that stops. End the response and let the
+      // browser reconnect, which is what an <img> on an MJPEG stream does.
+      if (!res.headersSent) {
+        res.writeHead(502, { "Content-Type": "text/plain" });
+        return res.end("airpad not reachable on 127.0.0.1:8768");
+      }
+      return res.end();
     }
   }
 
@@ -356,7 +400,7 @@ const server = createServer(async (req, res) => {
   }
 
   return json(res, { ok: false, error: "not found" }, 404);
-});
+}
 
 server.listen(CONFIG.port, CONFIG.host, () => {
   console.log(`cleetusd on http://${CONFIG.host}:${CONFIG.port}`);
