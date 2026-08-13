@@ -151,7 +151,11 @@ const server = createServer(async (req, res) => {
   // and click with it. These require the request to have originated on the
   // machine itself — loopback peer, no forwarding headers — which a request
   // through cloudflared can never look like, valid token or not.
-  const CURSOR_ROUTES = ["/airpad/control", "/airpad/display", "/airpad/accessibility"];
+  // /airpad/span belongs here for the same reason as the rest: it decides
+  // WHICH SCREENS the pointer can reach, and "all of them" is a bigger grant
+  // than picking one — so it answers to this Mac only, token or no token.
+  const CURSOR_ROUTES = ["/airpad/control", "/airpad/display", "/airpad/span",
+                         "/airpad/accessibility"];
   if (CURSOR_ROUTES.includes(url.pathname)) {
     if (!isLocalBrowser(req)) {
       return json(res, {
