@@ -230,6 +230,96 @@ export async function route(question) {
  * filed as a failure and sent to Claude to be fixed. It cannot be fixed. It is
  * not broken. So the disclaimer now has to be ABOUT something in reach.
  */
+/**
+ * Does this text stop on an announcement instead of a conclusion?
+ *
+ * Shared, because it is needed in two places that must agree: deciding a run
+ * failed, and deciding the forced final pass has to be asked again. If those
+ * two ever disagreed, a truncated answer would be handed back and simultaneously
+ * recorded as fine.
+ */
+/**
+ * Get a real answer out of a run that used up its tool calls.
+ *
+ * Appending "now answer" to the transcript does not work, and the reason is
+ * worth stating: after twenty tool calls the context IS a tool loop, so the
+ * most probable next turn is another line of narration. Measured — the first
+ * version of this pushed one more user message onto those same messages and got
+ * back "Let me check what might be broken by looking at the actual issue:",
+ * which is the exact failure it was written to prevent.
+ *
+ * So the transcript is not continued. A fresh two-message conversation is built
+ * from the findings: nothing in it looks like a tool loop, so nothing pulls the
+ * model back into narrating one. Temperature is dropped because this is a
+ * formatting instruction to follow, not a question to be creative about, and if
+ * the reply still ends on a promise it is asked again, more bluntly.
+ */
+async function forceAnswer({ question, messages, used }) {
+  const PER_TOOL = 1500;
+  const TOTAL = 24_000;
+  const findings = [];
+  let budget = TOTAL;
+  // Newest first: when the budget runs out it should be the earliest, most
+  // exploratory calls that get dropped, not the ones that found the answer.
+  for (let i = messages.length - 1; i >= 0 && budget > 0; i--) {
+    const m = messages[i];
+    if (m.role !== "tool") continue;
+    const body = String(m.content || "").slice(0, PER_TOOL);
+    const entry = `### ${m.tool_name}\n${body}`;
+    if (entry.length > budget) break;
+    budget -= entry.length;
+    findings.unshift(entry);
+  }
+
+  const base = [
+    {
+      role: "system",
+      content:
+        "You are writing the final answer to a question. The research is already " +
+        "done and is given to you below. You have NO tools and cannot look " +
+        "anything up, so there is nothing left to announce — only the answer " +
+        "itself. Lead with the conclusion. Be specific: name the files, paths and " +
+        "commands you found. If the research did not settle it, say what it did " +
+        "establish and what is still unknown. Never end by saying you will check " +
+        "something.",
+    },
+    {
+      role: "user",
+      content:
+        `Question: ${question}\n\n` +
+        `What ${used.length} tool calls turned up:\n\n${findings.join("\n\n")}\n\n` +
+        `Write the answer.`,
+    },
+  ];
+
+  let out = "";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const msgs = attempt === 0
+      ? base
+      : [...base, {
+          role: "user",
+          content:
+            "That ended on something you were going to check, and you cannot check " +
+            "anything. Rewrite it as a finished answer: conclusion first, then the " +
+            "evidence, then what is still unknown. No sentence may begin with " +
+            "\"Let me\" or \"I'll\".",
+        }];
+    const res = await chat({ messages: msgs, temperature: 0.3 }).catch(() => null);
+    const text = res?.text?.trim();
+    if (!text) continue;
+    out = text;
+    if (!endsOnAPromise(text)) break;
+  }
+  return out;
+}
+
+export function endsOnAPromise(text = "") {
+  const tail = String(text).trim().slice(-220);
+  if (!tail) return false;
+  return /(?:^|[\s>])(?:let me|i(?:'ll| will)|now i(?:'ll| will)|next,? i(?:'ll| will))\b[^.!?]*:?\s*$/i.test(tail)
+      || /\b(?:checking|looking|searching|let me see)\b[^.!?]*:\s*$/i.test(tail);
+}
+
 export function looksFailed({ answer = "", used = [] }) {
   if (used.length > 0 && !answer) return true;      // ran tools, said nothing
   if (!answer.trim()) return true;                  // said nothing at all
@@ -239,11 +329,7 @@ export function looksFailed({ answer = "", used = [] }) {
   // failure mode a user actually complains about — half an answer — was the
   // only one the teacher never saw. Checked before the did-some-work exit
   // below, which used to pass every one of these straight through.
-  const tail = answer.trim().slice(-220);
-  if (/(?:^|[\s>])(?:let me|i(?:'ll| will)|now i(?:'ll| will)|next,? i(?:'ll| will))\b[^.!?]*:?\s*$/i.test(tail)
-      || /\b(?:checking|looking|searching|let me see)\b[^.!?]*:\s*$/i.test(tail)) {
-    return true;
-  }
+  if (endsOnAPromise(answer)) return true;
 
   if (used.length > 0) return false;                // it did some work
 
@@ -318,20 +404,15 @@ export async function ask({ history, agent, onStep }) {
   // One more pass with NO tools offered. It cannot call anything, so the only
   // move left is to answer from what it already found.
   if (ranOut && used.length) {
-    messages.push({
-      role: "user",
-      content:
-        "You are out of tool calls — no more are available, so do not announce " +
-        "another one. Write the complete answer now, from what you already found " +
-        "above. State the conclusion first. If what you found was not enough, say " +
-        "plainly what you checked, what you concluded, and what is still unknown. " +
-        "Do not end on a promise to look at something else.",
-    });
-    const res = await chat({ messages }).catch(() => null);
-    const finalText = res?.text?.trim();
+    let finalText = await forceAnswer({ question, messages, used });
+    // Both attempts still ended on a promise. Say so on the answer itself —
+    // silently handing back half a reply is the whole bug, and it does not stop
+    // being that bug because a retry produced it.
+    if (finalText && endsOnAPromise(finalText)) {
+      finalText += `\n\n[Stopped here after ${used.length} tool calls without reaching a conclusion. Ask again and it will pick up from what it found.]`;
+    }
     // Falling back to a preamble is a last resort, and it is still better than
-    // an empty bubble — but it is marked, so a truncated answer is never passed
-    // off as a finished one.
+    // an empty bubble — but it is marked too.
     answer = finalText
       || (preambles.length
             ? `${preambles[preambles.length - 1]}\n\n[Ran out of tool calls after ${used.length} of them and could not finish. Ask again to continue from here.]`
