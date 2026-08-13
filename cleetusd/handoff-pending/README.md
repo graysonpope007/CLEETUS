@@ -1,18 +1,44 @@
-# Pending handoff update — section 15
+# Pending handoff updates
 
-`apply-section-15.py` adds **section 15 (the browser, working for the first time)** to
-`~/Desktop/Cleetus/CLEETUS-HANDOFF.html`, and refreshes the rows that tonight's work made
-stale (browse tool now live, 18 tools not 15, 24 doctor checks not 20).
+macOS keeps revoking this background session's access to `~/Desktop`. Everything outside
+Desktop is unaffected, so the work is done and verified — only the write to the handoff is
+blocked.
 
-It could not be applied automatically: macOS revoked this session's access to `~/Desktop`
-mid-task. Every path outside Desktop stayed readable, and the handoff itself is intact and
-complete through section 14 — only this addition is outstanding.
+    python3 ~/cleetusd/handoff-pending/apply-pending-handoff.py
 
-Run it from a terminal that has Desktop access (any normal Terminal window):
+Applies four things, asserting each anchor first so it fails loudly rather than
+half-applying:
 
-    python3 ~/cleetusd/handoff-pending/apply-section-15.py
+1. **Correction to section 15** — Playwright was not one of the browser faults. The harness
+   launches with `channel: 'chrome'`; the failure was in a probe I wrote while diagnosing.
+   Three faults, not four.
+2. **Section 17** — the tool sweep: the missing-argument guard, and the browser being unable
+   to recover from being closed.
+3. **Correction to section 14** — the six "recoverable" launch agents are **not** a pure path
+   rewrite. This is the one that matters.
+4. **Section 18** — why. Short version: the vault is computed as
+   `Path(__file__).parents[2] / "vault"`, so repointing the scripts moves the vault to
+   `/Users/grayson/vault`, which does not exist. The brief would run, succeed, and write
+   where nobody looks.
 
-It prints `added section 15 and refreshed the affected rows` and reports tag balance.
-Safe to run once; running it twice would add the section twice, so check first:
+5. **Section 19** — the flight map was returning `no_adsb_feed_reachable` in production. adsb.lol
+   answers 200 with an empty list, and the source loop returned on the first *Array* it got, so the
+   fallbacks never ran. adsb.fi works and is now tried first. Live: 4,862 aircraft, 20/20 anchors.
 
-    grep -c 'id="s15"' ~/Desktop/Cleetus/CLEETUS-HANDOFF.html   # 0 = not yet applied
+Superseded check: `grep -c 'id="s19"' ~/Desktop/Cleetus/CLEETUS-HANDOFF.html` → 0 means not yet.
+
+6. **Section 24** — the air trackpad. Four faults stacked, every one presenting as nothing
+   happening while every readout stayed green: it was driving the television, the tracker
+   thread had been dead for hours on a MediaPipe timestamp error, the camera was sending one
+   picture over and over (0.2 real fps at the configured 1080p), and the watchdog's polite
+   SIGTERM could not clear it. Plus calibration: a homography from four measured corners.
+
+7. **Section 25** — /reach and /ruview as real pages, and the chat that answered with its own
+   preamble. Same question, same 20 tool calls: 378 characters ending on a colon, against
+   1,479 that lead with the conclusion.
+
+Rehearsed before shipping: the script was run against a synthetic file carrying all eight
+anchors it asserts. Exit 0, both sections spliced, table of contents complete, both sections
+internally balanced.
+
+Already applied? `grep -c 'id="s25"' ~/Desktop/Cleetus/CLEETUS-HANDOFF.html` → 0 means not yet.

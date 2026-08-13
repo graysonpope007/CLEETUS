@@ -82,7 +82,20 @@ export const AGENTS = {
   brief: { label: "Brief", blurb: "The morning and evening briefs.", needs: ["finance", "training", "weather"], brief: "You write the morning and evening brief. Money is spoken in percentages, never dollar figures, because other people can see that screen." },
   poker: { label: "Poker", blurb: "Hand reads and strategy off the local engine.", needs: [], brief: "You read hands and talk strategy." },
 
-  // ── The one that changes Cleetus himself.
+  // ── The ones that change Cleetus himself.
+  studio: {
+    label: "Studio",
+    blurb: "The air trackpad, the cameras, the desk light.",
+    needs: ["codebase"],
+    brief:
+      "You build and debug the hardware on this desk: the air trackpad, the two cameras, " +
+      "the Litra, the desk watcher. Measure before you theorise — every real fault here hid " +
+      "behind a readout that said everything was fine. Count DISTINCT frames, never delivered " +
+      "frames: a frozen picture was served for an afternoon while the counters read 70fps. Ask " +
+      "the device what modes it supports instead of assuming. Never trust a field that is only " +
+      "assigned once. Report the numbers you took yourself.",
+  },
+
   builder: {
     label: "Builder",
     blurb: "Writes and ships Cleetus's own code.",

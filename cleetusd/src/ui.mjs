@@ -169,7 +169,7 @@ const GROUPS = {
   Body: ['hair','skin','muscle','nutrition','fitness'],
   Presentation: ['fashion','redesign'],
   'Money and work': ['deals','finance','stocks','tax','books','booking','writing','image','music','brief','poker'],
-  Itself: ['builder'],
+  Itself: ['studio','builder'],
 };
 const byId = Object.fromEntries(agents.map(a => [a.id, a]));
 const rail = $('agents');
