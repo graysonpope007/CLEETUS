@@ -288,6 +288,58 @@ real env vars.
 | `CLEETUSD_NO_TEACHER=1` | never call the cloud teacher |
 | `CLEETUSD_TEACHER_MODEL` | default `claude-opus-5` |
 
+## Decensoring the model itself
+
+`bin/heretic-laguna.sh` runs [Heretic](https://github.com/p-e-w/heretic) over
+Laguna-XS-2.1, the model this daemon runs on. Directional ablation, with the
+ablation strength chosen automatically by co-minimising refusal rate against KL
+divergence from the original.
+
+Be straight about what it does: **it suppresses refusal broadly**, not only the
+false ones. Heretic's own headline result is harmful-prompt refusals going
+97/100 to 3/100. The model comes out more willing about everything, and it is
+wired into a process holding the shell, the disk and the bank credentials.
+
+Four facts this Mac forces, all measured rather than assumed:
+
+| | |
+|---|---|
+| Laguna-XS-2.1 is 66.9 GB in bf16 | against 68.7 GB of RAM shared with the OS. It does not fit. |
+| bitsandbytes 0.49 works on Apple Silicon | verified: a 4-bit quantize/dequantize round trip on MPS. ~20 GB loaded. This is the only reason any of this is possible here. |
+| Heretic's own merge does not fit | it reloads the base model unquantized and warns it can freeze the machine. So `--export-strategy ADAPTER`, and `bin/merge_lora_streaming.py` applies the LoRA one shard at a time at ~6 GB peak. Verified **bit-identical** to peft's own merge across all 311 tensors of a test model. |
+| `--device-map auto` fails | accelerate sizes the device by what is free *now*, decides part of the model goes to CPU, and bitsandbytes refuses to be split. Pin it: `--device-map mps`. |
+
+Two more traps, both of which cost hours:
+
+**Heretic needs a pty.** Even with `--trial-index` and `--model-action` set it
+builds prompt\_toolkit objects that touch the terminal, and with stdout
+redirected that is `OSError` errno 22 — raised *after* the optimisation
+finishes, which is the most expensive place in the run to fail. Hence
+`script -q /dev/null`.
+
+**Do not take the tokenizer fix.** transformers warns that this tokenizer uses
+"an incorrect regex pattern" and offers `fix_mistral_regex=True`. That pattern
+is the one poolside shipped and the one Ollama uses at inference. Tokenizing
+differently from deployment would put the measurement out of step with the
+thing being measured.
+
+The run is staged and resumable — `download`, `abliterate`, `merge`, `package`,
+`activate` — and each stage skips itself if its output already exists.
+`bin/heretic-probe.py` times one generation at 4-bit and prints what the
+configured trial count would therefore cost, so the length of the run is known
+before it is started rather than after.
+
+The config lives in `~/models/heretic-work/config.toml` and adds a **second
+refusal objective** to Heretic's stock one, because the stock one is not what
+this model actually fails at. The failures recorded in `agent.mjs` are
+capability denials — "I cannot access the Georgia DOR website" from an agent
+holding `web_open`. So a second scorer runs on `heretic/capability-prompts.txt`,
+which is drawn from what Grayson actually asks, **with cleetusd's real system
+prompt attached**. That last part is the whole point: evaluated bare, "read
+~/cleetus-memory/MEMORY.md" *should* be refused, and optimising that away would
+tune the model to lie. With the access asserted in the prompt, a denial is
+false, and minimising it makes the model honest rather than compliant.
+
 ## Whether he can actually see the whole disk
 
 `GET /access`, or the `check_access` tool, probes every protected location and

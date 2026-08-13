@@ -36,6 +36,7 @@ import { randomUUID } from "node:crypto";
 import { CONFIG } from "./config.mjs";
 import { slugify } from "./memory.mjs";
 
+import { localStamp } from "./when.mjs";
 const DIR = join(CONFIG.memoryRoot, "conversations");
 
 // A thread this long is not a conversation any more, it is a log. The whole
@@ -241,7 +242,7 @@ export async function recentDigest(limit = 6) {
   const rows = await list({ limit });
   if (!rows.length) return "";
   return rows
-    .map((r) => `- ${r.id} · ${r.title} (${r.agent}, ${r.turns} turn${r.turns === 1 ? "" : "s"}, last ${String(r.updated).slice(0, 16).replace("T", " ")})`)
+    .map((r) => `- ${r.id} · ${r.title} (${r.agent}, ${r.turns} turn${r.turns === 1 ? "" : "s"}, last ${localStamp(r.updated)})`)
     .join("\n");
 }
 

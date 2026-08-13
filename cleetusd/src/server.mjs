@@ -9,6 +9,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
+import { isLocalBrowser, authed } from "./gate.mjs";
 import { ask, route } from "./agent.mjs";
 import { agentList } from "./agents.mjs";
 import { health as ollamaHealth, visionReady } from "./ollama.mjs";
@@ -50,39 +51,7 @@ async function readBody(req) {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { return {}; }
 }
 
-// Only enforced when a token is configured. On loopback with no token set this
-// is a dev convenience; the moment it is exposed, CLEETUSD_TOKEN is what stands
-// between a stranger and `run_shell`.
-function authed(req) {
-  if (!CONFIG.token) return true;
-  const h = req.headers.authorization || "";
-  return h === `Bearer ${CONFIG.token}`;
-}
 
-/**
- * A browser sitting at this Mac, as opposed to a request that arrived through
- * a proxy.
- *
- * A plain loopback check is NOT enough on its own and the reason is the whole
- * point: if this port is ever put behind the cloudflared tunnel, cloudflared
- * connects to 127.0.0.1 too, so every remote request would look local. What
- * distinguishes them is that a proxy adds forwarding headers. Absence of those
- * plus a loopback peer means the request really did originate on this machine.
- *
- * This exists because a browser cannot attach an Authorization header to a
- * top-level navigation, so the dashboard could never be opened otherwise. The
- * bearer still guards everything that arrives any other way.
- */
-function isLocalBrowser(req) {
-  const peer = req.socket?.remoteAddress || "";
-  const loopback = peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1";
-  const proxied =
-    req.headers["x-forwarded-for"] ||
-    req.headers["x-forwarded-proto"] ||
-    req.headers["x-forwarded-host"] ||
-    req.headers["cf-connecting-ip"];
-  return loopback && !proxied;
-}
 
 // One bad request must not take the assistant down.
 //

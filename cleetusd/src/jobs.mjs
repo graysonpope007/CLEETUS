@@ -45,6 +45,7 @@ import { CONFIG } from "./config.mjs";
 import { remember } from "./memory.mjs";
 import { accessReport } from "./access.mjs";
 
+import { localStamp } from "./when.mjs";
 const RUNS = join(CONFIG.memoryRoot, CONFIG.runsDir);
 const OUT = join(CONFIG.memoryRoot, "jobs");
 const LOG = join(CONFIG.memoryRoot, "jobs.log");
@@ -64,6 +65,36 @@ const stampDay = (d = new Date()) => {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
+
+/* Dollar amounts, in the shapes a model actually writes them: $5K, $1,200,
+   $47.50, $3 million. Deliberately NOT matching a bare "$" or "$SPY" — the
+   brief is allowed to name a ticker.
+
+   Only ever used through match() and replace(). A /g regex carries lastIndex
+   between .test() calls, so the same pattern tested twice answers true then
+   false, which is a bug that looks like flakiness. */
+// The magnitude word and the space before it are ONE optional group. Written as
+// `\s?(?:...)?` instead, the space is consumed even when no magnitude follows,
+// so "$1,200 out" redacts to "[amount]out".
+const MONEY = /\$\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:[kKmMbB]\b|million|billion|thousand))?/g;
+export const leakedMoney = (s) => String(s).match(MONEY) || [];
+
+/** Ask again, then redact whatever survives. Exported because the interesting
+ *  half of this guard is the branch that only runs when the model disobeys, and
+ *  waiting for that to happen on its own is not a test. `retry` is handed the
+ *  offending strings and returns a second attempt. */
+export async function scrubMoney(answer, retry) {
+  const leaks = leakedMoney(answer);
+  if (!leaks.length) return { text: answer, redacted: 0 };
+
+  const second = String((await retry(leaks)) || "");
+  if (second.trim() && !leakedMoney(second).length) return { text: second, redacted: 0 };
+
+  // Keep whichever attempt leaked less, then redact it. A retry that came back
+  // worse (or empty) is discarded rather than trusted for being newer.
+  const best = second.trim() && leakedMoney(second).length < leaks.length ? second : answer;
+  return { text: best.replace(MONEY, "[amount]"), redacted: leakedMoney(best).length };
+}
 
 /** Everything these write lands in ~/cleetus-memory/jobs, as markdown. */
 async function write(name, body) {
@@ -144,7 +175,7 @@ export const JOBS = {
       }
 
       const body = flags.length
-        ? `# Heartbeat ${new Date().toISOString().slice(0, 16).replace("T", " ")}\n\n${flags.join("\n\n")}\n`
+        ? `# Heartbeat ${localStamp(new Date().toISOString())}\n\n${flags.join("\n\n")}\n`
         : "";
       if (body) await write("heartbeat.md", body);
       return { ok: true, summary: flags.length ? `${flags.length} thing(s) flagged` : "nothing to flag" };
@@ -160,14 +191,35 @@ export const JOBS = {
   briefing: {
     what: "Writes the morning brief into the vault, using the brief agent.",
     async run() {
-      const answer = await askModel(
+      const ask =
         "Write this morning's brief for Grayson. Use your tools to get the real numbers rather than " +
         "guessing: today's calendar, the weather where he actually is, what training is due, and " +
         "anything you flagged in ~/cleetus-memory/jobs/heartbeat.md. Money in percentages, never " +
-        "dollar figures. Plain text, no headings, no lists.",
-        "brief",
-      );
+        "dollar figures. Plain text, no headings, no lists.";
+      let answer = await askModel(ask, "brief");
       if (!answer.trim()) return { ok: false, summary: "the model returned nothing" };
+
+      // "Money in percentages, never dollar figures" is an instruction, and an
+      // instruction is not a guarantee. The very first run of this job that
+      // anyone read shipped "roughly $5K across accounts" — the percentage rule
+      // held for the position sizes in the same sentence and broke on the cash.
+      // This brief syncs through iCloud and gets read on a phone at 7am, so the
+      // rule is his, not a house style.
+      //
+      // Retry once with the offending text quoted back, since the model is
+      // capable of obeying and mostly does. If the retry still leaks, redact and
+      // SAY SO in the summary: a brief with a visible redaction is more use at
+      // 7am than no brief, and a silent redaction is how a rule quietly rots.
+      const scrubbed = await scrubMoney(answer, (leaks) =>
+        askModel(
+          `${ask}\n\nYour previous attempt contained ${leaks.join(", ")}. That is exactly what you ` +
+          "must not write. Give the same brief with every amount as a percentage, a comparison, or " +
+          "left out.",
+          "brief",
+        ));
+      answer = scrubbed.text;
+      const redacted = scrubbed.redacted;
+
       const day = stampDay();
       await write(`brief-${day}.md`, `# Brief ${day}\n\n${answer}\n`);
       // Also into the vault, if it is reachable from here. Under launchd it
@@ -177,7 +229,8 @@ export const JOBS = {
       const vaultPath = join(CONFIG.vault, "10-Daily", `${day}.md`);
       const landed = await appendFile(vaultPath, `\n\n## Morning brief\n\n${answer}\n`, "utf8")
         .then(() => true).catch(() => false);
-      return { ok: true, summary: `brief written${landed ? " and appended to the daily note" : " (vault unreachable, memory root only)"}` };
+      const note = redacted ? `, ${redacted} dollar figure${redacted === 1 ? "" : "s"} redacted` : "";
+      return { ok: true, summary: `brief written${landed ? " and appended to the daily note" : " (vault unreachable, memory root only)"}${note}` };
     },
   },
 

@@ -18,8 +18,10 @@
 // WHAT IT WILL NOT DO, and why each one is load-bearing:
 //   - Run on a dirty tree. Grayson's uncommitted work is not the loop's to
 //     ship, and `git revert` would take his changes with it.
-//   - Run if the baseline is already red. It could not tell its own damage
-//     from the damage that was there when it started.
+//   - Run if cloud health is UNREACHABLE. Not merely red: regressed() counts
+//     only failures that are new since the baseline, so it works fine with
+//     things already broken. But if health cannot be measured at all, "after"
+//     is unmeasurable too and real damage would read as clean.
 //   - Touch its own files. A loop that edits its revert path can put itself
 //     somewhere it cannot get back from.
 //   - Exceed a daily cap, or run at all while a STOP file exists.
@@ -205,6 +207,44 @@ async function waitForDeploy(sha, { timeoutMs = 600_000 } = {}) {
 
 // ── The loop ────────────────────────────────────────────────────────────────
 
+/**
+ * Push the revert, rebasing over anyone who got in first.
+ *
+ * Pushing the fix and pushing the revert are not the same risk. If the FIX push
+ * is rejected, nothing shipped and the failure is safe. If the REVERT push is
+ * rejected, the bad commit is already live and simply stays there.
+ *
+ * That is not hypothetical: with another session pushing to this same repo, the
+ * window is the whole deploy wait. Reproduced in a scratch repo — our commit
+ * lands, another session pushes on top, and the revert push is refused as a
+ * non-fast-forward while the bad change stays live on main. `sh` rejects on a
+ * non-zero exit, so it threw out of the loop entirely: no history entry, no
+ * "reverted" outcome, just an error, with production still broken.
+ *
+ * Rebasing the revert onto the new tip lands it and keeps the other session's
+ * commit. Failure returns false rather than throwing, so the caller can report
+ * a revert that did not happen instead of vanishing into a stack trace.
+ */
+async function pushRevert(attempts = 3) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await sh("git push -q origin main");
+      return true;
+    } catch (e) {
+      log(`revert push rejected (attempt ${i}/${attempts})`, String(e.message || e).slice(0, 120));
+      if (i === attempts) return false;
+      // Someone else moved main. Replay the revert on top of them.
+      try { await sh("git pull -q --rebase origin main"); }
+      catch (rebaseFailed) {
+        log("rebase of the revert failed — leaving main alone", String(rebaseFailed.message || rebaseFailed).slice(0, 120));
+        await sh("git rebase --abort").catch(() => {});
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
 export async function improveOnce({ dry = false } = {}) {
   // Every guard below stops the loop from WRITING. None of them is a reason to
   // stop it from LOOKING, and --dry is documented as "find the work, change
@@ -237,8 +277,29 @@ export async function improveOnce({ dry = false } = {}) {
   const { stdout: baseSha } = await sh("git rev-parse HEAD");
 
   const before = await cloudHealth();
-  if (!before.ok && !dry) return { skipped: `baseline is already red (${(before.down || []).join(", ")}) — cannot tell my damage from existing damage` };
-  if (!before.ok) blockers.push(`baseline is already red (${(before.down || []).join(", ")})`);
+
+  // A red baseline used to stop the loop outright, on the grounds that it
+  // "cannot tell my damage from existing damage". regressed() twenty lines up
+  // does exactly that and says so: it diffs the SET of failures and counts only
+  // new names. The guard and the comparison contradicted each other.
+  //
+  // The cost of that contradiction was total. Every health candidate this loop
+  // generates has the form "X is down", so whenever there is health work to do
+  // the baseline is red BY DEFINITION — the loop could only ever run when it had
+  // nothing of that kind to fix. Four scheduled runs, four skips, no cycle ever
+  // completed.
+  //
+  // What genuinely cannot be worked through is a baseline it could not MEASURE.
+  // If the site is unreachable then "after" will be unreachable too, the set
+  // difference is empty, and a change that broke something real would read as
+  // clean. So the distinction is measurable-but-red versus not-measurable, not
+  // green versus red.
+  const unmeasurable = !before.ok && (before.down || []).includes("unreachable");
+  if (unmeasurable && !dry) {
+    return { skipped: `cloud health is unreachable (${before.error || "no detail"}) — cannot measure damage, so not risking any` };
+  }
+  if (unmeasurable) blockers.push("cloud health is unreachable — nothing could be verified");
+  else if (!before.ok) blockers.push(`baseline is red (${(before.down || []).join(", ")}) — working anyway, only NEW failures count as damage`);
 
   const found = await findWork(before);
 
@@ -312,7 +373,16 @@ export async function improveOnce({ dry = false } = {}) {
     return { outcome: "gates failed, nothing shipped", failed: failed.map((f) => ({ gate: f[0], detail: f[2] })), changed };
   }
 
-  const msg = `Cleetus: ${issue.what.slice(0, 60)}\n\n${result.answer.slice(0, 800)}\n\nFixed autonomously by the improve loop. Baseline health was green before this;\nif it goes red this commit is reverted automatically.`;
+  // The baseline is stated, not assumed. This message used to say "Baseline
+  // health was green before this" unconditionally, which stopped being true the
+  // moment the loop was allowed to work through a red baseline — and this line
+  // is exactly what someone reads months later when working out whether a
+  // commit is implicated in an outage. A commit message that misdescribes the
+  // conditions it shipped under is worse than one that says nothing.
+  const baseline = before.ok
+    ? "green"
+    : `red (${(before.down || []).join(", ")}) — those were already failing and are not this commit's doing`;
+  const msg = `Cleetus: ${issue.what.slice(0, 60)}\n\n${result.answer.slice(0, 800)}\n\nFixed autonomously by the improve loop. Baseline health was ${baseline}.\nOnly failures NEW since that baseline trigger the automatic revert.`;
   await sh(`git add -A && git commit -q -F - <<'EOF'\n${msg}\nEOF`);
   const { stdout: newSha } = await sh("git rev-parse HEAD");
   await sh("git push -q origin main");
@@ -333,13 +403,23 @@ export async function improveOnce({ dry = false } = {}) {
   if (why) {
     log("REVERTING:", why);
     await sh(`git revert --no-edit ${newSha.trim()}`);
-    await sh("git push -q origin main");
+    const undone = await pushRevert();
     const { stdout: revSha } = await sh("git rev-parse HEAD");
-    const revDeployed = await waitForDeploy(revSha.trim());
+    const revDeployed = undone ? await waitForDeploy(revSha.trim()) : { ok: false, reason: "revert was never pushed" };
     state.count++;
-    state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: "reverted", why, sha: newSha.trim().slice(0, 7) });
+    state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: undone ? "reverted" : "REVERT FAILED — bad commit still live", why, sha: newSha.trim().slice(0, 7) });
     await saveState(state);
-    return { outcome: "reverted", why, sha: newSha.trim().slice(0, 7), revert_deployed: revDeployed.ok, baseSha: baseSha.trim().slice(0, 7) };
+    // Never report a revert that did not happen. This value is what the
+    // heartbeat and the doctor read, and "reverted" with the change still live
+    // is the single most dangerous thing this loop could say.
+    return {
+      outcome: undone ? "reverted" : "REVERT FAILED — bad commit still live on main",
+      why,
+      sha: newSha.trim().slice(0, 7),
+      revert_pushed: undone,
+      revert_deployed: revDeployed.ok,
+      baseSha: baseSha.trim().slice(0, 7),
+    };
   }
 
   // It worked. Write down how, so the next one is cheaper.

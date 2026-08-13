@@ -9,6 +9,7 @@
 
 import * as convos from "../conversations.mjs";
 
+import { localStamp } from "../when.mjs";
 export const recallTools = {
   recall_chat: {
     schema: {
@@ -25,9 +26,29 @@ export const recallTools = {
     },
     async run({ query }) {
       const hits = await convos.search(query, { limit: 4 });
-      if (!hits.length) return `Nothing in your past conversations matches "${query}".`;
+      if (!hits.length) {
+        // "Nothing matches" and "there is barely anything to match against" are
+        // different answers, and only one of them means he never said it.
+        //
+        // This store began on 13 Aug 2026. Asked in September about something
+        // from July, a bare "nothing matches" reads as "you never told me that"
+        // — and the model, having searched exactly as instructed, has no reason
+        // to doubt it. Saying how much was searched is the whole difference
+        // between a negative result and an empty archive.
+        const held = await convos.list({ limit: 500 }).catch(() => []);
+        const oldest = held.length ? String(held.map((c) => c.updated).sort()[0]).slice(0, 10) : null;
+        return (
+          `Nothing in your past conversations matches "${query}". ` +
+          (held.length
+            ? `Searched ${held.length} conversation${held.length === 1 ? "" : "s"}, the oldest from ${oldest}. ` +
+              `If he is asking about something older than that, it happened before this history existed — ` +
+              `say so rather than saying he never mentioned it.`
+            : `There are no stored conversations at all yet, so this proves nothing about what he has said. ` +
+              `Try vault_search or read the run files instead.`)
+        );
+      }
       return hits
-        .map((h) => `## ${h.title}\n(${h.id}, with the ${h.agent} agent, last ${String(h.updated).slice(0, 16).replace("T", " ")})\n\n${h.excerpt}`)
+        .map((h) => `## ${h.title}\n(${h.id}, with the ${h.agent} agent, last ${localStamp(h.updated)})\n\n${h.excerpt}`)
         .join("\n\n---\n\n");
     },
   },
@@ -53,7 +74,7 @@ export const recallTools = {
         .map((m) => `${m.role === "user" ? "Grayson" : (m.agent || c.agent || "cleetus")}: ` +
                     (typeof m.content === "string" ? m.content : "[image]"))
         .join("\n\n");
-      return `# ${c.title || "Untitled"}\n(${c.id}, started ${String(c.created).slice(0, 16).replace("T", " ")})\n\n${body}`.slice(0, 60_000);
+      return `# ${c.title || "Untitled"}\n(${c.id}, started ${localStamp(c.created)})\n\n${body}`.slice(0, 60_000);
     },
   },
 };

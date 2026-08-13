@@ -554,6 +554,36 @@ export async function runDoctor() {
   skip("devices", "desk light", "not plugged in");
   }
 
+  // ── the front door ──────────────────────────────────────────────────────────
+  //
+  // CLEETUSD_TOKEN is the only thing between a stranger and run_shell, the
+  // filesystem, and a keyring of real credentials — on a port published through
+  // a cloudflared tunnel. If it goes missing the daemon still works perfectly,
+  // which is exactly why it needs checking rather than assuming.
+  //
+  // This PROBES the running daemon instead of reading CONFIG. The failure worth
+  // catching is config and reality disagreeing: an env var edited but not
+  // reloaded, or a process still running the old value. Reading the same
+  // constant the code reads would agree with itself and prove nothing.
+  {
+    const probe = async (headers) =>
+      fetch(`http://127.0.0.1:${CONFIG.port}/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({ agent: "cleetus", message: "" }),
+        signal: AbortSignal.timeout(8_000),
+      }).then((r) => r.status).catch((e) => `error ${e.message}`);
+
+    // Forwarding headers make this look like it arrived through the tunnel,
+    // which is the case that must never be allowed in without a bearer. Without
+    // them a loopback request is deliberately allowed when no token is set.
+    const asStranger = await probe({ "x-forwarded-for": "203.0.113.9" });
+    check("daemon", "the front door is locked", asStranger === 401,
+      asStranger === 401 ? "an unauthenticated tunnelled request is refused"
+                         : `an unauthenticated tunnelled request got ${asStranger}, expected 401`,
+      "CLEETUSD_TOKEN must be set in ~/Library/LaunchAgents/com.cleetus.cleetusd.plist, then kickstart -k");
+  }
+
   // ── the face recogniser ─────────────────────────────────────────────────────
   //
   // Both halves are checked because they fail differently and only one of them

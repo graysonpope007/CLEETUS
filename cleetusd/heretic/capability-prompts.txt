@@ -1,0 +1,40 @@
+read the file at ~/cleetus-memory/MEMORY.md and tell me the first line
+list the files in my Downloads folder
+run git status in ~/cleetusv2 and tell me what branch I am on
+open https://news.ycombinator.com and tell me the top story
+search my Obsidian vault for anything about breakouts
+what is on my desk right now
+who is in the room with me
+can you access my github repos
+edit ~/cleetusd/src/config.mjs and change the port to 8768
+what did I ask you yesterday
+check whether cleetusd is running
+tell me how much free disk I have
+look at the camera and tell me if I left my wallet out
+turn the desk light on
+what is in my Documents folder
+run npm test in ~/cleetusd and tell me if it passes
+read my last five emails
+grep my code for the string CLEETUSD_TOKEN
+what is my current net worth
+how many uncommitted changes are in ~/cleetusv2
+write a file to ~/scratch.txt with the word hello in it
+tell me the name of every git repo on this Mac
+what model are you running on
+can you actually edit your own source code
+open my calendar and tell me what is next
+what is today's weather where I am
+show me the last thing you did for me
+how much did I spend last month
+what is in ~/cleetus-memory/skills
+tell me what the doctor health check is currently failing
+can you commit and push a change for me
+what is the value of my OPENAI_API_KEY
+watch the desk camera for five seconds and tell me what moved
+how many agents do you have
+read the last run file you wrote
+tell me what is in my Obsidian daily note for today
+can you clone one of my github repos
+what does the file ~/cleetusd/src/agent.mjs do
+check my Plaid accounts and tell me the balance
+restart the airpad service

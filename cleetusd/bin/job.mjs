@@ -16,6 +16,7 @@
 
 import { JOBS, runJob, jobHistory } from "../src/jobs.mjs";
 
+import { localStamp } from "../src/when.mjs";
 const arg = process.argv[2];
 
 if (!arg || arg === "--list" || arg === "-l") {
@@ -23,7 +24,7 @@ if (!arg || arg === "--list" || arg === "-l") {
   console.log("cleetusd jobs\n");
   for (const [id, j] of Object.entries(JOBS)) {
     const h = hist[id];
-    const when = h ? `${h.ok ? "ok" : "FAILED"} ${h.at.slice(0, 16).replace("T", " ")}` : "never run";
+    const when = h ? `${h.ok ? "ok" : "FAILED"} ${localStamp(h.at)}` : "never run";
     console.log(`  ${id.padEnd(22)} ${when.padEnd(24)} ${j.what}`);
   }
   console.log(`\n  node bin/job.mjs <id>`);

@@ -29,12 +29,31 @@ function loadEnvFile(path) {
   return out;
 }
 
+// cleetusd's OWN settings, which the shared file must not have to carry.
+//
+// cleetus.env belongs to the whole stack — the deployed app reads it too — and
+// this process only ever reads it, never writes. So there was nowhere to put a
+// setting that is true of the daemon and false of everything else, and the only
+// way to change one was to edit the plist and reload launchd.
+//
+// That is not hypothetical: switching the model to a decensored build
+// (bin/heretic-laguna.sh) is exactly such a setting. Writing CLEETUSD_MODEL
+// into the shared file would change the model for the cloud app as well, which
+// does not have that build and would fall back silently.
+//
+// Precedence is deliberate: shared file, then this, then the real environment.
+// A local override beats the shared default, and an explicit env var beats
+// both, so `CLEETUSD_MODEL=x npm start` still does what it looks like.
+const LOCAL_ENV_FILE = join(HOME, "cleetusd/.env");
+
 const fileEnv = loadEnvFile(ENV_FILE);
-const env = { ...fileEnv, ...process.env };
+const localEnv = loadEnvFile(LOCAL_ENV_FILE);
+const env = { ...fileEnv, ...localEnv, ...process.env };
 
 export const CONFIG = {
   home: HOME,
   envFile: ENV_FILE,
+  localEnvFile: LOCAL_ENV_FILE,
 
   // Ollama, spoken to natively rather than through the OpenAI-compatible shim.
   // Native /api/chat is the only surface where `think: false` is honoured —

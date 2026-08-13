@@ -470,6 +470,38 @@ const DESCRIBE_ATTACHED =
   "can read, quoted. If it is food, name the items and estimate portions. Do not guess at " +
   "anything blurred or cut off. Four sentences at most, no preamble.";
 
+
+/**
+ * Is he STATING something about himself, or asking for something?
+ *
+ * The distinction the old test missed. "my" appears in both — "my knee is sore"
+ * is a fact worth keeping forever; "turn my desk light off" is an instruction
+ * that means nothing tomorrow. Kept deliberately tight: a false negative costs
+ * one fact he can restate, a false positive is permanent noise in a prompt.
+ *
+ * Exported so the rules can be tested against real transcript lines rather than
+ * inferred from what turns up in the files weeks later.
+ */
+export function statedFact(question) {
+  const q = String(question || "").trim();
+  if (!q || q.length > 400) return false;
+
+  // A question is not a disclosure, however much of it is about him. Both forms
+  // matter: the mark, and the opening word for when he leaves it off.
+  if (/[?]\s*$/.test(q)) return false;
+  if (/^\s*(?:can|could|would|will|do|does|did|is|are|was|were|what|when|where|who|whom|why|how|should|shall|which)\b/i.test(q)) return false;
+
+  // An explicit first-person statement, or an instruction to remember.
+  if (/\bremember that\b/i.test(q)) return true;
+  if (/\bi(?:['\u2019]m| am| have|['\u2019]ve| had| want| need| decided| prefer| like| love| hate| use| live| work| train| started| stopped| switched| got| can['\u2019]?t| don['\u2019]?t)\b/i.test(q)) return true;
+
+  // "my <short thing> is/was/has ..." — a claim about something of his. Capped
+  // at two words so it cannot reach across a whole sentence and find an
+  // unrelated verb: "Look at my desk camera and tell me what is on the desk"
+  // matched an earlier, greedier version of exactly this pattern.
+  return /\bmy\s+(?:[\w'\u2019-]+\s+){0,2}(?:is|are|was|were|has|have|will be)\b/i.test(q);
+}
+
 export async function ask({ history, agent, onStep }) {
   /* Route on what HE said, not on what the eyes reported.
      Measured: "What am I doing in this picture?" with a photo attached went to
@@ -590,8 +622,15 @@ export async function ask({ history, agent, onStep }) {
   // also has remember_fact; this is the backstop for when it does not think to
   // use it, because a fact volunteered once and lost is the thing that makes an
   // assistant feel like it is not listening.
-  const stated = question.match(/\b(?:i am|i'm|my|i have|i've|i want|i need|i decided|remember that)\b/i);
-  if (stated && question.length < 400 && !used.includes("remember_fact")) {
+  //
+  // The first version of this triggered on a bare `my`, which is a possessive
+  // and not a disclosure. Seven of the eight lines these files had accumulated
+  // were his own questions filed as facts — "turn my desk light off", "can you
+  // see my Desktop?" — and each one is read back into that specialist's prompt
+  // on EVERY message, for good. A memory that fills with the questions he asked
+  // makes the assistant worse the more it is used, which is the opposite of
+  // what a learning loop is for.
+  if (statedFact(question) && !used.includes("remember_fact")) {
     // Told to a specialist, remembered by that specialist; told to the front
     // door, remembered by everyone. Where a fact lands should follow who he
     // was talking to.
