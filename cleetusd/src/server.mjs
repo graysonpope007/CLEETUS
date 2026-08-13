@@ -6,10 +6,12 @@
 // unauthenticated shell on the coffee-shop wifi.
 
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
 import { ask, route } from "./agent.mjs";
 import { agentList } from "./agents.mjs";
-import { health as ollamaHealth } from "./ollama.mjs";
+import { health as ollamaHealth, visionReady } from "./ollama.mjs";
 import { loadSkills, recentRuns } from "./memory.mjs";
 import { DASHBOARD } from "./ui.mjs";
 import { vaultReachable } from "./tools/index.mjs";
@@ -22,6 +24,12 @@ const DOCTOR_TTL = 60_000;
 const doctorCache = { data: null, at: 0, running: null, error: null };
 
 function json(res, data, status = 200) {
+  // Guarded here so every caller is safe, rather than auditing each catch block
+  // and hoping. Several error paths call json() after a response has already
+  // begun — the airpad state route can, if the write of a good response throws —
+  // and a second writeHead raises ERR_HTTP_HEADERS_SENT, which inside an async
+  // handler used to end the whole process rather than the request.
+  if (res.headersSent) return res.end();
   const body = JSON.stringify(data);
   res.writeHead(status, {
     "Content-Type": "application/json",
@@ -84,6 +92,26 @@ function isLocalBrowser(req) {
 // So the handler is wrapped. Genuine faults still get logged loudly and still
 // show up in the run files and the doctor; they just stop being fatal to
 // everything else happening at the time.
+
+/**
+ * When the current failure streak for a check began.
+ *
+ * Walks the health log backwards while the check keeps appearing and returns
+ * the timestamp of the oldest consecutive line naming it. A check that failed
+ * yesterday, recovered, and failed again an hour ago reports an hour — which is
+ * the honest answer, and the reason this walks a streak rather than grepping
+ * for the first occurrence ever.
+ */
+function sinceFor(lines, name) {
+  const slug = name.replace(/\s+/g, "-");
+  let since = null;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i].includes(slug)) break;
+    since = lines[i].slice(0, 24);
+  }
+  return since;
+}
+
 const server = createServer((req, res) => {
   handle(req, res).catch((e) => {
     console.error("[cleetusd] request failed:", req.method, req.url, e?.stack || e);
@@ -97,6 +125,10 @@ const server = createServer((req, res) => {
     } catch { /* the socket is already gone; nothing left to say */ }
   });
 });
+
+// Whether any turn in this conversation carries a picture.
+const hasImages = (history) =>
+  history.some((m) => Array.isArray(m.content) && m.content.some((b) => b && b.type === "image"));
 
 async function handle(req, res) {
   const url = new URL(req.url, `http://${CONFIG.host}:${CONFIG.port}`);
@@ -310,11 +342,22 @@ async function handle(req, res) {
     // returning an empty all-clear, which would read as "everything is fine".
     if (!doctorCache.data) await doctorCache.running;
     const d = doctorCache.data;
+    // How long has each of these been failing?
+    //
+    // The health log records one line per run (com.cleetus.health, every 15
+    // minutes). Reading the current failure streak out of it turns "plaid is
+    // down" into "plaid has been down since 21:00", which is the difference
+    // between a reading and a diagnosis — and the thing that took six hours of
+    // manual re-running to establish the first time.
+    const logLines = await readFile(join(CONFIG.memoryRoot, "health.log"), "utf8")
+      .then((t) => t.split("\n").filter(Boolean))
+      .catch(() => []);
+    const failed = d ? d.failed.map((f) => ({ ...f, since: sinceFor(logLines, f.name) })) : [];
     return json(res, {
       ok: !!d && d.failed.length === 0,
       age_seconds: doctorCache.at ? Math.round((Date.now() - doctorCache.at) / 1000) : null,
       checks: d ? d.results.length : 0,
-      failed: d ? d.failed : [],
+      failed,
       results: d ? d.results : [],
       error: doctorCache.error || null,
     });
@@ -349,6 +392,17 @@ async function handle(req, res) {
       ? body.messages
       : body.message ? [{ role: "user", content: String(body.message) }] : null;
     if (!history) return json(res, { ok: false, error: "no message" }, 400);
+
+    // A picture with no eyes to see it is a different answer, not a worse one.
+    // Said before the stream opens so the caller can go somewhere that CAN
+    // see — the deck falls straight through to the cloud on this.
+    if (hasImages(history) && !(await visionReady())) {
+      return json(res, {
+        ok: false, error: "no_vision",
+        detail: `${CONFIG.visionModel} is not pulled on this machine, so the local model cannot ` +
+                "look at an image.",
+      });
+    }
 
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -385,6 +439,13 @@ async function handle(req, res) {
         ? [{ role: "user", content: String(body.message) }]
         : null;
     if (!history) return json(res, { ok: false, error: "no message" }, 400);
+    if (hasImages(history) && !(await visionReady())) {
+      return json(res, {
+        ok: false, error: "no_vision",
+        detail: `${CONFIG.visionModel} is not pulled on this machine, so the local model cannot ` +
+                "look at an image.",
+      });
+    }
 
     try {
       const out = await ask({ history, agent: body.agent });

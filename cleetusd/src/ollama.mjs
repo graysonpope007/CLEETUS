@@ -46,6 +46,44 @@ export async function chat({ messages, tools = [], model = CONFIG.model, think =
 }
 
 /**
+ * Look at pictures. Returns plain text.
+ *
+ * Ollama takes images as base64 on the MESSAGE, not as content blocks — no
+ * data URL prefix, no media type, just the payload. Sending a data URL is
+ * accepted and produces a confident description of nothing, which is the worst
+ * possible failure for something whose whole job is to report what is there.
+ *
+ * No tools, deliberately. A vision model handed a tool schema will sometimes
+ * answer the picture with a function call, and this exists to produce a
+ * sentence the model that DOES hold the tools can act on.
+ */
+export async function see({ images, prompt, model = CONFIG.visionModel, signal }) {
+  const clean = (Array.isArray(images) ? images : [images])
+    .filter(Boolean)
+    .map((b) => String(b).replace(/^data:[^;]+;base64,/, ""));
+  if (!clean.length) throw new Error("no images");
+
+  const { text } = await chat({
+    model,
+    messages: [{ role: "user", content: prompt, images: clean }],
+    temperature: 0.2,
+    signal,
+  });
+  return text;
+}
+
+/** Whether the eyes are actually installed. Asked before promising sight. */
+export async function visionReady() {
+  try {
+    const r = await fetch(`${CONFIG.ollama}/api/tags`, { signal: AbortSignal.timeout(2500) });
+    if (!r.ok) return false;
+    const names = ((await r.json()).models || []).map((m) => m.name);
+    return names.includes(CONFIG.visionModel) ||
+           names.some((n) => n.split(":")[0] === CONFIG.visionModel.split(":")[0]);
+  } catch { return false; }
+}
+
+/**
  * Cheap one-shot with no tools, for classification and naming. Uses the 8B
  * gate model — running a 33B to pick a filename is a waste of the queue that
  * the real answer is waiting in.

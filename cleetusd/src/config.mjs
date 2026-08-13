@@ -43,6 +43,11 @@ export const CONFIG = {
   ollama: env.OLLAMA_HOST || "http://127.0.0.1:11434",
   model: env.CLEETUSD_MODEL || env.LLM_MODEL || "laguna-xs-2.1:q8_0",
   gateModel: env.LOCAL_GATE_MODEL || "lfm2.5:8b",
+  // The eyes. A separate model on purpose: laguna is the one that knows him and
+  // holds the tools, and swapping the whole turn onto a VLM to look at one
+  // picture would trade all of that for sight. So the VLM DESCRIBES and laguna
+  // still answers — see tools/vision.mjs.
+  visionModel: env.CLEETUSD_VISION_MODEL || "qwen2.5vl:7b",
 
   // Where Grayson reads. Memory that lands anywhere else may as well not exist.
   vault: env.CLEETUS_VAULT ||

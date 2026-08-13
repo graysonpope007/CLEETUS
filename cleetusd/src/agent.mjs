@@ -3,8 +3,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
-import { chat, quick } from "./ollama.mjs";
-import { AGENTS, isAgent, agentMenu } from "./agents.mjs";
+import { chat, quick, see, visionReady } from "./ollama.mjs";
+import { AGENTS, isAgent, agentMenu, agentList } from "./agents.mjs";
 import { TOOLS, toolSchemas, callTool } from "./tools/index.mjs";
 import { startRun, logStep, finishRun, loadMemory, relevantSkills, remember,
          rememberForAgent, loadAgentMemory, loadAllAgentMemory } from "./memory.mjs";
@@ -202,12 +202,35 @@ export async function route(question) {
     const answer = await quick(
       `Message: "${String(question).slice(0, 500)}"\n\nWhich agent handles this? Reply with the id only.`,
       {
-        system: `You route messages to one agent. Reply with a single id and nothing else.\n${agentMenu()}\n- cleetus: anything else, or general conversation.`,
+        // "cleetus: anything else" was listed like a normal option and the gate
+        // took it constantly — a question about breakouts routed to the
+        // generalist, so the skin brief and skin memory never loaded and the
+        // entire specialist design was bypassed. Measured 4/12 before this.
+        // It is now described as the last resort it is.
+        system:
+          `You route a message to the ONE agent whose speciality fits best.\n` +
+          `${agentMenu()}\n- cleetus: ONLY if no agent above fits at all.\n\n` +
+          `Always prefer a specific agent over cleetus. A question about his body, ` +
+          `money, clothes, food or work belongs to a specialist, not the generalist. ` +
+          `Reply with the id alone.`,
         maxWords: 3,
       },
     );
-    const id = answer.toLowerCase().replace(/[^a-z]/g, "");
-    return isAgent(id) ? id : "cleetus";
+
+    // Find a known id INSIDE the reply rather than demanding the reply be one.
+    //
+    // The gate answered "\boxed{nutrition}" — the correct id, wrapped in LaTeX
+    // by a model that had been asked for one word. Stripping non-letters turned
+    // that into "boxednutrition", which is not an agent, so it fell back to the
+    // generalist and threw a right answer away. Small models decorate; the
+    // parser should read through the decoration.
+    const lower = String(answer).toLowerCase();
+    const hit = agentList()
+      .map((a) => a.id)
+      .filter((id) => new RegExp(`\\b${id}\\b`).test(lower))
+      // Longest first so "muscle" is not shadowed by a shorter id inside it.
+      .sort((a, b) => b.length - a.length)[0];
+    return hit && isAgent(hit) ? hit : "cleetus";
   } catch {
     return "cleetus";
   }
@@ -333,26 +356,139 @@ export function looksFailed({ answer = "", used = [] }) {
 
   if (used.length > 0) return false;                // it did some work
 
-  const disclaims = /\bI (cannot|can't|can not|don't have|do not have|am unable)\b/i.test(answer);
-  if (!disclaims) return false;
-  // Browsing joined this list the day it started working. Asked about a tax
-  // credit it had never heard of, the tax agent correctly declined to invent
-  // one — and then said it "cannot access the Georgia DOR website", while
-  // holding web_open and carrying a brief that tells it to check rates against
-  // dor.georgia.gov. Refusing a capability it has is the same failure as
-  // refusing to read a file, and it was going unrecorded because the words for
-  // it were missing here.
-  return /\b(file|files|folder|directory|directories|disk|drive|computer|machine|laptop|mac|shell|terminal|command|script|vault|obsidian|note|notes|memory|remember|desk light|camera|codebase|repo|website|web|browser|browse|internet|online|url|page)\b/i
-    .test(answer);
+  // The refusal and the capability must be in the SAME CLAUSE.
+  //
+  // Browsing joined the word list the day browsing started working: the tax
+  // agent said it "cannot access the Georgia DOR website" while holding
+  // web_open, and refusing a capability it has is the same fault as refusing to
+  // read a file. But testing whether a refusal phrase and a capability word
+  // appear ANYWHERE in the answer is a different question, and widening the
+  // list immediately broke this perfectly good sentence:
+  //
+  //   "I can browse Amazon and show you options, but I don't have the ability
+  //    to actually place purchases."
+  //
+  // He can browse; he cannot buy. Both halves are true and the sentence is
+  // exactly right. As a bag of words it reads as a refusal to browse.
+  //
+  // The unit test missed it because the example in it happened to contain no
+  // browsing word — the test agreed with the code rather than with reality,
+  // which is what a test written from the same assumption as its subject does.
+  //
+  // Splitting on "but" matters as much as splitting on full stops: "I can X but
+  // I can't Y" is one sentence carrying two opposite claims, and only the second
+  // is being graded.
+  const DISCLAIM = /\bI (cannot|can't|can not|don't have|do not have|am unable)\b/i;
+  const REACH = /\b(file|files|folder|directory|directories|disk|drive|computer|machine|laptop|mac|shell|terminal|command|script|vault|obsidian|note|notes|memory|remember|desk light|camera|codebase|repo|website|web|browser|browse|browsing|internet|online|url|page)\b/i;
+
+  for (const clause of answer.split(/(?<=[.!?])\s+|\s+\bbut\b\s+/i)) {
+    if (DISCLAIM.test(clause) && REACH.test(clause)) return true;
+  }
+  return false;
 }
 
+/**
+ * Turn any pictures in the conversation into words, before the loop runs.
+ *
+ * The alternative — hand the whole turn to the vision model — costs everything
+ * that makes this assistant his: laguna holds the tools, the memory, the
+ * dossiers and the voice, and a VLM has none of them. So the eyes report and
+ * laguna answers. What arrives is a normal text message with a described
+ * picture attached to it, which every downstream step already understands.
+ *
+ * A failure here is SAID, not swallowed. "I cannot see the picture you sent"
+ * is a useful sentence; answering the text alone as though nothing was attached
+ * is how a model ends up confidently discussing an image it never received.
+ */
+async function describeImages(history, onStep) {
+  const out = [];
+  for (const m of history) {
+    if (!Array.isArray(m.content)) { out.push(m); continue; }
+    const text = m.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+    const images = m.content
+      .filter((b) => b.type === "image" && b.source && b.source.data)
+      .map((b) => b.source.data);
+    if (!images.length) { out.push({ role: m.role, content: text }); continue; }
+
+    let described;
+    if (!(await visionReady())) {
+      described = `[Grayson attached ${images.length} image(s). You cannot see them: the vision ` +
+        `model ${CONFIG.visionModel} is not pulled on this machine. Say so plainly rather than ` +
+        `guessing what is in them.]`;
+    } else {
+      if (onStep) onStep({ tool: "look", args: { note: `${images.length} attached image(s)` } });
+      try {
+        const seen = await see({
+          images,
+          prompt: text
+            ? `${DESCRIBE_ATTACHED}\n\nHe said: "${text}". Describe what is relevant to that.`
+            : DESCRIBE_ATTACHED,
+        });
+        // Framed as SEEING, not as a report from elsewhere. Told "the vision
+        // model says X", the model treated that as evidence it was blind and
+        // answered "I can't see attached pictures" with the description of the
+        // picture sitting in its own context. The eyes are part of it, so the
+        // sentence has to read that way.
+        described = `[YOU LOOKED AT THE ATTACHED PICTURE AND THIS IS WHAT YOU SEE: ${seen}\n` +
+          `Answer from what you can see. Do not say you cannot see attachments — you just did.]`;
+      } catch (e) {
+        described = `[Grayson attached an image and looking at it failed: ${e.message}. Say so ` +
+          `rather than guessing.]`;
+      }
+    }
+    out.push({ role: m.role, content: [text, described].filter(Boolean).join("\n\n") });
+  }
+  return out;
+}
+
+const DESCRIBE_ATTACHED =
+  "Describe this picture plainly and specifically: what it is, what is in it, and any text you " +
+  "can read, quoted. If it is food, name the items and estimate portions. Do not guess at " +
+  "anything blurred or cut off. Four sentences at most, no preamble.";
+
 export async function ask({ history, agent, onStep }) {
+  /* Route on what HE said, not on what the eyes reported.
+     Measured: "What am I doing in this picture?" with a photo attached went to
+     the `image` agent — the one that art-directs GENERATED images — and it
+     answered, correctly for what it is, that it could not see any image. The
+     description injected below is full of the word "image", which drags the
+     router there even harder. So the routing question is taken before the
+     picture is described, and an attachment can never by itself select the
+     agent whose whole job is making pictures rather than looking at them. */
+  const asked = [...history].reverse().find((m) => m.role === "user");
+  const askedText = Array.isArray(asked?.content)
+    ? asked.content.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim()
+    : (asked?.content || "");
+  const carriedImage = history.some(
+    (m) => Array.isArray(m.content) && m.content.some((b) => b && b.type === "image"));
+
+  let agentId = isAgent(agent) ? agent : await route(askedText);
+  /* The `image` agent MAKES pictures; it does not look at them. The router is
+     an 8B model reading blurbs, and every word that means "look" also means
+     "image" to it — "what am I doing in this picture" and "look at my desk
+     camera" both landed there, and it answered the first by saying it cannot
+     see attachments. It is only right when he is asking for something to be
+     generated, so it has to be asked for. */
+  if (agentId === "image" && !isAgent(agent) &&
+      !/\b(make|draw|generate|create|design|render|paint)\b/i.test(askedText)) {
+    agentId = "cleetus";
+  }
+
+  history = await describeImages(history, onStep);
   const last = [...history].reverse().find((m) => m.role === "user");
   const question = last?.content || "";
-  const agentId = isAgent(agent) ? agent : await route(question);
 
   const run = await startRun({ agent: agentId, request: question });
-  const system = await buildSystem(agentId, question);
+  let system = await buildSystem(agentId, question);
+  if (carriedImage) {
+    // The system prompt never mentioned attachments, so the model filled the
+    // gap with the safest-sounding thing it knows about itself: that it is a
+    // text model. One line closes that.
+    system += "\n\nGrayson has attached one or more pictures to this message. You CAN see them: " +
+      "a vision model on this machine has already looked, and what it saw is written into his " +
+      "message in brackets. Treat that as your own eyes. Answer the question from it directly, " +
+      "and never tell him you are unable to view attachments.";
+  }
   const messages = [{ role: "system", content: system }, ...history];
   const used = [];
   let answer = "";
@@ -389,7 +525,12 @@ export async function ask({ history, agent, onStep }) {
       const result = await callTool(name, args, { agentId });
       used.push(name);
       await logStep(run, { tool: name, args, result });
-      messages.push({ role: "tool", tool_name: name, content: String(result).slice(0, 60_000) });
+      // JSON for objects, not String(). A tool returning an object used to
+      // arrive as the literal text "[object Object]", and the model does not
+      // report an empty tool result — it fills the gap with something
+      // plausible, which is indistinguishable from the tool having worked.
+      const asText = typeof result === "string" ? result : JSON.stringify(result);
+      messages.push({ role: "tool", tool_name: name, content: String(asText).slice(0, 60_000) });
     }
   }
 
