@@ -23,13 +23,20 @@
 // happy path.
 
 import { execFile } from "node:child_process";
+import { createHmac } from "node:crypto";
 import { promisify } from "node:util";
 import { readFile, readdir, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG, secrets } from "./config.mjs";
+import { accessReport } from "./access.mjs";
 
 const run = promisify(execFile);
 const sh = (c) => run("/bin/zsh", ["-lc", c], { timeout: 20_000 }).then(r => r.stdout).catch(e => e.stdout || "");
+
+// The one Python on this machine with OpenCV and hidapi in it. Both the light
+// and the face recogniser are studio-locate's dependencies borrowed rather than
+// duplicated, so they borrow the same interpreter.
+const PY_CV = process.env.CLEETUSD_PYTHON || `${CONFIG.home}/studio-locate/.venv/bin/python`;
 
 export async function runDoctor() {
   const results = [];
@@ -54,6 +61,7 @@ export async function runDoctor() {
   ["com.cleetus.flights", "the ADS-B sweeper"],
   ["com.cleetus.airpad", "the air trackpad"],
   ["com.cleetus.web", "the browser harness"],
+  ["com.cleetus.studio", "studio-locate, the BRIO"],
   ];
   const uid = (await sh("id -u")).trim();
   for (const [label, what] of AGENTS) {
@@ -77,9 +85,12 @@ export async function runDoctor() {
   // 78 (EX_CONFIG — "configuration error", launchd naming the problem out loud
   // to nobody), and it tries again. com.cleetus.chat did that 18,351 times.
   //
-  // Nothing surfaced it. The morning briefing — the 7:03 brief this whole
-  // system was built around — had not run since 19 May, and the only visible
-  // symptom was a brief that did not arrive.
+  // Nothing surfaced it. Among the dead: the nightly consolidation, the vault
+  // sync, the memory reindex, and a morning_briefing.py that posts a markdown
+  // summary to Slack. NOT the brief Grayson reads — that one is the cloud
+  // app's, stored in the DB, and has been healthy throughout. Worth stating,
+  // because the first version of this comment said otherwise and sent everyone
+  // looking in the wrong place.
   //
   // The check is deliberately about the PATH, not about whether the job is
   // running. Most of these are scheduled, so "not running" is their normal
@@ -97,7 +108,33 @@ export async function runDoctor() {
   }
   check("services", "every launch agent's program exists", broken.length === 0,
     broken.length ? `${broken.length} dead: ${broken.map(b => b.split(" -> ")[0]).join(", ")}` : `${plists.length} agents, all resolve`,
-    "the paths point into a removed worktree; rewrite them to ~/.claude/ or bootout the agent");
+    // NOT "just rewrite the paths". That was the first guess and it is wrong:
+    // these scripts compute their vault as Path(__file__).parents[2]/"vault",
+    // so moving them moves the vault to /Users/grayson/vault, which does not
+    // exist. A repointed morning brief runs, succeeds, and writes where nobody
+    // looks — and this check would go green. See handoff section 18.
+    "4 of these have no script left anywhere: bootout. The other 6 need more than a repoint — read handoff section 18 before touching them");
+
+  // ── every plist is valid XML ────────────────────────────────────────────────
+  //
+  // launchd's parser is lenient and accepts things XML does not. A double
+  // hyphen inside a comment is illegal, and writing a command line into the
+  // documentation at the top of a plist puts one there — which is how
+  // com.cleetus.flights and com.cleetus.improve became unparseable, and how
+  // com.cleetus.studio joined them within minutes of being written, by someone
+  // who had already documented the trap.
+  //
+  // It works, so nothing complains. It breaks the moment any strict parser
+  // reads it: PlistBuddy is fine, Python's plistlib throws, and a script that
+  // walks these files silently skips the ones it cannot read.
+  const badXml = [];
+  for (const plist of plists) {
+    const ok = await sh(`/usr/bin/python3 -c "import plistlib,sys; plistlib.load(open(sys.argv[1],'rb'))" ${JSON.stringify(plist)} 2>&1 | head -1`);
+    if (ok.trim()) badXml.push(plist.split("/").pop().replace(/^com\.cleetus\.|\.plist$/g, ""));
+  }
+  check("services", "every plist is valid XML", badXml.length === 0,
+    badXml.length ? `${badXml.length} unparseable: ${badXml.join(", ")}` : `${plists.length} plists parse`,
+    "almost always a double hyphen inside an XML comment — rephrase, do not quote a command line");
 
   // ── local HTTP surfaces ─────────────────────────────────────────────────────
   const PORTS = [
@@ -106,14 +143,29 @@ export async function runDoctor() {
   ["airpad", "http://127.0.0.1:8768/api/state"],
   ["cleetus-web", "http://127.0.0.1:8766/api/state"],
   ];
+  // studio-locate is the odd one out: it has no launch agent, so "check the
+  // launch agent for studio-locate" sends you looking for a file that does not
+  // exist. It is started by hand, which is also why it is the one that is down.
+  // studio-locate has an agent now (com.cleetus.studio). It was the only
+  // service without one, which is precisely why it was the one that kept being
+  // down: nothing restarted it.
+  const NO_AGENT = {};
   for (const [name, url] of PORTS) {
   const r = await get(url);
   check("http", `${name} answers`, r.status === 200,
-    r.status ? `http ${r.status}` : r.error, `check the launch agent for ${name}`);
+    r.status ? `http ${r.status}` : r.error,
+    NO_AGENT[name] || `launchctl kickstart -k gui/$(id -u)/com.cleetus.${name === "cleetus-web" ? "web" : name}`);
   }
 
   // ── cleetusd internals ──────────────────────────────────────────────────────
   const health = await get("http://127.0.0.1:8767/health");
+  if (health.status !== 200) {
+    // Same rule as airpad: absent is not passing. If cleetusd itself is not
+    // answering these cannot be evaluated, and saying so keeps the set whole.
+    for (const n of ["ollama has the model", "vault reachable", "shell enabled"]) {
+      skip("cleetusd", n, "cleetusd /health is not answering");
+    }
+  }
   if (health.status === 200) {
   const h = JSON.parse(health.body);
   check("cleetusd", "ollama has the model", h.ollama?.ok, h.ollama?.detail,
@@ -163,16 +215,203 @@ export async function runDoctor() {
   devs.filter(d => /^\d+$/.test(d)).join(", ") || "all by name",
   "an index binding drifts when AVFoundation reshuffles; restart the service");
 
+  // A check that disappears is not a check that passed.
+  //
+  // Everything below sits behind "did airpad answer", so when airpad is down
+  // the report silently drops four checks and still says "all clear" about the
+  // ones that remain. The count changes and nothing says why — the same shape
+  // as the flights check that skipped on every run for weeks. When the
+  // precondition fails, the checks are emitted as SKIPPED, by name, so the set
+  // is always the same length and an absence is visible.
   const pad = await get("http://127.0.0.1:8768/api/state");
+  if (pad.status !== 200) {
+    for (const n of ["camera producing NEW frames", "frame rate usable",
+                     "tracker thread alive", "can move the cursor",
+                     "CORS open for the dashboard"]) {
+      skip("airpad", n, "airpad is not answering");
+    }
+  }
   if (pad.status === 200) {
   const p = JSON.parse(pad.body);
   // 10fps means the wrong capture mode was negotiated, which is invisible
   // except as a pointer that feels broken.
-  check("airpad", "frame rate healthy", p.fps === 0 || p.fps > 20,
-    `${p.fps} fps`, "the C920 has ONE mode: 1920x1080@30 through avfoundation");
+  // COUNT DISTINCT FRAMES, NOT DELIVERED ONES.
+  //
+  // This used to assert `fps > 20`, and `fps` counts arrivals. The camera work
+  // in handoff section 24 established that avfoundation pads the stream with
+  // duplicates rather than admit it cannot serve a rate: 68 consecutive frames
+  // off the wire, one of them distinct, while every counter read 70fps and the
+  // multipart stream was byte-perfect. A frozen JPEG is indistinguishable from
+  // a very still room, and this check was reading the number that could not
+  // tell them apart.
+  //
+  // `real_fps` counts content changes. When the two disagree, the smaller one
+  // is the truth, and the GAP between them is itself the fault signature.
+  const arrivals = p.fps ?? 0;
+  const distinct = p.real_fps ?? arrivals;
+  const padded = arrivals > 4 && distinct > 0 && arrivals / distinct >= 2;
+  check("airpad", "camera producing NEW frames", !padded,
+    `${distinct} distinct/s of ${arrivals} delivered/s`,
+    "duplicate padding — the capture is wedged; the watchdog SIGKILLs and reopens after 2s");
+  // The measured ceiling on this C920 is ~19/s at 864x480, so the old >20 bar
+  // could never be met by healthy hardware. 6 is "usable pointer".
+  check("airpad", "frame rate usable", distinct === 0 || distinct >= 6,
+    `${distinct}/s distinct (this C920 tops out near 19)`,
+    "see handoff section 24 — resolution barely moves this; the camera negotiated its 20fps mode");
+  // The tracker runs on its own thread. When it died, everything downstream
+  // kept serving the last annotated frame and looked healthy for hours.
+  check("airpad", "tracker thread alive", p.live !== false && !p.tracker_error,
+    p.tracker_error ? String(p.tracker_error).slice(0, 90) : `live, ${p.errors ?? 0} errors`,
+    "MediaPipe raises on a non-increasing timestamp; the loop is supervised now");
+  check("airpad", "can move the cursor", p.accessibility !== false,
+    p.accessibility === false ? "Accessibility permission missing" : "accessibility granted",
+    "re-tick the python binary under Privacy & Security > Accessibility");
   check("airpad", "CORS open for the dashboard", !!pad.headers.get("access-control-allow-origin"),
     pad.headers.get("access-control-allow-origin") || "missing",
     "without it the dashboard reports the service dead while it runs");
+  }
+
+  // ── the briefs may only name tools that exist ──────────────────────────────
+  //
+  // Renaming a tool silently invalidates every brief that names it, and nothing
+  // noticed. Replacing `browse` with the web_* primitives left nine mentions of
+  // `browse` across eight briefs — standing instructions to call something no
+  // longer in the registry. The agent would try it, get "No such tool", and
+  // improvise.
+  //
+  // Backticked snake_case is the convention in these files for naming a tool,
+  // which makes the invariant cheap to check and nearly free of false
+  // positives. NOT_A_TOOL holds the handful of backticked identifiers that are
+  // legitimately something else — JSON fields, mostly.
+  // Only names used AS TOOLS count.
+  //
+  // The first version flagged every backticked snake_case identifier, on the
+  // theory that the convention meant "tool". It does not: the studio brief
+  // documents config keys and JSON fields the same way — `engage_hold`,
+  // `pinch_close`, `tracker_error` — and the check went red with fourteen false
+  // positives at once. The allowlist was already at two entries with a note
+  // saying that if it started growing the convention had stopped meaning
+  // anything. It grew; so the convention is gone and the check is rebuilt.
+  //
+  // What actually separates them is CONTEXT. A tool is invoked: "through
+  // `cloud_api`", "come from `web_open`", "`web_open` to camelcamelcamel", "Run
+  // `vault_search` on the person". A config key is named: "`pinch_close` /
+  // `pinch_open` — thumb-to-index", "held `engage_hold` (0.35s)". Only the first
+  // shape can be a broken instruction to call something.
+  const CALL_BEFORE = /\b(?:use|uses|using|call|calls|run|runs|through|via|with|from|by)\s+$/i;
+  // "and" and "with" are out: "`age_ms` and `live` are computed" is a list, not
+  // a call. A tool takes "with" BEFORE it ("verified with `web_open`"), never
+  // after. The pattern that remains is the one real tool usage takes:
+  // "`web_open` to camelcamelcamel", "Run `vault_search` on the person".
+  const CALL_AFTER = /^\s*(?:to|on|against|for)\b/i;
+  try {
+    const { TOOLS } = await import("./tools/index.mjs");
+    const files = (await readdir(CONFIG.agentBriefs)).filter(f => f.endsWith(".md"));
+    const unknown = new Map();
+    for (const f of files) {
+      const text = await readFile(join(CONFIG.agentBriefs, f), "utf8");
+      // Single words too, not just snake_case. The pattern used to require an
+      // underscore, which meant `browse` — the actual tool that actually got
+      // removed and actually left nine stale mentions — could never match. The
+      // negative control that "proved" this check worked used `browse_the_web`,
+      // so it passed for the wrong reason and the real case stayed invisible.
+      // Call-context is what filters now, so the identifier shape can be loose.
+      for (const m of text.matchAll(/`([a-z][a-z0-9_]{2,})`/g)) {
+        const name = m[1];
+        if (TOOLS[name]) continue;
+        const before = text.slice(Math.max(0, m.index - 24), m.index);
+        const after = text.slice(m.index + m[0].length, m.index + m[0].length + 16);
+        if (!CALL_BEFORE.test(before) && !CALL_AFTER.test(after)) continue; // named, not invoked
+        unknown.set(name, (unknown.get(name) || []).concat(f.replace(".md", "")));
+      }
+    }
+    const bad = [...unknown.entries()].map(([n, fs]) => `${n} (${[...new Set(fs)].join(", ")})`);
+    check("cleetusd", "briefs only name tools that exist", bad.length === 0,
+      bad.length ? bad.join("; ") : `${files.length} briefs, every named tool resolves`,
+      "a brief tells an agent to CALL something that is not in the registry — restore the tool or fix the mention");
+  } catch (e) {
+    check("cleetusd", "briefs only name tools that exist", false, e.message);
+  }
+
+  // ── both halves must be reading the SAME agent briefs ──────────────────────
+  //
+  // cleetusd reads them off the disk. The web app fetches them as static assets
+  // from the deployed site. So the moment a brief is edited and not pushed, the
+  // two Cleetuses are running on different instructions — and nothing says so,
+  // because both halves are working perfectly from their own point of view.
+  //
+  // This is not hypothetical: the Opus 5 training pass rewrote all 18 briefs on
+  // disk (skin 904 -> 2737 chars, deals 814 -> 4140) and they were never
+  // committed. Every specialist in the web app has been answering from the old
+  // short brief since, while the same specialist in the deck used the new one.
+  //
+  // Checked by content length rather than a full diff: the point is to notice
+  // divergence, and a length gap is enough to notice.
+  try {
+    const token = secrets.AUTH_SECRET
+      ? createHmac("sha256", secrets.AUTH_SECRET).update("cleetus-internal-subrequest-v1").digest("hex")
+      : null;
+    if (!token) {
+      skip("cleetusd", "agent briefs match the deployed site", "AUTH_SECRET not set");
+    } else {
+      const ids = ["skin", "deals", "brief", "fashion"];
+      const drift = [];
+      for (const id of ids) {
+        const disk = await readFile(join(CONFIG.agentBriefs, `${id}.md`), "utf8").catch(() => null);
+        if (disk === null) continue;
+        const r = await fetch(`${CONFIG.cloud}/brain/agents/${id}.md`, {
+          headers: { "X-Cleetus-Internal": token }, signal: AbortSignal.timeout(15_000),
+        }).catch(() => null);
+        const live = r && r.ok ? (await r.text()).trim() : null;
+        if (live === null) { drift.push(`${id}: site did not serve it`); continue; }
+        if (live !== disk.trim()) drift.push(`${id}: disk ${disk.trim().length} vs live ${live.length}`);
+      }
+      check("cleetusd", "agent briefs match the deployed site", drift.length === 0,
+        drift.length ? drift.join("; ") : `${ids.length} sampled, all identical`,
+        "the briefs on disk are not deployed — commit and push brain/agents/, which auto-deploys");
+    }
+  } catch (e) {
+    check("cleetusd", "agent briefs match the deployed site", false, e.message);
+  }
+
+  // ── what macOS is refusing him ─────────────────────────────────────────────
+  //
+  // This was visible on the Reach page as three red DENIED rows and nowhere
+  // else, which is the wrong place for it: that panel answers "what can he
+  // see", and a permission that has silently lapsed is a HEALTH question. It
+  // lapses on its own, too — the grant attaches to the versioned Cellar binary,
+  // so `brew upgrade node` revokes it without telling anybody (see access.mjs).
+  //
+  // Deliberately not fatal-sounding when it is only the three library stores:
+  // Mail, Messages and Safari behind Full Disk Access is a switch nobody has
+  // flipped, not a fault, and the check says which.
+  try {
+    const a = await accessReport();
+    check("access", "macOS is not refusing him anything", a.denied.length === 0,
+      a.denied.length
+        ? `denied: ${a.denied.join(", ")}${a.needs_full_disk_access.length ? ` (Full Disk Access, for ${a.running_as})` : ""}`
+        : `${Object.keys(a.targets).length} locations, all readable`,
+      a.fix?.steps?.join(" ") || "");
+  } catch (e) {
+    check("access", "macOS is not refusing him anything", false, e.message);
+  }
+
+  // ── the object tracker ─────────────────────────────────────────────────────
+  //
+  // Two halves that fail differently. The detector needs torch and a weights
+  // file it downloads once; the ASSIGNMENT is the quiet one — a Hungarian that
+  // is subtly wrong does not throw, it swaps two ids occasionally, which is
+  // indistinguishable from ordinary tracker noise and would never be traced
+  // back. track_cli.py selftest checks it against brute-force optimal.
+  try {
+    const raw = await sh(`${PY_CV} ${CONFIG.home}/cleetusd/track_cli.py selftest`);
+    const t = JSON.parse(raw);
+    check("vision", "object tracker is correct", t.ok === true,
+      `hungarian gap ${t.hungarian_max_gap_vs_bruteforce}, identity held through occlusion: ${t.identity_survived_a_six_frame_partial_occlusion}`,
+      "cleetusd/track_cli.py — run `selftest` for the detail");
+  } catch (e) {
+    check("vision", "object tracker is correct", false, e.message,
+      `${PY_CV} ${CONFIG.home}/cleetusd/track_cli.py selftest`);
   }
 
   // ── the browser tools point at this machine ────────────────────────────────
@@ -185,13 +424,97 @@ export async function runDoctor() {
     CONFIG.webHarness,
     "set CLEETUSD_WEB_URL, or leave it unset — do not inherit the cloud app's public hostname");
 
+  // ── the model actually answers, through the path the web app uses ──────────
+  //
+  // Reasoning suppression is not a cost optimisation here, it is a cliff. On the
+  // OpenAI-compatible /v1 shim, `think:false` is silently ignored; only
+  // `reasoning_effort:"none"` stops it. Measured on this box, same question,
+  // 200-token budget:
+  //
+  //   no flag                 200 completion tokens, 913 chars of reasoning,
+  //                           and an EMPTY answer — the whole budget went to
+  //                           thinking and it never wrote a word
+  //   reasoning_effort:none   8 tokens, no reasoning, correct answer, 0.3s
+  //
+  // One env var (LLM_THINK=1) removes that flag for every call the web app
+  // makes. The failure is not slowness, it is blank answers, and the fallback
+  // counter is the only other thing that would notice.
+  if (secrets.LLM_API_KEY) {
+    const base = secrets.LLM_BASE_URL || "https://llm.cleetusai.com/v1";
+    try {
+      const r = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${secrets.LLM_API_KEY}` },
+        body: JSON.stringify({
+          model: CONFIG.model, max_tokens: 64, reasoning_effort: "none",
+          messages: [{ role: "user", content: "Reply with the single word: ready" }],
+        }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      const j = await r.json();
+      const msg = j?.choices?.[0]?.message || {};
+      const text = (msg.content || "").trim();
+      const reasoned = (msg.reasoning || msg.reasoning_content || "").length;
+      check("cloud", "model answers over /v1 without burning the budget", !!text && reasoned === 0,
+        text ? `"${text.slice(0, 24)}" · ${j?.usage?.completion_tokens ?? "?"} tokens · ${reasoned} chars reasoning`
+             : `EMPTY answer · ${reasoned} chars of reasoning`,
+        "reasoning_effort:\"none\" is missing or LLM_THINK=1 — every answer will come back blank");
+    } catch (e) {
+      check("cloud", "model answers over /v1 without burning the budget", false, e.message);
+    }
+  } else {
+    skip("cloud", "model answers over /v1 without burning the budget", "LLM_API_KEY not set");
+  }
+
+  // ── the handoff's own claims, checked ────────────────────────────────────
+  //
+  // Section 01 of the handoff opens by promising every line was verified
+  // against live behaviour. It was — at 22:00 on the night it was written. By
+  // morning it claimed 15 tools, 24 checks and 12 access locations, all wrong,
+  // and it is the page somebody reads first to decide what deserves attention.
+  //
+  // Only the mechanically checkable part is asserted: the tool list it prints
+  // against the registry that actually exists. Two sets either match or they do
+  // not, which does not depend on how carefully anyone read. Prose is left to
+  // humans.
+  //
+  // Desktop access comes and goes on this machine (macOS revoked it from this
+  // process for three hours last night), so an unreadable handoff SKIPS. A
+  // check that fails because it could not look is noise.
+  try {
+    const handoff = `${CONFIG.home}/Desktop/Cleetus/CLEETUS-HANDOFF.html`;
+    const text = await readFile(handoff, "utf8").catch(() => null);
+    if (text === null) {
+      skip("cleetusd", "handoff lists the tools that exist", "handoff not readable (macOS TCC)");
+    } else {
+      // Bounded by the sentence that ENDS the list, not by a character count.
+      // A fixed window ran past it into the next sentence and flagged the four
+      // alias names it mentions — shell, cat, ls, grep — as ghost tools. Third
+      // time a fixed-size window has read something it was not looking at.
+      const start = text.search(/The \d+ tools\.<\/b>/);
+      const stop = text.indexOf("There is <b>no path allowlist", start);
+      const block = start >= 0 && stop > start ? text.slice(start, stop) : "";
+      const listed = new Set([...block.matchAll(/<code>([a-z][a-z0-9_]+)<\/code>/g)].map((m) => m[1]));
+      const { TOOLS } = await import("./tools/index.mjs");
+      const real = new Set(Object.keys(TOOLS));
+      const ghost = [...listed].filter((t) => !real.has(t));
+      const missing = [...real].filter((t) => !listed.has(t));
+      const bad = [...ghost.map((t) => `${t} (gone)`), ...missing.map((t) => `${t} (unlisted)`)];
+      check("cleetusd", "handoff lists the tools that exist", listed.size > 0 && bad.length === 0,
+        bad.length ? bad.join(", ") : `${listed.size} named, all real`,
+        "the handoff's tool list has drifted from the registry — section 46");
+    }
+  } catch (e) {
+    check("cleetusd", "handoff lists the tools that exist", false, e.message);
+  }
+
   // ── the desk light ──────────────────────────────────────────────────────────
   // Unplugged is not a fault — it is a USB device and it travels. What IS a
   // fault is being plugged in and not answering, because the tool would then
   // report "the light is not plugged in" for a light sitting right there.
   const litraUsb = (await sh("ioreg -r -c IOUSBHostDevice -d 1 | grep -c 'Litra'")).trim() !== "0";
   if (litraUsb) {
-  const out = await sh(`${CONFIG.home}/studio-locate/.venv/bin/python ${CONFIG.home}/studio-locate/litra_cli.py state`);
+  const out = await sh(`${PY_CV} ${CONFIG.home}/studio-locate/litra_cli.py state`);
   let state = null;
   try { state = JSON.parse(out); } catch { /* left null */ }
   check("devices", "desk light answers", state?.ok === true && state?.on !== null,
@@ -199,6 +522,29 @@ export async function runDoctor() {
     "hidapi must be in studio-locate/.venv; the vendor HID interface is usage page 0xff43");
   } else {
   skip("devices", "desk light", "not plugged in");
+  }
+
+  // ── the face recogniser ─────────────────────────────────────────────────────
+  //
+  // Both halves are checked because they fail differently and only one of them
+  // is loud. Missing models make every call return no_models, which is at least
+  // an error someone sees. An EMPTY GALLERY is the quiet one: the recogniser
+  // runs, finds a face, matches it against nobody and answers "I don't
+  // recognise anyone" — which is indistinguishable from a stranger at the desk.
+  // Once anyone is enrolled, the gallery going empty means something ate it.
+  try {
+    const raw = await sh(`${PY_CV} ${CONFIG.home}/cleetusd/face_cli.py list`);
+    const g = JSON.parse(raw);
+    check("faces", "recogniser runs", g.ok === true, `${g.people?.length ?? 0} enrolled`,
+      "the models live in cleetusd/models/face; see cleetusd/face_cli.py");
+    check("faces", "someone is enrolled", (g.people?.length || 0) > 0,
+      (g.people || []).map((p) => `${p.name} x${p.embeddings}`).join(", ") || "nobody",
+      "node ~/cleetusd/bin/face.mjs learn Grayson");
+  } catch (e) {
+    check("faces", "recogniser runs", false, e.message,
+      "the models live in cleetusd/models/face; see cleetusd/face_cli.py");
+    check("faces", "someone is enrolled", false, "recogniser did not answer",
+      "node ~/cleetusd/bin/face.mjs learn Grayson");
   }
 
   // ── studio-locate gesture, after the calibration ────────────────────────────
@@ -222,22 +568,91 @@ export async function runDoctor() {
   `http ${me.status || me.error}`,
   me.status === 200 ? "STOP. Restore /etc/cloudflared/config.yml.bak.* now." : "");
 
-  const flights = await get("https://cleetusai.com/api/flights?count=1", 15_000);
-  if (flights.status === 200) {
-  try {
-    const f = JSON.parse(flights.body);
-    // Swept by the edge means the Mac's snapshot went stale; the map silently
-    // drops to about a quarter of the sky.
-    check("cloud", "flights swept by the Mac", f.swept_by === "mac-studio",
-      `${f.swept_by} · ${f.in_air} aircraft · ${f.anchors_answered}/${f.anchors} anchors`,
-      "launchctl kickstart -k gui/$(id -u)/com.cleetus.flights");
-  } catch { check("cloud", "flights readable", false, "unparseable"); }
-  } else if (flights.status === 401) {
-  // Expected without a session cookie. A check that always fails is noise and
-  // trains you to ignore the report, which defeats the point of having one.
-  skip("cloud", "flights endpoint", "needs a session cookie");
-  } else {
-  check("cloud", "flights endpoint", false, `http ${flights.status || flights.error}`);
+  // The flight map, actually checked.
+  //
+  // This used to skip, every single run, because the endpoint wants a session
+  // and the doctor did not have one. A check that always skips is the same as
+  // no check — and the thing it was meant to catch is invisible by design: when
+  // the Mac's snapshot goes stale the edge sweeps instead, the map still draws,
+  // and it silently shows about a quarter of the sky. That is exactly the
+  // failure this whole report exists for, and it was the one thing being
+  // waved through.
+  //
+  // The site takes a password login, which cloud_api has been using all along.
+  // Borrowing it costs one request.
+  let cookie = null;
+  if (CONFIG.sitePassword) {
+    try {
+      const r = await fetch(`${CONFIG.cloud}/api/session/password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: CONFIG.cloud },
+        body: JSON.stringify({ password: CONFIG.sitePassword }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const sc = (r.headers.getSetCookie?.() || [])
+        .map((c) => c.split(";")[0])
+        .filter((c) => c.startsWith("cleetus_session="));
+      cookie = sc.length ? sc.join("; ") : null;
+    } catch { /* reported below */ }
+  }
+  check("cloud", "can log into the site", !!cookie,
+    cookie ? "session obtained" : CONFIG.sitePassword ? "login failed" : "SITE_PASSWORD not set",
+    "without this the flight check cannot run at all");
+
+  if (!cookie) {
+    for (const n of ["flights swept by the Mac", "flight data not degraded"]) {
+      skip("cloud", n, "could not log into the site");
+    }
+    skip("cloud", "integrations healthy", "could not log into the site");
+  }
+  if (cookie) {
+    let flights;
+    try {
+      const r = await fetch("https://cleetusai.com/api/flights?count=1", {
+        headers: { Cookie: cookie }, signal: AbortSignal.timeout(20_000),
+      });
+      flights = { status: r.status, body: await r.text() };
+    } catch (e) { flights = { status: 0, error: e.message }; }
+
+    if (flights.status === 200) {
+      try {
+        const f = JSON.parse(flights.body);
+        check("cloud", "flights swept by the Mac", f.swept_by === "mac-studio",
+          `${f.swept_by} · ${f.in_air} aircraft · ${f.anchors_answered}/${f.anchors} anchors`,
+          "launchctl kickstart -k gui/$(id -u)/com.cleetus.flights");
+        // Degraded is the edge saying so out loud. Believe it.
+        check("cloud", "flight data not degraded", !f.degraded,
+          f.degraded ? `degraded: ${f.source}` : `source ${f.source}`,
+          "the Mac's snapshot went stale; check com.cleetus.flights");
+      } catch { check("cloud", "flights readable", false, "unparseable"); }
+    } else {
+      check("cloud", "flights endpoint", false, `http ${flights.status || flights.error}`);
+    }
+  }
+
+  // ── the cloud app's own verdict, surfaced here ─────────────────────────────
+  //
+  // /api/health grades eight integrations and nothing on this machine was
+  // reading it, so a red pill on a page nobody had open was the only signal.
+  // Pulled in here it lands in the same report as everything else.
+  //
+  // Its own checks have been over-generous — outlook returned
+  // {ok:true, connected:false} and was graded "connected" — so a green here
+  // means "the cloud app believes it is fine", which is worth exactly as much
+  // as that endpoint's own honesty. Reported as one line, named per check.
+  if (cookie) {
+    try {
+      const r = await fetch(`${CONFIG.cloud}/api/health`, {
+        headers: { Cookie: cookie }, signal: AbortSignal.timeout(60_000),
+      });
+      const h = await r.json();
+      const down = Object.entries(h.checks || {}).filter(([, v]) => !v.ok).map(([k]) => k);
+      check("cloud", "integrations healthy", down.length === 0,
+        down.length ? `down: ${down.join(", ")}` : `${Object.keys(h.checks || {}).length} checks, all green`,
+        "open /api/health for the per-integration detail");
+    } catch (e) {
+      check("cloud", "integrations healthy", false, e.message);
+    }
   }
 
   return { results, failed: results.filter((r) => !r.ok && !r.skipped) };

@@ -48,5 +48,11 @@ token.json
 id_rsa*
 id_ed25519*
 
+# Model weights. Downloadable, byte-identical, and 37MB of binary that git
+# would carry forever — cleetusd/models/face holds YuNet and SFace, both from
+# opencv_zoo. They come back with the two curls in cleetusd/README.md, and
+# `node bin/face.mjs selftest` says plainly when they are missing.
+*.onnx
+
 # 4. The Obsidian vault is its own git repo — tracked separately, not a submodule.
 vault/

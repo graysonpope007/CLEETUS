@@ -18,6 +18,13 @@ import { remember, saveSkill, rememberForAgent } from "../memory.mjs";
 import { accessReport } from "../access.mjs";
 import { deviceTools } from "./devices.mjs";
 import { webTools } from "./web.mjs";
+import { mailTools } from "./mail.mjs";
+import { visionTools } from "./vision.mjs";
+import { faceTools } from "./faces.mjs";
+import { trackTools } from "./tracking.mjs";
+import { repoTools } from "./repos.mjs";
+import { keyringTools } from "./keyring.mjs";
+import { recallTools } from "./recall.mjs";
 
 // ── The vault ───────────────────────────────────────────────────────────────
 
@@ -161,14 +168,24 @@ const vaultTools = {
 const accessTools = {
   check_access: {
     schema: {
-      description: "Check which parts of Grayson's Mac you can actually read right now. Use this whenever a folder looks unexpectedly empty or a read fails, BEFORE telling him something does not exist.",
+      description: "Check which parts of Grayson's Mac you can actually read right now — home, Desktop, Documents, the vault, Mail, Messages, Safari, Photos, volumes. Call this BEFORE answering ANY question about what you can or cannot see or reach on his machine, and whenever a folder looks unexpectedly empty or a read fails. Asked 'can you read my texts', the answer is whatever this returns, not what you assume from your tool list — permissions change and your tool list does not.",
       parameters: { type: "object", properties: {} },
     },
     async run() {
       const r = await accessReport();
       const lines = Object.entries(r.targets).map(([k, v]) => `${k}: ${v.state}${v.detail ? " (" + v.detail + ")" : ""}`);
+      // fix is a structured object now. Rendered from fix_text rather than
+      // interpolated directly — String(object) is "[object Object]", and the
+      // model does not report an empty tool result, it fills the gap with
+      // something plausible, which here would be invented remediation advice.
       return (r.full_access ? "Full access to everything probed.\n" : "NOT full access.\n") +
-        lines.join("\n") + (r.fix ? "\n\nFix: " + r.fix : "");
+        lines.join("\n") +
+        (r.fix_text ? `\n\nFix: ${r.fix_text}` : "") +
+        (r.needs_full_disk_access?.length
+          ? `\n\nSay this plainly rather than hedging: ${r.needs_full_disk_access.join(", ")} are not ` +
+            `empty and are not broken, they are refused by macOS until he ticks Full Disk Access for ` +
+            `${r.running_as}. It is one switch and it takes him ten seconds.`
+          : "");
     },
   },
 };
@@ -224,7 +241,7 @@ const bridgeTools = {
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
-export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools };
+export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools };
 
 /** Ollama's native tool format. */
 export function toolSchemas(names = Object.keys(TOOLS)) {
@@ -253,12 +270,66 @@ const ALIASES = {
   search: "search_files",
   write: "write_file",
   remember: "remember_fact",
+  // "Who is that" is a question with many spellings and one answer. Left to
+  // guess, the model reaches for `look` — which describes a face perfectly and
+  // then names it from thin air, the exact failure who_is_there exists to stop.
+  who: "who_is_there",
+  whos_there: "who_is_there",
+  identify_face: "who_is_there",
+  recognize_face: "who_is_there",
+  face_recognition: "who_is_there",
+  remember_face: "learn_face",
+  enroll_face: "learn_face",
+  // "Do you have my repos" arrives in about six spellings and every one of them
+  // used to end in a `find ~` that walked the whole disk. The index answers all
+  // six, so the names route to it rather than to the shell.
+  repos: "list_repos",
+  list_repositories: "list_repos",
+  git_repos: "list_repos",
+  github_repos: "list_repos",
+  gh: "github",
+  git_status: "repo_status",
+  secrets: "list_secrets",
+  api_key: "get_secret",
+  remember_secret: "save_secret",
+  search_chats: "recall_chat",
+  past_conversations: "recall_chat",
 };
+
+/**
+ * A missing argument is not a negative result, and the difference decides
+ * whether the model recovers.
+ *
+ * `edit_file` called without `find` searched the file for the string
+ * "undefined", found nothing, and answered "Not found — read the file and match
+ * the text exactly, including indentation." That is advice for a DIFFERENT
+ * problem. It sends the model off to re-read the file and retry the identical
+ * broken call, because nothing in the reply suggests the call itself was
+ * malformed. `find_files` without `name` did the same: `Nothing named like
+ * "undefined"`, phrased as an empty search rather than an absent argument.
+ *
+ * Checked here rather than in each tool, so every tool gets it and no future
+ * one has to remember. The schemas already declare what is required.
+ */
+function missingArgs(tool, args) {
+  const required = tool.schema?.parameters?.required || [];
+  return required.filter((k) => args[k] === undefined || args[k] === null || args[k] === "");
+}
 
 /** `ctx` carries who is asking, so a tool can act on behalf of one agent. */
 export async function callTool(name, args, ctx) {
   const tool = TOOLS[name] || TOOLS[ALIASES[name]];
   if (!tool) return `No such tool: ${name}`;
+
+  const missing = missingArgs(tool, args || {});
+  if (missing.length) {
+    const props = tool.schema?.parameters?.properties || {};
+    return (
+      `${name} is missing ${missing.length === 1 ? "a required argument" : "required arguments"}: ` +
+      missing.map((k) => `${k} (${props[k]?.description || "required"})`).join("; ") +
+      `. Nothing was done — call it again with ${missing.join(" and ")}.`
+    );
+  }
   try {
     return await tool.run(args || {}, ctx);
   } catch (e) {

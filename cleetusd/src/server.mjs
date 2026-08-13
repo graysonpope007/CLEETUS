@@ -18,6 +18,9 @@ import { vaultReachable } from "./tools/index.mjs";
 import { accessReport } from "./access.mjs";
 import { litraRaw } from "./tools/devices.mjs";
 import { runDoctor } from "./doctor.mjs";
+import { repoIndex } from "./repos.mjs";
+import * as keyring from "./keyring.mjs";
+import * as convos from "./conversations.mjs";
 
 // Last health pass, shared by every caller. See the /doctor route.
 const DOCTOR_TTL = 60_000;
@@ -198,8 +201,9 @@ async function handle(req, res) {
   // to the bearer gate below like every other request.
   const BROWSER_ROUTES = ["/", "/index.html", "/skills", "/runs", "/chat/stream",
                           "/airpad/state", "/airpad/stream.mjpg",
-                          "/light", "/doctor"];
-  const localBrowser = isLocalBrowser(req) && BROWSER_ROUTES.includes(url.pathname);
+                          "/light", "/doctor", "/repos", "/secrets", "/conversations"];
+  const localBrowser = isLocalBrowser(req) &&
+    (BROWSER_ROUTES.includes(url.pathname) || url.pathname.startsWith("/conversations/"));
 
   // ── Anything that moves the cursor ──
   // Deliberately NOT bearer-gated like the rest, because the bearer is exactly
@@ -383,15 +387,98 @@ async function handle(req, res) {
     return json(res, { runs: await recentRuns().catch(() => []) });
   }
 
+  // ── The repositories ──
+  // Read-only, and it is a list of paths and names rather than any code, so it
+  // is safe over the tunnel. ?refresh=1 rescans.
+  if (url.pathname === "/repos") {
+    const index = await repoIndex({ refresh: url.searchParams.get("refresh") === "1" }).catch((e) => ({ error: e.message }));
+    return json(res, index);
+  }
+
+  // ── The keyring ──
+  //
+  // GET returns NAMES, notes and four-character hints. There is deliberately no
+  // route on this server, at any origin, with any token, that returns a secret
+  // VALUE — see keyring.mjs. That asymmetry is what makes it safe to POST one
+  // from a phone: writing a key from the sofa is useful, and a readback route
+  // would put every key he owns one auth bug away from the open internet.
+  if (url.pathname === "/secrets") {
+    if (req.method === "GET") return json(res, { secrets: await keyring.list() });
+    if (req.method === "POST") {
+      const b = await readBody(req);
+      if (b.delete) {
+        const gone = await keyring.remove(b.delete);
+        return json(res, { ok: gone, deleted: gone ? String(b.delete).toUpperCase() : null });
+      }
+      try {
+        const r = await keyring.put(b.name, b.value, { note: b.note });
+        return json(res, { ok: true, ...r });
+      } catch (e) {
+        return json(res, { ok: false, error: e.message }, 400);
+      }
+    }
+    return json(res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  // ── Conversations ──
+  // The thread lives here now rather than in a browser tab, which is what makes
+  // it survive the tab closing, reachable from the phone, and readable by any
+  // agent. See conversations.mjs.
+  if (url.pathname === "/conversations" && req.method === "GET") {
+    return json(res, {
+      conversations: await convos.list({
+        agent: url.searchParams.get("agent") || null,
+        limit: Number(url.searchParams.get("limit")) || 40,
+      }).catch(() => []),
+    });
+  }
+  if (url.pathname === "/conversations" && req.method === "POST") {
+    const b = await readBody(req);
+    return json(res, await convos.create({ agent: b.agent || "cleetus" }));
+  }
+  if (url.pathname.startsWith("/conversations/")) {
+    const id = decodeURIComponent(url.pathname.slice("/conversations/".length));
+    if (req.method === "DELETE") return json(res, { ok: await convos.remove(id) });
+    const c = await convos.load(id);
+    if (!c) return json(res, { ok: false, error: "no_such_conversation" }, 404);
+    return json(res, c);
+  }
+
   // Streamed chat. The point is watching him touch the disk: every tool call
   // is pushed the moment it happens, rather than the whole thing arriving as
   // one silent block after twenty seconds.
   if (url.pathname === "/chat/stream" && req.method === "POST") {
     const body = await readBody(req);
-    const history = Array.isArray(body.messages) && body.messages.length
-      ? body.messages
-      : body.message ? [{ role: "user", content: String(body.message) }] : null;
-    if (!history) return json(res, { ok: false, error: "no message" }, 400);
+
+    // ── Where the conversation comes from ──
+    //
+    // It used to come from the browser: `const HISTORY = []` in reach.html,
+    // sliced to the last twelve turns and posted with every message. Closing
+    // the tab lost it, the phone never had it, and turn thirteen dropped the
+    // beginning silently.
+    //
+    // Now the caller sends an ID and the thread is read off the disk. The
+    // `messages` form still works — the deck, bin/ask.mjs and anything else
+    // that predates this all use it — but a caller that sends `conversation`
+    // gets persistence, and that is the only difference between them.
+    let convo = null;
+    let history;
+    if (body.conversation) {
+      convo = await convos.open(body.conversation, { agent: body.agent || "cleetus" });
+      const incoming = Array.isArray(body.messages) && body.messages.length
+        ? body.messages.filter((m) => m.role === "user").slice(-1)
+        : body.message ? [{ role: "user", content: body.message }] : [];
+      if (!incoming.length && !convo.messages.length) {
+        return json(res, { ok: false, error: "no message" }, 400);
+      }
+      if (incoming.length) convo = await convos.append(convo.id, incoming);
+      history = convos.replay(convo);
+    } else {
+      history = Array.isArray(body.messages) && body.messages.length
+        ? body.messages
+        : body.message ? [{ role: "user", content: String(body.message) }] : null;
+    }
+    if (!history || !history.length) return json(res, { ok: false, error: "no message" }, 400);
 
     // A picture with no eyes to see it is a different answer, not a worse one.
     // Said before the stream opens so the caller can go somewhere that CAN
@@ -408,9 +495,47 @@ async function handle(req, res) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
+      // Cloudflare, Caddy and every other proxy in the path will buffer a
+      // response body unless told not to, which turns a stream into one silent
+      // block delivered at the end — the exact thing this route exists to avoid.
+      "X-Accel-Buffering": "no",
       "Access-Control-Allow-Origin": "*",
     });
-    const send = (o) => res.write(`data: ${JSON.stringify(o)}\n\n`);
+
+    // Writes go through this rather than res.write directly.
+    //
+    // Once the browser has gone, every write on the dead socket throws, and a
+    // throw here escapes an async handler as an unhandled rejection — which is
+    // fatal to the process by default and took the daemon down with every
+    // unrelated conversation in flight. A closed socket is an ordinary event:
+    // note it and stop writing.
+    let gone = false;
+    req.on("close", () => { gone = true; });
+    const send = (o) => {
+      if (gone) return false;
+      try { return res.write(`data: ${JSON.stringify(o)}\n\n`); }
+      catch { gone = true; return false; }
+    };
+
+    // ── The heartbeat, which is what "lost the connection" was really about ──
+    //
+    // A tool loop can spend two minutes between events: twenty steps, several
+    // of them a shell command or a ripgrep across the disk. Nothing was written
+    // to the socket in all that time, and an idle HTTP response is exactly what
+    // every intermediary in the path is entitled to reap — the browser's own
+    // timeout, Cloudflare's 100s idle limit, a laptop suspending its NIC. The
+    // page then reported "lost the connection to cleetusd: network error",
+    // which named the symptom and pointed at the wrong machine: cleetusd was
+    // fine and still working, and the answer it eventually produced went
+    // nowhere.
+    //
+    // A comment line every ten seconds costs nothing and resets every one of
+    // those timers. SSE defines lines beginning with a colon as comments, so
+    // this is invisible to the client parser.
+    const beat = setInterval(() => {
+      if (gone) return clearInterval(beat);
+      try { res.write(`: still working\n\n`); } catch { gone = true; clearInterval(beat); }
+    }, 10_000);
 
     try {
       const out = await ask({
@@ -423,22 +548,48 @@ async function handle(req, res) {
           send({ type: "step", tool, detail: String(detail).slice(0, 90) });
         },
       });
+      // Persisted BEFORE it is sent. If the socket has already gone the answer
+      // is still in the thread, so reopening the conversation finds the reply
+      // to the question that appeared to fail — which is the whole reason the
+      // thread lives on disk rather than in the tab.
+      if (convo) {
+        await convos.append(convo.id, [{ role: "assistant", content: out.answer || "", agent: out.agent }])
+          .catch(() => {});
+      }
       send({ type: "agent", agent: out.agent });
-      send({ type: "done", answer: out.answer, agent: out.agent, used: out.used, failed: out.failed });
+      send({ type: "done", answer: out.answer, agent: out.agent, used: out.used,
+             failed: out.failed, conversation: convo?.id || null });
     } catch (e) {
+      console.error("[cleetusd] chat failed:", e?.stack || e);
       send({ type: "error", error: e.message });
+    } finally {
+      clearInterval(beat);
     }
-    return res.end();
+    if (!gone) res.end();
+    return;
   }
 
   if (url.pathname === "/chat" && req.method === "POST") {
     const body = await readBody(req);
-    const history = Array.isArray(body.messages) && body.messages.length
-      ? body.messages
-      : body.message
-        ? [{ role: "user", content: String(body.message) }]
-        : null;
-    if (!history) return json(res, { ok: false, error: "no message" }, 400);
+    // Same two shapes as /chat/stream, for the same reason: this is the route
+    // the tunnel uses, so a phone must get the persisted thread too.
+    let convo = null;
+    let history;
+    if (body.conversation) {
+      convo = await convos.open(body.conversation, { agent: body.agent || "cleetus" });
+      const incoming = Array.isArray(body.messages) && body.messages.length
+        ? body.messages.filter((m) => m.role === "user").slice(-1)
+        : body.message ? [{ role: "user", content: body.message }] : [];
+      if (incoming.length) convo = await convos.append(convo.id, incoming);
+      history = convos.replay(convo);
+    } else {
+      history = Array.isArray(body.messages) && body.messages.length
+        ? body.messages
+        : body.message
+          ? [{ role: "user", content: String(body.message) }]
+          : null;
+    }
+    if (!history || !history.length) return json(res, { ok: false, error: "no message" }, 400);
     if (hasImages(history) && !(await visionReady())) {
       return json(res, {
         ok: false, error: "no_vision",
@@ -449,7 +600,11 @@ async function handle(req, res) {
 
     try {
       const out = await ask({ history, agent: body.agent });
-      return json(res, { ok: true, ...out });
+      if (convo) {
+        await convos.append(convo.id, [{ role: "assistant", content: out.answer || "", agent: out.agent }])
+          .catch(() => {});
+      }
+      return json(res, { ok: true, ...out, conversation: convo?.id || null });
     } catch (e) {
       return json(res, { ok: false, error: e.message }, 500);
     }
@@ -463,7 +618,36 @@ async function handle(req, res) {
   return json(res, { ok: false, error: "not found" }, 404);
 }
 
+/* ── The daemon does not get to exit because one request went wrong ───────────
+ *
+ * Node's default for an unhandled rejection is to print it and exit(1). That is
+ * right for a script and wrong for a process somebody is mid-conversation with:
+ * cleetusd.err.log is a wall of identical ERR_HTTP_HEADERS_SENT stacks, each
+ * one a restart, each restart killing every unrelated request in flight. The
+ * MJPEG proxy raising after its headers were sent did it repeatedly, and it is
+ * the same class of fault as a write to a socket the browser already closed.
+ *
+ * Every one of those is now individually handled at its own call site. This is
+ * the backstop for the one nobody has thought of yet, and it is deliberately
+ * LOUD — the log line is the thing that gets it fixed properly, and swallowing
+ * it silently would trade a visible crash for an invisible corruption.
+ *
+ * Not caught here: a genuine startup failure. Those happen before listen() and
+ * should still take the process down, because launchd restarting it is the
+ * correct response to a daemon that cannot start.
+ */
+let listening = false;
+process.on("unhandledRejection", (e) => {
+  console.error("[cleetusd] unhandled rejection (staying up):", e?.stack || e);
+  if (!listening) process.exit(1);
+});
+process.on("uncaughtException", (e) => {
+  console.error("[cleetusd] uncaught exception (staying up):", e?.stack || e);
+  if (!listening) process.exit(1);
+});
+
 server.listen(CONFIG.port, CONFIG.host, () => {
+  listening = true;
   console.log(`cleetusd on http://${CONFIG.host}:${CONFIG.port}`);
   console.log(`  model  ${CONFIG.model}`);
   console.log(`  vault  ${CONFIG.vault}`);

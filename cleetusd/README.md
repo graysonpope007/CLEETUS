@@ -52,10 +52,54 @@ node test/guards.test.mjs     # 7 checks on the self-improvement guards
 | `remember_fact` `save_skill` | His own memory, as markdown. |
 | `cloud_api` | Plaid, Schwab, calendar, training, food — via the deployed app. |
 | `browse` | cleetus-web. Reads execute, commits queue for approval. |
+| `look` | Describes what a camera can see. Does not know whose face it is. |
+| `who_is_there` `learn_face` `known_faces` | Names the face. See below. |
 
 **There is no path allowlist.** That was deliberate: the next project always
 lives in the directory nobody thought to list. What replaces a restriction is a
 **record** — every tool call is written into the run file as it happens.
+
+## Faces
+
+`look` describes; it cannot identify. Asked "is that Grayson" a vision model
+says yes, because that is the likely sentence and it has never seen his face.
+So identity is measured instead: YuNet finds faces, SFace turns each into 128
+numbers, and a face gets a name only if those numbers land close enough to the
+ones taken at enrolment.
+
+```sh
+node bin/face.mjs learn Grayson     # waits up to 40s for a face turned at the lens
+node bin/face.mjs who               # who is in front of the room camera
+node bin/face.mjs list
+node bin/face.mjs forget Grayson
+node bin/face.mjs selftest          # models + camera, without needing a known face
+```
+
+Enrolments live in `~/cleetus-memory/faces/gallery.json`, and every crop that
+was learned from is kept alongside in `crops/` — an enrolment is a claim about
+whose face it is, and looking is the only way to check that claim later.
+
+**The threshold is 0.45, not SFace's shipped 0.363.** At 0.363 a stranger in a
+photo on this Mac — same colouring, same curly fair hair — scored 0.394 and
+would have been called Grayson by name. Grayson himself runs 0.634–0.870 live.
+If he starts going unrecognised, run `learn` again in that day's light (it
+appends) rather than lowering the number.
+
+**There is no liveness check.** A photograph held up to the camera identifies as
+the person in it. This answers "who is at my desk"; it must never gate a lock.
+
+The two models are not in git — 37MB of downloadable binary. Fetch them into
+`models/face/`:
+
+```sh
+mkdir -p models/face && cd models/face
+curl -sSLo yunet.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+curl -sSLo sface.onnx https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx
+```
+
+Note `media.githubusercontent.com`, not `raw.` — opencv_zoo stores these in git
+LFS, and `raw.` serves a 133-byte pointer file that OpenCV rejects with a
+confusing parse error rather than "this is not a model".
 
 ## Memory, as files you can open
 

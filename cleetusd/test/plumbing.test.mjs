@@ -98,5 +98,30 @@ console.log("\nmodel");
 const h = await health();
 check("ollama reachable with the model pulled", h.ok, h.detail);
 
+// Probe runs stay on disk and off the panel.
+//
+// Nine test questions this session asked itself — desk light, Amazon, a fake
+// tax credit, "can you see my Desktop?" — accumulated in one night and pushed
+// Grayson's own questions off "Recent work" entirely. The files are a true
+// record of what the machine did and are kept; they are simply not HIS work.
+{
+  const { recentRuns } = await import("../src/memory.mjs");
+  const { readFile, writeFile, mkdir } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const dir = join(process.env.CLEETUS_MEMORY_ROOT || "", "runs");
+  await mkdir(dir, { recursive: true }).catch(() => {});
+  const stamp = "2099-01-01-0000";
+  await writeFile(join(dir, `${stamp}-probe-run.md`),
+    `---\nagent: cleetus\nstatus: done\nprobe: true\n---\n\n# a probe the agent asked itself\n`, "utf8");
+  await writeFile(join(dir, `${stamp}-real-run.md`),
+    `---\nagent: cleetus\nstatus: done\n---\n\n# a question Grayson asked\n`, "utf8");
+  const runs = await recentRuns(20);
+  const titles = runs.map((r) => r.title);
+  check("probe runs are hidden from Recent work", !titles.some((t) => /probe the agent/.test(t)));
+  check("real runs still show", titles.some((t) => /Grayson asked/.test(t)));
+  const kept = await readFile(join(dir, `${stamp}-probe-run.md`), "utf8").then(() => true).catch(() => false);
+  check("the probe file is kept, not deleted", kept);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

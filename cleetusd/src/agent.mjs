@@ -9,6 +9,9 @@ import { TOOLS, toolSchemas, callTool } from "./tools/index.mjs";
 import { startRun, logStep, finishRun, loadMemory, relevantSkills, remember,
          rememberForAgent, loadAgentMemory, loadAllAgentMemory } from "./memory.mjs";
 import { teachFromRun } from "./teacher.mjs";
+import { repoIndex, rosterText } from "./repos.mjs";
+import { keyringRoster } from "./keyring.mjs";
+import { recentDigest } from "./conversations.mjs";
 
 // Dossiers that live in the vault as markdown. Small enough to inject whole,
 // and injected EAGERLY: an agent that has to remember to go looking for
@@ -128,7 +131,7 @@ async function buildSystem(agentId, question) {
   const agent = AGENTS[agentId] || AGENTS.cleetus;
 
   const isGeneralist = agentId === "cleetus";
-  const [memory, skills, own, others] = await Promise.all([
+  const [memory, skills, own, others, repos, keys, threads] = await Promise.all([
     loadMemory(),
     relevantSkills(question),
     // A specialist reads its own file in full and nobody else's — that is what
@@ -137,6 +140,24 @@ async function buildSystem(agentId, question) {
     // The generalist reads a headline of every specialist, so it is never the
     // least informed thing in the system.
     isGeneralist ? loadAllAgentMemory() : "",
+    // His code, and his keys, injected rather than discovered.
+    //
+    // Both of these are FACTS ABOUT THE MACHINE that change on the order of
+    // once a week, and both were previously things the model had to go and find
+    // out with the shell. Asked "can you access my github repos" it ran an
+    // unbounded `find ~`; asked to call an API it said it had no key while
+    // holding one. A roster costs a few hundred characters and removes an
+    // entire class of flailing, so it is not retrieved on demand — it is simply
+    // known. Never fatal: a scan that fails leaves the prompt as it was.
+    repoIndex().then(rosterText).catch(() => ""),
+    keyringRoster().catch(() => ""),
+    // THAT other conversations exist, never their contents. Six lines, so the
+    // model can say "we talked about that on Tuesday, let me read it back"
+    // instead of "I have no memory of previous conversations" — which was true
+    // of the old design and is the single most alienating thing an assistant
+    // can say to someone who told it something yesterday. The contents come
+    // from recall_chat, on demand, when they are actually wanted.
+    recentDigest(6).catch(() => ""),
   ]);
 
   const dossiers = [];
@@ -186,6 +207,9 @@ async function buildSystem(agentId, question) {
     memory ? `\n## What you know about Grayson\n(Shared. Everything here was told to Cleetus or to one of the agents, and every agent sees it.)\n${memory}` : "",
     own ? `\n## What YOU have learned as the ${agentId} agent\n(Yours specifically. He told you these; no other agent sees them.)\n${own}` : "",
     others ? `\n## What he has told the specialists\n(Headlines only — you are the generalist, so you know THAT they know. Read ${join(CONFIG.memoryRoot, "agents")}/<agent>.md with read_file for the detail.)\n${others}` : "",
+    repos ? `\n## His code\n(Already known — do NOT go looking for repositories with find, search_files or a shell walk of his home directory. Use list_repos to refresh this, repo_status for the state of one, github for the gh CLI, clone_repo for one that is not here yet.)\n${repos}` : "",
+    keys ? `\n## Keys you hold\n${keys}` : "",
+    threads ? `\n## Conversations you have had with him\n(Every conversation is kept on his Mac and any agent can read any of them. This is a list, not their contents — read one with read_chat, or search all of them with recall_chat. You are not a stateless chat window: if he refers to something from before, go and look before you say you do not remember it.)\n${threads}` : "",
     dossiers.length ? `\n## Dossier\n${dossiers.join("\n\n")}` : "",
     skills.length ? `\n## Procedures you have learned\n${skills.map((s) => `**${s.title}** (use when ${s.when})\n${s.body}`).join("\n\n")}` : "",
   ]

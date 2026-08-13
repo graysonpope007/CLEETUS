@@ -53,3 +53,30 @@ test("a genuinely unknown tool still says so", async () => {
   // The alias table must not turn every typo into a silent no-op.
   assert.match(await callTool("frobnicate", {}), /No such tool/);
 });
+
+test("a missing required argument says so, instead of reporting an empty result", async () => {
+  // edit_file without `find` used to search the file for the string "undefined",
+  // find nothing, and answer "Not found — match the text exactly, including
+  // indentation." That is advice for a different problem: it sends the model
+  // back to re-read the file and retry the identical malformed call. Checked
+  // centrally in callTool, so every tool gets it.
+  const out = await callTool("edit_file", { path: "/tmp/whatever.txt", old: "a", new: "b" });
+  assert.match(out, /missing required arguments/);
+  assert.match(out, /find/);
+  assert.match(out, /replace/);
+  assert.match(out, /Nothing was done/);
+  assert.doesNotMatch(out, /match the text exactly/);
+});
+
+test("the guard does not fire on a complete call", async () => {
+  const out = await callTool("find_files", { name: "package.json", path: "/Users/grayson/cleetusd" });
+  assert.doesNotMatch(out, /missing/);
+  assert.match(out, /package\.json/);
+});
+
+test("an empty string counts as missing", async () => {
+  // "" is the shape a model produces when it knows it needs an argument and has
+  // nothing to put there. Treating it as present makes the tool search for "".
+  const out = await callTool("web_open", { url: "" });
+  assert.match(out, /missing a required argument/);
+});

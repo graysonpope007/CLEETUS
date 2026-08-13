@@ -19,7 +19,9 @@ import { CONFIG } from "../config.mjs";
 import { see, visionReady } from "../ollama.mjs";
 
 // Where each camera points, in the words someone would use asking for it.
-const CAMERAS = {
+// Exported because faces.mjs looks through the same two eyes — a second copy of
+// these URLs is a second thing to keep in step with the hardware.
+export const CAMERAS = {
   desk: {
     url: "http://127.0.0.1:8765/frame.jpg",
     what: "the BRIO looking straight down at the desk, keyboard and whatever is on it",

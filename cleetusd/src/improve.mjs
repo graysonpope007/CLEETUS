@@ -24,7 +24,7 @@
 //     somewhere it cannot get back from.
 //   - Exceed a daily cap, or run at all while a STOP file exists.
 
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -101,7 +101,7 @@ async function findWork(health) {
   const issues = [];
 
   for (const name of health.down || []) {
-    issues.push({ kind: "health", what: `/api/health reports ${name} is down`, hint: `Look at functions/api/${name}*.js and _lib/${name}.js.` });
+    issues.push({ kind: "health", key: `health:${name}`, what: `/api/health reports ${name} is down`, hint: `Look at functions/api/${name}*.js and _lib/${name}.js.` });
   }
 
   // Runs that ended in an error are the most honest bug reports available:
@@ -110,9 +110,30 @@ async function findWork(health) {
     const runsDir = join(CONFIG.memoryRoot, CONFIG.runsDir);
     const files = (await readdir(runsDir)).filter((f) => f.endsWith(".md")).sort().slice(-40);
     for (const f of files) {
-      const text = await readFile(join(runsDir, f), "utf8");
-      if (/^status: (failed|running)$/m.test(text) || /FAILED `/.test(text)) {
-        issues.push({ kind: "run", what: `A previous run did not complete cleanly: ${f}`, hint: `Read ${join(runsDir, f)} for the tool trace.` });
+      const path = join(runsDir, f);
+      const text = await readFile(path, "utf8");
+      const failed = /^status: failed$/m.test(text) || /FAILED `/.test(text);
+
+      // `status: running` is NOT a failure. It is what a request in flight looks
+      // like — including, when this loop runs on a schedule, one Grayson is
+      // waiting on right now. Treating that as a bug report meant the loop
+      // could pick up a live conversation and "fix" it mid-sentence.
+      //
+      // A run stuck in `running` long after the fact is a different thing: the
+      // process died holding it. Age is what separates the two.
+      let stuck = false;
+      if (!failed && /^status: running$/m.test(text)) {
+        const age = Date.now() - (await stat(path)).mtimeMs;
+        stuck = age > 30 * 60_000;
+      }
+
+      if (failed || stuck) {
+        issues.push({
+          kind: "run",
+          key: `run:${f}`,
+          what: `A previous run did not complete cleanly: ${f}`,
+          hint: `Read ${path} for the tool trace.`,
+        });
       }
     }
   } catch {}
@@ -121,10 +142,20 @@ async function findWork(health) {
     const errLog = join(CONFIG.home, "Library/Logs/cleetusd.err.log");
     const text = await readFile(errLog, "utf8");
     const lines = text.trim().split("\n").filter((l) => /error|throw|unhandled/i.test(l)).slice(-5);
-    for (const l of lines) issues.push({ kind: "log", what: `cleetusd logged an error: ${l.slice(0, 200)}`, hint: `From ${errLog}.` });
+    for (const l of lines) issues.push({ kind: "log", key: `log:${l.slice(0, 80)}`, what: `cleetusd logged an error: ${l.slice(0, 200)}`, hint: `From ${errLog}.` });
   } catch {}
 
-  return issues;
+  // Five identical stack lines are one bug, not five. They collapse to one key
+  // anyway once attempted, but counting them separately made the work list look
+  // five times longer than it was and buried the single real item under repeats
+  // of a crash that had already been fixed.
+  const seen = new Set();
+  return issues.filter((i) => {
+    if (!i.key) return true;
+    if (seen.has(i.key)) return false;
+    seen.add(i.key);
+    return true;
+  });
 }
 
 // ── Gates ───────────────────────────────────────────────────────────────────
@@ -175,29 +206,64 @@ async function waitForDeploy(sha, { timeoutMs = 600_000 } = {}) {
 // ── The loop ────────────────────────────────────────────────────────────────
 
 export async function improveOnce({ dry = false } = {}) {
-  if (existsSync(STOP_FILE)) return { skipped: `STOP file present at ${STOP_FILE}` };
-
+  // Every guard below stops the loop from WRITING. None of them is a reason to
+  // stop it from LOOKING, and --dry is documented as "find the work, change
+  // nothing (start here)".
+  //
+  // It did not do that. The dirty-tree guard returned before the dry branch, so
+  // a dry pass was impossible on a dirty tree — which is to say, impossible on
+  // any day Grayson was mid-something, which is the day you most want to read
+  // one. Dry now collects the blockers and reports them alongside the work it
+  // would have picked.
   const state = await loadState();
   if (state.day !== today()) { state.day = today(); state.count = 0; }
-  if (state.count >= DAILY_CAP) return { skipped: `daily cap reached (${DAILY_CAP})` };
+  const { stdout: dirty } = await sh("git status --porcelain");
 
+  const blockers = [];
+  if (existsSync(STOP_FILE)) blockers.push(`STOP file present at ${STOP_FILE}`);
+  if (state.count >= DAILY_CAP) blockers.push(`daily cap reached (${DAILY_CAP})`);
   // A dirty tree means Grayson is mid-something. Shipping on top of that would
   // put his work in a commit he did not write, and a revert would take it away.
-  const { stdout: dirty } = await sh("git status --porcelain");
-  if (dirty.trim()) return { skipped: "working tree is dirty — not touching Grayson's uncommitted work" };
+  if (dirty.trim()) blockers.push("working tree is dirty — not touching Grayson's uncommitted work");
+  if (!dry && blockers.length) return { skipped: blockers[0] };
 
-  await sh("git fetch -q origin && git checkout -q main && git pull -q --ff-only origin main");
+  // NOT in a dry run. This is a mutation — it moves whatever branch you are on
+  // to main and pulls — and "dry" that changes your checkout is a lie. It sat
+  // above the dry branch, so `--dry` on a clean tree would have done exactly
+  // that while claiming to change nothing.
+  if (!dry) {
+    await sh("git fetch -q origin && git checkout -q main && git pull -q --ff-only origin main");
+  }
   const { stdout: baseSha } = await sh("git rev-parse HEAD");
 
   const before = await cloudHealth();
-  if (!before.ok) return { skipped: `baseline is already red (${(before.down || []).join(", ")}) — cannot tell my damage from existing damage` };
+  if (!before.ok && !dry) return { skipped: `baseline is already red (${(before.down || []).join(", ")}) — cannot tell my damage from existing damage` };
+  if (!before.ok) blockers.push(`baseline is already red (${(before.down || []).join(", ")})`);
 
-  const issues = await findWork(before);
-  if (!issues.length) return { skipped: "nothing is wrong" };
+  const found = await findWork(before);
+
+  // Skip what it has already had a go at.
+  //
+  // Without this the loop cannot converge. A run file that recorded a failure
+  // keeps that record forever — fixing the code does not rewrite history — so
+  // the top-ranked issue stays top-ranked after it is fixed, and the loop would
+  // spend all three of its daily passes, every day, on the same dead bug. It
+  // was pointing at exactly that today: a run marked failed by a heuristic that
+  // has since been corrected.
+  //
+  // Keyed by the issue, not the fix, so "I tried this" survives whether the
+  // attempt shipped, reverted, or found nothing to change.
+  const attempted = new Set((state.history || []).map((h) => h.key).filter(Boolean));
+  const issues = found.filter((i) => !attempted.has(i.key));
+
+  if (!issues.length) {
+    const why = found.length ? `nothing new — all ${found.length} known issues have been attempted` : "nothing is wrong";
+    return dry ? { wouldFix: null, candidates: 0, seen: found.length, blockers, note: why } : { skipped: why };
+  }
 
   const issue = issues[0];
   log("working on:", issue.what);
-  if (dry) return { wouldFix: issue, candidates: issues.length };
+  if (dry) return { wouldFix: issue, candidates: issues.length, blockers };
 
   const brief = [
     `Fix exactly one thing in the Cleetus codebase at ${REPO}.`,
@@ -220,7 +286,7 @@ export async function improveOnce({ dry = false } = {}) {
 
   const changed = await changedFiles();
   if (!changed.length) {
-    state.count++; state.history.push({ at: new Date().toISOString(), issue: issue.what, outcome: "no change made" });
+    state.count++; state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: "no change made" });
     await saveState(state);
     return { outcome: "no change made", issue: issue.what, said: result.answer };
   }
@@ -228,6 +294,12 @@ export async function improveOnce({ dry = false } = {}) {
   const forbidden = changed.filter((f) => OFF_LIMITS.some((re) => re.test(f)));
   if (forbidden.length) {
     await sh("git checkout -- . && git clean -fd");
+    // Recorded like any other attempt. This used to return without writing
+    // history, so the same issue came back on the next pass and reached for the
+    // same forbidden file, indefinitely.
+    state.count++;
+    state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: "reverted before gates", detail: forbidden.join(", ") });
+    await saveState(state);
     return { outcome: "reverted before gates", reason: `touched off-limits files: ${forbidden.join(", ")}` };
   }
 
@@ -235,7 +307,7 @@ export async function improveOnce({ dry = false } = {}) {
   const failed = gateResults.filter((g) => !g[1]);
   if (failed.length) {
     await sh("git checkout -- . && git clean -fd");
-    state.count++; state.history.push({ at: new Date().toISOString(), issue: issue.what, outcome: "gates failed", detail: failed.map((f) => f[0]).join(", ") });
+    state.count++; state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: "gates failed", detail: failed.map((f) => f[0]).join(", ") });
     await saveState(state);
     return { outcome: "gates failed, nothing shipped", failed: failed.map((f) => ({ gate: f[0], detail: f[2] })), changed };
   }
@@ -265,7 +337,7 @@ export async function improveOnce({ dry = false } = {}) {
     const { stdout: revSha } = await sh("git rev-parse HEAD");
     const revDeployed = await waitForDeploy(revSha.trim());
     state.count++;
-    state.history.push({ at: new Date().toISOString(), issue: issue.what, outcome: "reverted", why, sha: newSha.trim().slice(0, 7) });
+    state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: "reverted", why, sha: newSha.trim().slice(0, 7) });
     await saveState(state);
     return { outcome: "reverted", why, sha: newSha.trim().slice(0, 7), revert_deployed: revDeployed.ok, baseSha: baseSha.trim().slice(0, 7) };
   }
@@ -279,7 +351,7 @@ export async function improveOnce({ dry = false } = {}) {
   }).catch(() => {});
 
   state.count++;
-  state.history.push({ at: new Date().toISOString(), issue: issue.what, outcome: "shipped", sha: newSha.trim().slice(0, 7) });
+  state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: "shipped", sha: newSha.trim().slice(0, 7) });
   await saveState(state);
   return { outcome: "shipped", issue: issue.what, sha: newSha.trim().slice(0, 7), changed, said: result.answer };
 }

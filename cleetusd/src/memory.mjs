@@ -207,7 +207,7 @@ export async function relevantSkills(question, max = 3) {
   const words = contentWords(question);
   if (!words.size) return [];
 
-  return skills
+  const hits = skills
     .map((s) => {
       const title = String(s.title).toLowerCase();
       const when = String(s.when).toLowerCase();
@@ -221,22 +221,60 @@ export async function relevantSkills(question, max = 3) {
     .filter((s) => s.score >= 2 || s.titleHits >= 1)
     .sort((a, b) => b.score - a.score)
     .slice(0, max);
+
+  // Count the injection, in the file.
+  //
+  // Every skill carried `uses: 0` from the moment it was written and nothing
+  // ever changed it. A number that is permanently zero is worse than no number:
+  // it looks like a measurement, so "uses: 0" on a skill that has fired forty
+  // times reads as "this has never been useful" and invites deleting the ones
+  // that work.
+  //
+  // Deliberately counts RETRIEVAL, not success, and the field is named for what
+  // it measures. Whether a skill actually helped is a harder question and this
+  // does not pretend to answer it.
+  //
+  // Fire and forget: a failed bookkeeping write must never cost an answer.
+  for (const s of hits) bumpUses(s.file).catch(() => {});
+  return hits;
+}
+
+async function bumpUses(file) {
+  if (!file) return;
+  const path = join(CONFIG.memoryRoot, CONFIG.skillsDir, file);
+  const text = await readFile(path, "utf8");
+  const now = new Date().toISOString();
+  let out = text.replace(/^uses:\s*(\d+)\s*$/m, (_, n) => `uses: ${Number(n) + 1}`);
+  out = /^last_used:/m.test(out)
+    ? out.replace(/^last_used:.*$/m, `last_used: ${now}`)
+    : out.replace(/^uses:.*$/m, (l) => `${l}\nlast_used: ${now}`);
+  if (out !== text) await writeFile(path, out, "utf8");
 }
 
 /** Newest runs first, for the dashboard's "recent work" column. */
 export async function recentRuns(limit = 12) {
   await ensureDirs();
-  const files = (await readdir(RUNS).catch(() => [])).filter((f) => f.endsWith(".md")).sort().reverse().slice(0, limit);
+  // Read more than we need, because probes are filtered out AFTER reading and
+  // slicing first would just make the panel shorter instead of cleaner.
+  const files = (await readdir(RUNS).catch(() => [])).filter((f) => f.endsWith(".md"))
+    .sort().reverse().slice(0, limit * 4);
   const out = [];
   for (const f of files) {
     try {
       const text = await readFile(join(RUNS, f), "utf8");
+      // `probe: true` marks a run an agent issued while testing itself. The
+      // file stays — it is a true record of what the machine did — but it is
+      // not something Grayson asked for, and "Recent work" is his view of what
+      // Cleetus has been doing for HIM. Nine accumulated in one night of
+      // verification and pushed his own questions off the panel entirely.
+      if (/^probe:\s*true\s*$/m.test(text)) continue;
       out.push({
         file: f,
         agent: (text.match(/^agent:\s*(.+)$/m) || [])[1] || "cleetus",
         status: (text.match(/^status:\s*(.+)$/m) || [])[1] || "done",
         title: (text.match(/^# (.+)$/m) || [])[1] || f.replace(/\.md$/, ""),
       });
+      if (out.length >= limit) break;
     } catch {}
   }
   return out;

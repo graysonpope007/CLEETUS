@@ -314,6 +314,15 @@ fetch('/access').then(r => r.json()).then(a => {
    which is how the report becomes as useless as having no report — so the
    healthy state is one quiet line and the broken state is loud. */
 (function doctor() {
+  // "3h" reads faster than a timestamp when scanning a panel.
+  function ago(iso) {
+    const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (!isFinite(mins) || mins < 0) return '';
+    if (mins < 60) return mins + 'm';
+    if (mins < 2880) return Math.round(mins / 60) + 'h';
+    return Math.round(mins / 1440) + 'd';
+  }
+
   const box = $('doctor');
   if (!box) return;
 
@@ -332,8 +341,15 @@ fetch('/access').then(r => r.json()).then(a => {
         const el = document.createElement('div');
         el.className = 'item';
         el.style.color = 'var(--coral)';
-        el.textContent = '× ' + f.area + ': ' + f.name;
-        el.title = f.detail + (f.fix ? '\\n\\nfix: ' + f.fix : '');
+        // How long, not just what. A red line with no duration cannot tell a
+        // blink from an outage — six hours of Plaid flapping looked identical
+        // to a permanent break until something recorded the timestamps.
+        // Duration goes FIRST. These rows are nowrap with an ellipsis, so
+        // anything appended to the end is the first thing clipped — the
+        // duration rendered correctly and was invisible in the panel, which is
+        // the same as not rendering it.
+        el.textContent = '× ' + (f.since ? ago(f.since).padStart(3) + '  ' : '') + f.area + ': ' + f.name;
+        el.title = f.detail + (f.since ? '\\n\\nfailing since ' + f.since : '') + (f.fix ? '\\n\\nfix: ' + f.fix : '');
         box.appendChild(el);
       }
     } else {

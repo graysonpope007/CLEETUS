@@ -50,8 +50,13 @@ function unreachable(e) {
 /** Turn a page description into something worth putting in a prompt. */
 function render(d) {
   if (!d || d.ok === false) {
+    // The harness browses anywhere now (see cleetus-web/src/policy.mjs), so
+    // this is no longer "you picked the wrong shop" — it is either a narrower
+    // allowlist somebody configured, or a URL that is not a web page at all.
+    // The harness says which; relay it rather than reciting a list that is
+    // usually null.
     if (d?.error === "host_not_allowed") {
-      return `That host is not on the allowlist. Allowed: ${(d.allowlist || []).join(", ")}`;
+      return d.detail || `The browser refused that URL. ${d.allowlist ? `Allowed: ${d.allowlist.join(", ")}` : ""}`;
     }
     if (d?.error === "no_page_open") return "No page is open yet — use web_open first.";
     if (d?.error === "credential_field_refused") return d.detail;

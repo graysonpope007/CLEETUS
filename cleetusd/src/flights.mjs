@@ -35,7 +35,13 @@ export const ANCHORS = [
   [19.4, -99.1, "Mexico City"], [43.7, -79.4, "Toronto"],
 ];
 
+// Order matters: first one with actual aircraft wins.
+//
+// adsb.fi is first because it is the only one of the three still serving data.
+// The other two are kept, not deleted — feeds come back, and a source that is
+// dead today costs one failed request to check.
 const SOURCES = [
+  ["adsb.fi", (la, lo) => `https://opendata.adsb.fi/api/v2/lat/${la}/lon/${lo}/dist/250`],
   ["adsb.lol", (la, lo) => `https://api.adsb.lol/v2/lat/${la}/lon/${lo}/dist/250`],
   ["airplanes.live", (la, lo) => `https://api.airplanes.live/v2/point/${la}/${lo}/250`],
 ];
@@ -62,16 +68,36 @@ function normalise(list) {
 }
 
 async function anchor(la, lo) {
+  // AN EMPTY ANSWER IS NOT AN ANSWER.
+  //
+  // This used to return on the first source that produced an Array — and
+  // `[]` is an Array. adsb.lol answers HTTP 200, `"msg": "No error"`, `"total":
+  // 0`, an empty list, for every anchor on earth. Perfectly well-formed, and
+  // completely empty. So the loop returned success on the first source, the
+  // fallbacks were never reached, and the whole map went dark while every
+  // component reported that it was fine: the sweeper "succeeded", the ingest
+  // correctly refused an empty sweep, and the endpoint said
+  // `no_adsb_feed_reachable` — which was true, and named none of this.
+  //
+  // So: keep going until something actually has aircraft in it. Zero aircraft
+  // over Atlanta at midday is not data, it is a dead feed being polite.
+  let answered = null;
   for (const [name, url] of SOURCES) {
     try {
       const r = await fetch(url(la, lo), { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
-      if (!r.ok) continue; // 429 here is normal; the fallback carries it
+      if (!r.ok) continue; // 429 and 403 are normal here; the fallback carries it
       const j = await r.json();
       const ac = j.ac || j.aircraft || [];
-      if (Array.isArray(ac)) return { source: name, aircraft: normalise(ac) };
+      if (!Array.isArray(ac)) continue;
+      const aircraft = normalise(ac);
+      if (aircraft.length) return { source: name, aircraft };
+      // Remember that someone was reachable, and try the next one anyway.
+      answered ||= name;
     } catch { /* next source */ }
   }
-  return { source: null, aircraft: [] };
+  // Genuinely empty sky is possible — mid-Pacific at 3am. Say who told us so,
+  // rather than reporting it the same way as nobody answering at all.
+  return { source: answered, aircraft: [] };
 }
 
 /** One paid call, whole planet, no anchors. */
