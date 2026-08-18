@@ -29,6 +29,7 @@ import { execFile } from "node:child_process";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
+import { localStamp } from "./when.mjs";
 
 const CACHE = join(CONFIG.memoryRoot, "repos.json");
 
@@ -217,7 +218,19 @@ export function rosterText(index) {
   else if (index.github_error) lines.push(`GitHub: ${index.github_error}`);
 
   if (index.local.length) {
-    lines.push(`\nWorking trees on this Mac — you can read, edit, run and commit in every one of these:`);
+    // Dated, because this is a CACHE with a six-hour life and it is injected
+    // into every prompt as though it were current. Measured: an hour after a
+    // rebuild, cleetus-web read `dirty=0` in the roster and `1` on disk. A
+    // branch switch would be wrong for the same reason and matter more.
+    //
+    // The fix is not a shorter TTL — scanning 34 working trees on every request
+    // is worse than a stale line. It is saying WHEN this was true, so the model
+    // treats it as a snapshot and reaches for git when the answer depends on
+    // the current state.
+    const asOf = index.built_at ? localStamp(index.built_at) : null;
+    lines.push(`\nWorking trees on this Mac — you can read, edit, run and commit in every one of these.` +
+      (asOf ? `\nThis list was taken at ${asOf} and is not live: branch and uncommitted counts may have` +
+              ` changed since. Run git if the answer depends on either.` : ""));
     for (const r of index.local) {
       const bits = [r.path];
       if (r.branch) bits.push(`on ${r.branch}`);

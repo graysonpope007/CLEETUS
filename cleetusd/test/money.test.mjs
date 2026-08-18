@@ -11,6 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
+import { leakedMoney } from "../src/jobs.mjs";
 
 // Read the pattern out of the source rather than restating it, so the test
 // cannot drift into passing against its own private copy of the regex.
@@ -117,3 +118,56 @@ test("a retry that leaks less is preferred, then redacted", async () => {
 });
 
 function leakedMoneyOf(s) { return String(s).match(make()) || []; }
+
+// ---------------------------------------------------------------------------
+// The dollar sign is optional, and the model knows it.
+//
+// The 07:00 brief he actually received said: "Creo booked 8581 net this quarter
+// on 8601 gross revenue with minimal overhead." No `$`, so the pattern above did
+// not match and two real figures went out under a rule that says money in
+// percentages, never dollar figures. The punctuation was obeyed and the point
+// was not.
+//
+// The same brief got the rest right — "roughly one month's operating cash",
+// "four months emergency buffer" — which is what the rule is actually asking
+// for, and why the fix must not flag those.
+
+test("a bare amount next to a money word is caught", () => {
+  assert.deepStrictEqual(
+    leakedMoney("Creo booked 8581 net this quarter on 8601 gross revenue with minimal overhead."),
+    ["8581", "8601"]);
+  assert.strictEqual(leakedMoney("the invoice came to 2400").length, 1);
+  assert.strictEqual(leakedMoney("1750 owed on the card").length, 1);
+});
+
+test("relative money language is left alone", () => {
+  // This is the answer the rule wants. Flagging it would push the brief back
+  // towards naming figures.
+  for (const t of [
+    "Schwab cash sits near four months emergency buffer",
+    "Student checking holds roughly one month's operating cash",
+    "NVDA is 47% of the account, up 3.2%",
+  ]) assert.deepStrictEqual(leakedMoney(t), [], t);
+});
+
+test("numbers that are not amounts are left alone", () => {
+  for (const t of [
+    "Creo work day from 9am to 6pm",
+    "I dropped my protein target to 170g",
+    "2026 revenue was strong",          // a year, not a figure
+    "he benched 225 for reps",
+  ]) assert.deepStrictEqual(leakedMoney(t), [], t);
+});
+
+test("redaction covers the bare form too", async () => {
+  // Redacting only the $-prefixed form would count a bare figure as a leak,
+  // report it redacted, and leave it in the text — worse than not catching it,
+  // because the summary would claim it was handled.
+  const { scrubMoney } = await import("../src/jobs.mjs");
+  const r = await scrubMoney(
+    "Creo booked 8581 net on 8601 gross revenue. Checking holds $5K.",
+    () => "still 8581 net on 8601 gross revenue and $5K");
+  assert.strictEqual(r.redacted, 3);
+  assert.deepStrictEqual(leakedMoney(r.text), [], "nothing may survive redaction");
+  assert.match(r.text, /booked \[amount\] net/);
+});

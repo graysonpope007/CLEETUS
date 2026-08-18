@@ -83,3 +83,30 @@ test("the loop never reports a revert it did not land", () => {
   assert.match(src, /revert_pushed: undone/);
   assert.ok(!/outcome: "reverted",/.test(src), "an unconditional 'reverted' outcome is back");
 });
+
+test("the commit message separates the diff from the model's story", () => {
+  // The first autonomous commit described adding a Content-Type header to
+  // _lib/apns.js. It changed functions/api/health.js and nothing else. The
+  // builder had exhausted its steps and its closing summary described what it
+  // intended to do next — which became the permanent record of what it did.
+  //
+  // The file list comes from git and is stated as fact; the prose is labelled
+  // as the builder's own account. A commit message is the only thing a human
+  // reads six months later, and a wrong one is worse than a terse one.
+  const src = readFileSync(new URL("../src/improve.mjs", import.meta.url), "utf8");
+  assert.match(src, /Files changed \(from git, authoritative\)/);
+  assert.match(src, /its own account, which may not match the diff above/);
+  assert.ok(
+    src.indexOf("Files changed (from git, authoritative)") < src.indexOf("What the builder said it did"),
+    "the facts must be printed before the story",
+  );
+});
+
+test("a truncated answer is flagged in the commit itself", () => {
+  // A summary written after running out of room is exactly the one likely to
+  // describe intentions as actions, so the commit says so rather than leaving
+  // the reader to notice the marker.
+  const src = readFileSync(new URL("../src/improve.mjs", import.meta.url), "utf8");
+  assert.match(src, /const truncated = \/\\\[\(Answered from partial information\|Stopped here after\)\//);
+  assert.match(src, /Treat the account above as/);
+});

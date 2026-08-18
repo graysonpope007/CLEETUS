@@ -196,6 +196,22 @@ async function buildSystem(agentId, question) {
     "Two exceptions only: a document that is meant to be formatted, like a contract, and technical work where structure is the content — code, a file walkthrough, a command sequence, a side-by-side comparison. Nothing else. Unsure? Plain text.",
     "",
     "Use your tools rather than guessing. If he mentions a project, a file or a person, go and look before you answer. If you learn something durable about him, call remember_fact. If you work out how to do something repeatable, call save_skill.",
+    // ── Finish the job ───────────────────────────────────────────────────
+    // Asked to "make studio locate have facial recognition and lock down the
+    // money screens if it doesn't recognise me", the builder spent its entire
+    // budget on read_file and list_dir, then produced a section headed "What
+    // Needs to Be Added for Your Request" listing the three things it had just
+    // been asked to add. Everything in that answer was accurate. None of it was
+    // the task. It even noted a file it had written itself and said it "couldn't
+    // see its contents".
+    //
+    // Two failures, and the budget was only one of them. The other is that
+    // describing the work reads, to a model, like a complete answer — it is
+    // well-organised, it is true, and it ends. So the difference is stated
+    // outright rather than left to be inferred.
+    "When he asks you to build, change, fix or add something, DO IT. Write the file, make the edit, run the command. Reading the project first is right, but reading it is the prologue, not the deliverable. An answer that explains what would need to be done, lists the files that would need changing, or ends with 'you need to' is a failure, however accurate it is — he asked for the change, not a description of the change.",
+    "Never hand back a plan as though it were the work. If you genuinely cannot finish — a decision only he can make, a credential you do not hold, something that would destroy data — do every part you can first, then say in one sentence what is left and exactly why. 'I did A, B and C; D needs your Apple ID' is an answer. 'Here is what needs to be added' is not.",
+    "If you are running low on tool calls, spend what is left MAKING THE CHANGE, not on more reading. A half-finished edit you can see is worth more than a tidy summary of code that has not moved.",
     // Asked about a product name it had never seen, the nutrition agent invented
     // a confident history for it — origin, era, what it superseded — with no
     // hedge and no tool calls. The style rule above is part of why: "no
@@ -384,8 +400,31 @@ async function forceAnswer({ question, messages, used }) {
 export function endsOnAPromise(text = "") {
   const tail = String(text).trim().slice(-220);
   if (!tail) return false;
-  return /(?:^|[\s>])(?:let me|i(?:'ll| will)|now i(?:'ll| will)|next,? i(?:'ll| will))\b[^.!?]*:?\s*$/i.test(tail)
-      || /\b(?:checking|looking|searching|let me see)\b[^.!?]*:\s*$/i.test(tail);
+
+  // Look at the LAST SENTENCE, rather than trying to span one with [^.!?]*.
+  //
+  // That negated class was the bug and it is a subtle one: it stops at the first
+  // dot, and the sentence this was meant to catch contained a filename. The
+  // improve loop's first live cycle ended "Let me read the health.js file to
+  // understand how it checks the outlook status." — twenty tool calls, no fix,
+  // and the dot in `health.js` broke the match. So the answer went back
+  // unmarked, looksFailed() called it fine, and the teacher never saw it. Any
+  // promise naming a file — which is most of them, in a coding agent — slipped
+  // through the same way.
+  //
+  // Splitting on punctuation followed by a capital keeps filenames intact:
+  // ".js file" does not split because `js` is lower case, while ". It returns"
+  // does.
+  const sentences = tail.split(/(?<=[.!?])\s+(?=["'“]?[A-Z])/);
+  const last = sentences[sentences.length - 1] || tail;
+
+  // "Let me know if …" is a sign-off, not an unfulfilled promise — the politest
+  // ending in the language, and flagging it would mark finished answers as
+  // truncated.
+  if (/^\s*let me know\b/i.test(last)) return false;
+
+  return /^\s*(?:let me|i(?:['’]ll| will)|now i(?:['’]ll| will)|next,? i(?:['’]ll| will))\b/i.test(last)
+      || /\b(?:checking|looking|searching|let me see)\b[^:]*:\s*$/i.test(tail);
 }
 
 export function looksFailed({ answer = "", used = [] }) {
@@ -523,7 +562,7 @@ export function statedFact(question) {
   return /\bmy\s+(?:[\w'\u2019-]+\s+){0,2}(?:is|are|was|were|has|have|will be)\b/i.test(q);
 }
 
-export async function ask({ history, agent, onStep }) {
+export async function ask({ history, agent, onStep, probe = false, maxSteps = CONFIG.maxSteps }) {
   /* Route on what HE said, not on what the eyes reported.
      Measured: "What am I doing in this picture?" with a photo attached went to
      the `image` agent — the one that art-directs GENERATED images — and it
@@ -555,7 +594,7 @@ export async function ask({ history, agent, onStep }) {
   const last = [...history].reverse().find((m) => m.role === "user");
   const question = last?.content || "";
 
-  const run = await startRun({ agent: agentId, request: question });
+  const run = await startRun({ agent: agentId, request: question, probe });
   let system = await buildSystem(agentId, question);
   if (carriedImage) {
     // The system prompt never mentioned attachments, so the model filled the
@@ -582,13 +621,36 @@ export async function ask({ history, agent, onStep }) {
   let ranOut = true;
   const preambles = [];
 
-  for (let step = 0; step < CONFIG.maxSteps; step++) {
+  // The budget is a parameter, not a constant, because twenty steps is a
+  // sensible ceiling for a conversation and not enough for a repair. The improve
+  // loop's first live cycle spent all twenty reading — read_file, list_dir,
+  // git log — reached the ceiling before it edited anything, and reported "no
+  // change made". A budget that cannot fit the task turns every attempt into a
+  // quiet non-event.
+  // The budget grows rather than being surrendered. `maxSteps` is reassigned in
+  // place, so the loop condition stays exactly what it was — and so does the
+  // caller's ability to pass a smaller budget deliberately.
+  const ceiling = Math.max(maxSteps, CONFIG.maxStepsCeiling);
+  let extensions = 0;
+
+  for (let step = 0; step < maxSteps; step++) {
     const res = await chat({ messages, tools: toolSchemas() });
 
     if (!res.toolCalls.length) {
       answer = res.text || answer;
       ranOut = false;
       break;
+    }
+
+    // About to hit the ceiling with the model still reaching for tools. That is
+    // the signature of a task in progress, not one being padded out, and the
+    // old behaviour — stop and summarise — is what turned "build me this" into
+    // a description of the code that already existed. Grant more room.
+    if (step === maxSteps - 1 && maxSteps < ceiling) {
+      const grant = Math.min(ceiling - maxSteps, Math.max(10, CONFIG.maxSteps));
+      maxSteps += grant;
+      extensions++;
+      onStep?.({ tool: "…", args: { note: `still working — granted ${grant} more steps (${maxSteps}/${ceiling})` } });
     }
     if (res.text && res.text.trim()) preambles.push(res.text.trim());
 
@@ -623,11 +685,22 @@ export async function ask({ history, agent, onStep }) {
   // move left is to answer from what it already found.
   if (ranOut && used.length) {
     let finalText = await forceAnswer({ question, messages, used });
-    // Both attempts still ended on a promise. Say so on the answer itself —
-    // silently handing back half a reply is the whole bug, and it does not stop
-    // being that bug because a retry produced it.
-    if (finalText && endsOnAPromise(finalText)) {
-      finalText += `\n\n[Stopped here after ${used.length} tool calls without reaching a conclusion. Ask again and it will pick up from what it found.]`;
+    // Mark it because the ceiling was HIT, not because the prose looks unfinished.
+    //
+    // This used to depend entirely on endsOnAPromise, which recognises one shape
+    // of truncation. Asked to list a directory and summarise every file on a
+    // budget of two, the salvage came back with a tidy, confident list of
+    // filenames — no promise, so no marker — while the summarising, which was
+    // most of the request, never happened. A confident half-answer is worse than
+    // an obviously broken one, because nothing invites a second look.
+    //
+    // Whether the run stopped early is a fact the loop already has. The wording
+    // still leans on the promise test, because "it stopped mid-sentence" and "it
+    // answered from partial information" deserve different sentences.
+    if (finalText) {
+      finalText += endsOnAPromise(finalText)
+        ? `\n\n[Stopped after ${used.length} tool calls${extensions ? ` (extended ${extensions}×)` : ""} without reaching a conclusion. Ask again and it will pick up from what it found.]`
+        : `\n\n[Answered from partial information: ${used.length} tool calls used${extensions ? ` after ${extensions} extension${extensions === 1 ? "" : "s"}` : ""}, so the task may be unfinished. Ask again to continue.]`;
     }
     // Falling back to a preamble is a last resort, and it is still better than
     // an empty bubble — but it is marked too.

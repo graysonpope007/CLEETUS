@@ -66,8 +66,18 @@ test("attempts are recorded with their key, on every exit path", () => {
 });
 
 test("already-attempted issues are filtered out", () => {
-  assert.match(src, /const attempted = new Set\(\(state\.history \|\| \[\]\)\.map\(\(h\) => h\.key\)/);
-  assert.match(src, /found\.filter\(\(i\) => !attempted\.has\(i\.key\)\)/);
+  // Asserted as INTENT, not as the exact expression. The first version pinned
+  // `const attempted = new Set(...)` and `found.filter(...)` verbatim, and broke
+  // the moment retirement grew a recovery-and-cooldown rule — a refactor it did
+  // not care about. The behaviour it was guarding is covered properly in
+  // test/retirement.test.mjs, which drives recoveredSince() against real log
+  // lines rather than reading the source.
+  assert.match(src, /state\.history/, "the work list must consult what has been attempted");
+  assert.match(src, /lastAttempt/, "attempts should be tracked per issue key");
+  assert.match(src, /if \(!lastAttempt\.has\(i\.key\)\) \{ issues\.push\(i\); continue; \}/,
+    "an issue never attempted is always work");
+  assert.match(src, /oldEnough && await recoveredSince/,
+    "a retired issue returns only if it recovered AND the cooldown has passed");
 });
 
 test("the loop still cannot edit its own brakes", () => {

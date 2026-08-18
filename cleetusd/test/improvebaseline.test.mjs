@@ -86,3 +86,47 @@ test("the checkout is moved to main before health is consulted", () => {
   const health = src.indexOf("const before = await cloudHealth()");
   assert.ok(pull > 0 && health > pull, "ordering changed — revisit the comment in this test");
 });
+
+test("the builder is forbidden from weakening a check to make it pass", () => {
+  // The cheapest fix for a failing check is to stop it checking. That route has
+  // to be closed explicitly because the revert cannot catch it: weakening an
+  // assertion turns health GREEN, so nothing is newly failing and the change
+  // stands forever. It is the one failure mode the whole safety design misses.
+  assert.match(src, /NEVER make a check pass by weakening what it asserts/);
+  assert.match(src, /Fix the thing being measured, not the measurement/);
+});
+
+test("the builder is told some checks are red for good reasons", () => {
+  // `brief` is red from midnight until the morning brief is written — about
+  // seven hours a night, every night, by design. Evidence from the health log:
+  // it went green all day and flipped at 00:07, the first check after local
+  // midnight. Without this, the loop treats a correct check as a defect.
+  assert.match(src, /RED FOR A GOOD REASON at some times of day/);
+  assert.match(src, /change NOTHING and say which/);
+});
+
+test("the builder is told some failures have no cause in the code", () => {
+  // Written while four checks were red from one database outage and an expired
+  // OAuth token. Neither has a fix in this repository, and the loop gets three
+  // cycles a day — spent on those, it does nothing else all day.
+  //
+  // The sharper risk: a model told to fix something with no code-level cause
+  // will find SOMETHING to change, and that change is unrelated by construction.
+  assert.match(src, /Some failures have NO CAUSE IN THIS CODE/);
+  assert.match(src, /db_error/, "the actual signatures seen in the outage should be named");
+  assert.match(src, /needsAuth/);
+});
+
+test("it forbids dressing up a broken dependency", () => {
+  // A retry around a database that is refusing reads, or a friendlier error
+  // message, makes the check pass while nothing is fixed — the masking failure
+  // in a form that looks like diligence rather than laziness.
+  assert.match(src, /Do not add a retry, a fallback, or a/);
+  assert.match(src, /Diagnosing\\n?.*something you cannot fix IS the useful answer|Diagnosing/);
+});
+
+test("diagnosis is offered as a complete answer, not a failure", () => {
+  // Otherwise the loop treats "I could not fix it" as its own failure and
+  // reaches for a change to justify the cycle.
+  assert.match(src, /change NOTHING\. Say what the underlying cause is/);
+});

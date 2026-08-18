@@ -57,6 +57,34 @@ const SKILL_SCHEMA = {
   additionalProperties: false,
 };
 
+/**
+ * The tool list, read from the registry instead of typed out.
+ *
+ * The hardcoded version named `browse`, which was removed when the browser
+ * tooling was rebuilt as web_open / web_read / web_act. So this prompt has been
+ * telling the teacher to write procedures around a tool that does not exist —
+ * and any skill it produced could instruct the small model to call it.
+ *
+ * It also named 10 tools out of 38. Everything added since — the keyring, the
+ * mail path, the devices, recent_work, health_report, scheduled_jobs — was
+ * invisible to the teacher, so no skill could ever use them. A list kept by hand
+ * beside a registry does not stay equal to it; that is what the registry is for.
+ *
+ * Imported lazily: teacher.mjs is pulled in by agent.mjs, and tools/index.mjs
+ * reaches back into memory.mjs, so a top-level import risks a cycle for a string
+ * that is only needed when the teacher actually runs.
+ */
+async function toolNames() {
+  try {
+    const { TOOLS } = await import("./tools/index.mjs");
+    return Object.keys(TOOLS).sort().join(", ");
+  } catch {
+    // Never invent a list. If the registry cannot be read, say nothing about
+    // tools rather than describing a toolbox that may not exist.
+    return null;
+  }
+}
+
 const SYSTEM = [
   "You teach a smaller local model (laguna-xs-2.1, 33B, running on a Mac) to do things it just failed at.",
   "",
@@ -65,7 +93,7 @@ const SYSTEM = [
   "- A rule is not a procedure. 'Do not open the brief with weather' is a preference and belongs elsewhere.",
   "- An answer is not a procedure. If you find yourself writing the result, you are doing the wrong job.",
   "",
-  "Write for a model with less headroom than you: concrete, ordered, no judgement calls it cannot make. Name the actual tools it has — read_file, write_file, edit_file, list_dir, search_files, find_files, run_shell, vault_search, vault_read, cloud_api, browse — and real paths.",
+  "Write for a model with less headroom than you: concrete, ordered, no judgement calls it cannot make. Use real paths, and name only tools from the list below.",
   "",
   "If the failure was a one-off with no general procedure behind it, set worth_saving false and stop. A skill that never applies again costs a retrieval slot forever.",
 ].join("\n");
@@ -90,6 +118,10 @@ export async function teach({ task, whatHappened, toolsUsed = [], agent = "cleet
     `Write the procedure it should follow next time.`,
   ].filter(Boolean).join("\n");
 
+  // Resolved at call time so the list cannot drift from what the small model
+  // can actually call.
+  const toolList = await toolNames();
+
   let res;
   try {
     res = await client().beta.messages.create({
@@ -103,7 +135,7 @@ export async function teach({ task, whatHappened, toolsUsed = [], agent = "cleet
       // model that will eventually be deprecated.
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-      system: SYSTEM,
+      system: SYSTEM + (toolList ? `\n\nThe tools it has, exactly: ${toolList}. Name no others.` : ""),
       messages: [{ role: "user", content: prompt }],
     });
   } catch (e) {

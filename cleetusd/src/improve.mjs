@@ -32,7 +32,7 @@ import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { CONFIG } from "./config.mjs";
-import { ask } from "./agent.mjs";
+import { ask, endsOnAPromise } from "./agent.mjs";
 import { saveSkill, slugify } from "./memory.mjs";
 
 const run = promisify(execFile);
@@ -99,10 +99,86 @@ function regressed(before, after) {
 
 // ── Finding something genuinely wrong ───────────────────────────────────────
 
+/**
+ * Which integrations were already failing at the previous health reading.
+ *
+ * The doctor writes one line every fifteen minutes, and the cloud integrations
+ * appear inside `integrations-healthy[...]`. Reading the last such line gives
+ * the reading before this one.
+ *
+ * Returns null when it cannot tell — an unreadable or empty log must not
+ * silently suppress every issue. Not knowing is a reason to proceed, not a
+ * reason to drop work on the floor.
+ */
+async function previouslyDown() {
+  try {
+    const text = await readFile(join(CONFIG.home, "Library/Logs/cleetus-health.log"), "utf8");
+    const lines = text.trim().split("\n").filter((l) => l.includes("integrations-healthy["));
+    if (!lines.length) return null;
+    const names = lines[lines.length - 1].match(/integrations-healthy\[([^\]]*)\]/);
+    return names ? new Set(names[1].split(",").map((n) => n.trim()).filter(Boolean)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Has a health check been GREEN at any point since we last tried to fix it?
+ *
+ * Attempts are retired permanently, which is what makes the loop converge — a
+ * run file that recorded a failure keeps that record forever, so without this
+ * the same dead bug stays top-ranked every day. The cost is blindness: if
+ * outlook is fixed by hand and later breaks again for a real reason in the
+ * code, the loop can never look at it.
+ *
+ * Recovery is what separates the two. A check that has gone green since the
+ * attempt and is red again is a NEW failure, not a retry of the old one. A
+ * check that has never recovered — outlook, push, both waiting on a human — has
+ * not become newly interesting and stays retired.
+ *
+ * Reads the doctor's health log, which is the only record of what was true
+ * between then and now.
+ */
+async function recoveredSince(name, sinceIso) {
+  if (!name || !sinceIso) return false;
+  const at = Date.parse(sinceIso);
+  if (Number.isNaN(at)) return false;
+  try {
+    const text = await readFile(join(CONFIG.home, "Library/Logs/cleetus-health.log"), "utf8");
+    for (const line of text.trim().split("\n")) {
+      const when = Date.parse((line.match(/^(\S+)/) || [])[1] || "");
+      if (Number.isNaN(when) || when <= at) continue;
+      const m = line.match(/integrations-healthy\[([^\]]*)\]/);
+      // No integrations line at all means every integration was healthy then.
+      const down = m ? new Set(m[1].split(",").map((x) => x.trim())) : new Set();
+      if (!down.has(name)) return true;
+    }
+  } catch { /* no log: cannot show recovery, so stay retired */ }
+  return false;
+}
+
 async function findWork(health) {
   const issues = [];
 
+  // A single reading is not an outage.
+  //
+  // Measured over 64 health readings: outlook was down in 59 of them and never
+  // once as an isolated blip; push the same. plaid was down in 16 readings and
+  // SEVEN of those were single readings with a healthy one either side — 44% of
+  // its failures are flaps. `google` appeared in a failure list and was gone
+  // half an hour later, reporting "connected, 20 events".
+  //
+  // The loop reads one snapshot, so a flap looks identical to an outage. It
+  // would then spend a whole cycle — and one of three daily slots — writing a
+  // fix for an integration that was never broken, against a symptom it cannot
+  // reproduce. Requiring the previous reading to agree costs at most fifteen
+  // minutes of delay on a real outage, which has already lasted hours by then.
+  const alsoDownBefore = await previouslyDown();
   for (const name of health.down || []) {
+    if (alsoDownBefore && !alsoDownBefore.has(name)) {
+      log(`skipping ${name}: down in this reading only, not the previous one`);
+      continue;
+    }
     issues.push({ kind: "health", key: `health:${name}`, what: `/api/health reports ${name} is down`, hint: `Look at functions/api/${name}*.js and _lib/${name}.js.` });
   }
 
@@ -114,6 +190,19 @@ async function findWork(health) {
     for (const f of files) {
       const path = join(runsDir, f);
       const text = await readFile(path, "utf8");
+
+      // A probe's failure means nothing to this loop.
+      //
+      // Probes are the system testing itself, and some of them fail ON PURPOSE:
+      // the keyring probe asks Cleetus to print a secret and counts a refusal as
+      // success. Handed that as a bug report, the loop would set out to fix the
+      // refusal. Others are adversarial by construction or run against a service
+      // that is deliberately stopped.
+      //
+      // The loop cannot know which is which, and "I could not tell, so I tried
+      // to fix it" is how a self-test becomes a defect.
+      if (/^probe:\s*true\s*$/m.test(text)) continue;
+
       const failed = /^status: failed$/m.test(text) || /FAILED `/.test(text);
 
       // `status: running` is NOT a failure. It is what a request in flight looks
@@ -245,6 +334,46 @@ async function pushRevert(attempts = 3) {
   return false;
 }
 
+/**
+ * What the loop says when it has nothing left to work on.
+ *
+ * Lifted out of improveOnce so it can be tested: everything around it does git
+ * and network work, which is how this sentence went unexamined long enough to
+ * become misleading in the first place.
+ *
+ * A `health:` key is read fresh from /api/health and IS failing right now. A
+ * `log:` or `run:` key comes from a file that never forgets — the
+ * ERR_HTTP_HEADERS_SENT lines were fixed and verified on 13 Aug and will sit in
+ * cleetusd.err.log forever, so they are re-found on every pass and can never
+ * clear. Describing those as "still failing" would be the same kind of
+ * confident wrong sentence this loop keeps being caught writing.
+ */
+export function idleSummary(found = []) {
+  if (!found.length) return "nothing is wrong";
+  const live = found.filter((i) => String(i.key || "").startsWith("health:"));
+  const stale = found.length - live.length;
+  const names = live.map((i) => String(i.key).slice(7)).join(", ");
+  return [
+    live.length
+      ? `${live.length} check${live.length === 1 ? " is" : "s are"} still failing and already attempted: ${names}`
+      : "no live check is failing",
+    stale ? `${stale} older log/run record${stale === 1 ? "" : "s"} that cannot clear on their own` : "",
+  ].filter(Boolean).join("; ");
+}
+
+/**
+ * What to call a change that shipped.
+ *
+ * "Shipped" and "fixed" are different words and the loop was using one for
+ * both. 5ab77bb genuinely fixed the brief check; 3909977 improved a message
+ * while push stayed exactly as down as before — nothing can fix that from here,
+ * the phone has to open the app. The history recorded both as "shipped", and
+ * that word is what a person reads months later.
+ */
+export function shipOutcome(checkName, stillFailing) {
+  return stillFailing ? `shipped, but ${checkName} is still failing` : "shipped";
+}
+
 export async function improveOnce({ dry = false } = {}) {
   // Every guard below stops the loop from WRITING. None of them is a reason to
   // stop it from LOOKING, and --dry is documented as "find the work, change
@@ -314,12 +443,57 @@ export async function improveOnce({ dry = false } = {}) {
   //
   // Keyed by the issue, not the fix, so "I tried this" survives whether the
   // attempt shipped, reverted, or found nothing to change.
-  const attempted = new Set((state.history || []).map((h) => h.key).filter(Boolean));
-  const issues = found.filter((i) => !attempted.has(i.key));
+  // Retired unless the check has recovered since the attempt. See
+  // recoveredSince(): a failure that went green and came back is a new failure;
+  // one that never recovered is the same one, still unfixable by this loop.
+  const lastAttempt = new Map();
+  for (const h of state.history || []) {
+    if (h.key) lastAttempt.set(h.key, h.at || null);
+  }
+  const issues = [];
+  for (const i of found) {
+    if (!lastAttempt.has(i.key)) { issues.push(i); continue; }
+    const name = String(i.key || "").startsWith("health:") ? i.key.slice(7) : null;
+    const when = lastAttempt.get(i.key);
+
+    // Recovery alone is not enough, because some checks recover on a CYCLE.
+    // `brief` is green all day and red every night, so "has it been green since
+    // the attempt?" is true every single morning — which would put it back on
+    // the work list daily and reinstate exactly the waste this retirement rule
+    // exists to prevent.
+    //
+    // A cooldown separates a cycle from a regression. Something genuinely fixed
+    // and genuinely broken again is worth another look after a week; something
+    // that merely goes green every morning is not worth one every morning.
+    const COOLDOWN_DAYS = Number(process.env.CLEETUSD_RETRY_DAYS || 7);
+    const oldEnough = when && (Date.now() - Date.parse(when)) > COOLDOWN_DAYS * 86_400_000;
+
+    if (name && oldEnough && await recoveredSince(name, when)) {
+      log(`${i.key}: recovered since the last attempt ${COOLDOWN_DAYS}+ days ago and is failing again — treating as new`);
+      issues.push(i);
+    }
+  }
 
   if (!issues.length) {
-    const why = found.length ? `nothing new — all ${found.length} known issues have been attempted` : "nothing is wrong";
-    return dry ? { wouldFix: null, candidates: 0, seen: found.length, blockers, note: why } : { skipped: why };
+    // "All known issues have been attempted" reads like convergence. It is not.
+    //
+    // `found` is the list of problems detected on THIS pass, so every item in it
+    // is failing right now. Saying only that they have all been attempted
+    // describes the loop's bookkeeping and hides the actual state of the
+    // machine: these are things that are still wrong and that the loop has
+    // stopped trying to fix. Retiring them is correct — some need a person, and
+    // push cannot be fixed from here at all — but retiring them QUIETLY is how
+    // an idle loop comes to look like a healthy one.
+    // Not every item in `found` is a live fault, and the first version of this
+    // message got that wrong. A `health:` key is read fresh from /api/health, so
+    // it IS failing right now. A `log:` or `run:` key comes from a file that
+    // never forgets: the ERR_HTTP_HEADERS_SENT lines in cleetusd.err.log were
+    // fixed and verified on 13 Aug and will sit in that log forever, so they are
+    // re-found on every pass and can never clear. Calling those "still failing"
+    // would be exactly the kind of confident wrong sentence this loop keeps
+    // being caught writing.
+    const why = idleSummary(found);
+    return dry ? { wouldFix: null, candidates: 0, seen: found.length, blockers, note: why } : { skipped: why, stillFailing: found.length };
   }
 
   const issue = issues[0];
@@ -339,17 +513,72 @@ export async function improveOnce({ dry = false } = {}) {
     `- Do NOT run git commit, git push, or npm run build. That is handled for you.`,
     `- If you cannot find a real cause, change NOTHING and say so plainly. A loop`,
     `  that invents work is worse than one that does nothing.`,
+    // The cheapest way to make a failing check pass is to stop it checking. That
+    // route has to be closed explicitly, because it always works, it always
+    // looks like a fix, and the revert cannot catch it: health goes GREEN, so
+    // nothing new is failing and the change stands forever.
+    //
+    // This is not hypothetical. `brief` is red from midnight until the morning
+    // brief is written — about seven hours a night, every night, by design. The
+    // loop now sees that as work, and "make the assertion weaker" would score as
+    // a success on every measure it has.
+    `- NEVER make a check pass by weakening what it asserts. Do not loosen a`,
+    `  condition, widen a tolerance, remove an assertion, or make a failure`,
+    `  report as ok. Fix the thing being measured, not the measurement.`,
+    `- Some checks are RED FOR A GOOD REASON at some times of day — a brief that`,
+    `  is not written until morning is not a bug at 01:00. If the check is correct`,
+    `  and the underlying thing is genuinely fine, change NOTHING and say which`,
+    `  condition made it red. That is a complete and useful answer.`,
+    // Written while four checks were red from one database outage and an expired
+    // OAuth token. Neither has a fix in this repository, and the loop has three
+    // cycles a day: spent on those, it does nothing else all day. Worse, a model
+    // told to fix something with no code-level cause will find SOMETHING to
+    // change, and that change is unrelated by construction.
+    `- Some failures have NO CAUSE IN THIS CODE. An expired OAuth token, a database`,
+    `  refusing reads, a third-party API that is down, a device that was never`,
+    `  registered. The tell is that the code path is correct and the data or the`,
+    `  credential underneath it is missing — "db_error", "needsAuth",`,
+    `  "Could not get access token", "no devices".`,
+    `- When that is the case, change NOTHING. Say what the underlying cause is and`,
+    `  what a human would have to do about it. Do not add a retry, a fallback, or a`,
+    `  friendlier error to make a broken dependency look handled. Diagnosing`,
+    `  something you cannot fix IS the useful answer.`,
     ``,
     `When done, state in one line what you changed and why.`,
   ].join("\n");
 
-  const result = await ask({ history: [{ role: "user", content: brief }], agent: "builder" });
+  // A repair needs more room than a conversation. The first live cycle spent all
+  // twenty steps reading — the right files, in the right order — and hit the
+  // ceiling before it edited anything. Reading is most of the work here, so the
+  // budget has to cover reading AND the edit AND checking the edit; twenty
+  // covers only the first.
+  const result = await ask({
+    history: [{ role: "user", content: brief }],
+    agent: "builder",
+    maxSteps: Number(process.env.CLEETUSD_IMPROVE_STEPS || 40),
+    // The loop repairing itself is not a request Grayson made.
+    //
+    // askModel() in jobs.mjs was marked, but this call goes straight to ask()
+    // and was missed — so the builder's own run landed in his open loops as
+    // "UNFINISHED · Fix exactly one thing in the Cleetus codebase", and in the
+    // deck's recent work, and in the digests the analysis reads. Its 40-step
+    // budget makes it the single most likely run to look unfinished, which is
+    // exactly the one that should not be presented to him as his.
+    probe: true,
+  });
 
   const changed = await changedFiles();
   if (!changed.length) {
-    state.count++; state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: "no change made" });
+    // "No change made" covers two completely different things: deciding nothing
+    // needed changing, and running out of room mid-repair. The first cycle was
+    // the second kind and was filed as the first, which is how a loop that
+    // achieves nothing looks like a loop that had nothing to do.
+    const ranOut = endsOnAPromise(result.answer || "");
+    const outcome = ranOut ? "gave up mid-repair (answer stops on a promise)" : "no change made";
+    state.count++;
+    state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome, said: (result.answer || "").slice(0, 200) });
     await saveState(state);
-    return { outcome: "no change made", issue: issue.what, said: result.answer };
+    return { outcome, issue: issue.what, said: result.answer };
   }
 
   const forbidden = changed.filter((f) => OFF_LIMITS.some((re) => re.test(f)));
@@ -382,7 +611,31 @@ export async function improveOnce({ dry = false } = {}) {
   const baseline = before.ok
     ? "green"
     : `red (${(before.down || []).join(", ")}) — those were already failing and are not this commit's doing`;
-  const msg = `Cleetus: ${issue.what.slice(0, 60)}\n\n${result.answer.slice(0, 800)}\n\nFixed autonomously by the improve loop. Baseline health was ${baseline}.\nOnly failures NEW since that baseline trigger the automatic revert.`;
+  // The file list comes from git, the prose comes from the model, and the
+  // message says which is which.
+  //
+  // The first autonomous commit described adding a Content-Type header to
+  // _lib/apns.js. It changed functions/api/health.js and nothing else. The
+  // builder had run out of steps and its closing summary described what it
+  // INTENDED to do next, which then became the permanent record of what it did.
+  // Someone reading `git log` in six months would believe apns.js was fixed.
+  //
+  // So the diff is stated first, as fact, and the model's account is labelled as
+  // an account. If the answer was truncated that is said out loud too, because a
+  // summary written after running out of room is exactly the one likely to
+  // describe intentions as actions.
+  const truncated = /\[(Answered from partial information|Stopped here after)/.test(result.answer || "");
+  const msg =
+    `Cleetus: ${issue.what.slice(0, 60)}\n\n` +
+    `Files changed (from git, authoritative):\n${changed.map((f) => `  ${f}`).join("\n")}\n\n` +
+    `What the builder said it did — its own account, which may not match the diff above:\n` +
+    `${(result.answer || "").slice(0, 800)}\n\n` +
+    (truncated
+      ? `NOTE: the builder ran out of tool calls before finishing. Treat the account above as\n` +
+        `its intentions rather than a description of this commit.\n\n`
+      : "") +
+    `Fixed autonomously by the improve loop. Baseline health was ${baseline}.\n` +
+    `Only failures NEW since that baseline trigger the automatic revert.`;
   await sh(`git add -A && git commit -q -F - <<'EOF'\n${msg}\nEOF`);
   const { stdout: newSha } = await sh("git rev-parse HEAD");
   await sh("git push -q origin main");
@@ -422,16 +675,60 @@ export async function improveOnce({ dry = false } = {}) {
     };
   }
 
-  // It worked. Write down how, so the next one is cheaper.
-  await saveSkill({
-    title: `Fix: ${issue.what.slice(0, 60)}`,
-    when: `something like "${issue.what.slice(0, 80)}" shows up again`,
-    steps: [issue.hint, result.answer.slice(0, 400), "Gates: node --check, esbuild the changed functions, npm run build.", "Verify /api/health after the deploy, not before."],
-    agent: "builder",
-  }).catch(() => {});
+  // Write down how it was fixed — but ONLY if it was fixed, and only from what
+  // is known to have happened.
+  //
+  // The first autonomous cycle wrote a skill whose second step was: add a
+  // Content-Type header to the crumb function in _lib/apns.js. That change was
+  // never made, that file was never touched, and it is not why push is down —
+  // nothing has been pushed since 9 August. The fiction went from a truncated
+  // answer, into the commit message, into a skill, and skills are retrieved into
+  // future prompts. Left alone it would have misdirected the next attempt at
+  // this exact problem, with the authority of something the system had "learned".
+  //
+  // Three conditions now, because each one was violated by that first skill:
+  //   - the answer must not be truncated; a summary written after running out of
+  //     room describes intentions, and a procedure made of intentions is worse
+  //     than no procedure
+  //   - the issue must actually have cleared; "shipped and nothing else broke" is
+  //     not the same as "fixed", and push was still down
+  //   - the steps quote the DIFF, not the prose
+  const checkName = String(issue.key || "").startsWith("health:") ? issue.key.slice(7) : null;
+  const stillFailing = checkName && after && (after.down || []).includes(checkName);
+  const truncatedAnswer = /\[(Answered from partial information|Stopped here after)/.test(result.answer || "");
 
+  if (truncatedAnswer || stillFailing) {
+    log("no skill written:", truncatedAnswer ? "the answer was truncated" : `${checkName} is still failing`);
+  } else {
+    await saveSkill({
+      title: `Fix: ${issue.what.slice(0, 60)}`,
+      when: `something like "${issue.what.slice(0, 80)}" shows up again`,
+      steps: [
+        issue.hint,
+        `What actually changed: ${changed.join(", ")}. Read that diff first — it is the record of the fix.`,
+        "Gates: node --check, esbuild the changed functions, npm run build.",
+        "Verify /api/health after the deploy, not before.",
+      ],
+      agent: "builder",
+    }).catch(() => {});
+  }
+
+  // "Shipped" is not "fixed", and the log said "shipped" for both.
+  //
+  // stillFailing is computed a few lines up, and was already trusted enough to
+  // withhold a skill — so the loop KNEW the issue had not cleared and wrote down
+  // the same word it uses for a real fix. The two autonomous commits are the
+  // proof: 5ab77bb genuinely fixed the brief check, and 3909977 improved a
+  // message while push stayed exactly as down as it had been, because nothing
+  // can fix that from here — the phone has to open the app. Both say "shipped".
+  //
+  // That word is what a person reads months later, and it is what makes this
+  // loop's own idleness misleading: "all known issues have been attempted"
+  // sounds like convergence when some of those attempts changed nothing.
+  const outcome = shipOutcome(checkName, stillFailing);
   state.count++;
-  state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: "shipped", sha: newSha.trim().slice(0, 7) });
+  state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome, fixed: !stillFailing, sha: newSha.trim().slice(0, 7) });
   await saveState(state);
-  return { outcome: "shipped", issue: issue.what, sha: newSha.trim().slice(0, 7), changed, said: result.answer };
+  if (stillFailing) log(`${checkName} is still down after this shipped — the change did not fix it`);
+  return { outcome, fixed: !stillFailing, issue: issue.what, sha: newSha.trim().slice(0, 7), changed, said: result.answer };
 }

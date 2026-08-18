@@ -433,7 +433,7 @@ async function handle(req, res) {
     let convo = null;
     let history;
     if (body.conversation) {
-      convo = await convos.open(body.conversation, { agent: body.agent || "cleetus" });
+      convo = await convos.open(body.conversation, { agent: body.agent || "cleetus", probe: body.probe === true });
       const incoming = Array.isArray(body.messages) && body.messages.length
         ? body.messages.filter((m) => m.role === "user").slice(-1)
         : body.message ? [{ role: "user", content: body.message }] : [];
@@ -510,6 +510,9 @@ async function handle(req, res) {
       const out = await ask({
         history,
         agent: body.agent,
+        // Callers testing the system mark themselves, so their traffic is not
+        // read back later as something Grayson asked for.
+        probe: body.probe === true,
         onStep: ({ tool, args }) => {
           // One readable line per call. The full arguments go in the run file;
           // this is the bit a human can follow at a glance.
@@ -545,7 +548,7 @@ async function handle(req, res) {
     let convo = null;
     let history;
     if (body.conversation) {
-      convo = await convos.open(body.conversation, { agent: body.agent || "cleetus" });
+      convo = await convos.open(body.conversation, { agent: body.agent || "cleetus", probe: body.probe === true });
       const incoming = Array.isArray(body.messages) && body.messages.length
         ? body.messages.filter((m) => m.role === "user").slice(-1)
         : body.message ? [{ role: "user", content: body.message }] : [];
@@ -568,7 +571,7 @@ async function handle(req, res) {
     }
 
     try {
-      const out = await ask({ history, agent: body.agent });
+      const out = await ask({ history, agent: body.agent, probe: body.probe === true });
       if (convo) {
         await convos.append(convo.id, [{ role: "assistant", content: out.answer || "", agent: out.agent }])
           .catch(() => {});

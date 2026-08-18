@@ -172,6 +172,31 @@ export const fileTools = {
           const why = (e.stderr || "").split("\n").find((l) => l.trim()) || "some files could not be read";
           return `${found}\n\n(partial: ${why.trim()})`;
         }
+        // ripgrep is not installed on this machine.
+        //
+        // `rg` resolves in an interactive shell here because it is a FUNCTION
+        // the terminal provides, not a binary on PATH — so it works when a
+        // human types it and fails with ENOENT the moment anything spawns it.
+        // A particularly good disguise: the tool looks present from every angle
+        // a person would check it from.
+        //
+        // grep is in the base system and cannot go missing. Slower, and without
+        // the smart-case and gitignore handling, but a slower search that runs
+        // beats a faster one that is not there.
+        if (e.code === "ENOENT") {
+          const gargs = ["-rn", "--binary-files=without-match", "-m", "6"];
+          if (glob) gargs.push("--include", glob);
+          gargs.push("-e", String(query), dir);
+          try {
+            const { stdout } = await run("grep", gargs, { timeout: 30_000, maxBuffer: 4_000_000 });
+            return trim(stdout) || `No matches for "${query}" under ${dir}`;
+          } catch (g) {
+            if (g.code === 1) return `No matches for "${query}" under ${dir}`;
+            const partial = trim(g.stdout);
+            if (partial) return `${partial}\n\n(partial: ${(g.stderr || "").split("\n")[0] || "some files unreadable"})`;
+            return `search failed: ${g.stderr?.trim() || g.message}`;
+          }
+        }
         return `search failed: ${e.stderr?.trim() || e.message}`;
       }
     },
@@ -196,6 +221,20 @@ export const fileTools = {
         return stdout.split("\n").slice(0, 100).join("\n").trim() || `Nothing named like "${name}" under ${dir}`;
       } catch (e) {
         if (e.code === 1) return `Nothing named like "${name}" under ${dir}`;
+        // Same missing binary as search_files. `find` is POSIX and always here.
+        // -name takes the same glob shapes callers already pass, and the noise
+        // from unreadable directories goes to stderr, so a partial answer still
+        // comes back on stdout rather than the whole thing failing.
+        if (e.code === "ENOENT") {
+          try {
+            const { stdout } = await run("find", [dir, "-name", String(name)], { timeout: 30_000, maxBuffer: 4_000_000 });
+            return stdout.split("\n").slice(0, 100).join("\n").trim() || `Nothing named like "${name}" under ${dir}`;
+          } catch (f) {
+            const partial = (f.stdout || "").split("\n").slice(0, 100).join("\n").trim();
+            if (partial) return `${partial}\n\n(partial: some directories could not be read)`;
+            return `find failed: ${f.stderr?.trim() || f.message}`;
+          }
+        }
         return `find failed: ${e.message}`;
       }
     },

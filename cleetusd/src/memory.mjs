@@ -87,7 +87,19 @@ export function slugify(s, max = 48) {
  * mid-task the file still shows what he was asked and how far he got, which is
  * the whole reason to write it up front rather than at the end.
  */
-export async function startRun({ agent, request }) {
+/**
+ * `probe` marks a request the system made about ITSELF — a health check, a tool
+ * sweep, a security test — as opposed to something Grayson asked for.
+ *
+ * The filter for this already existed and had never filtered anything, because
+ * nothing wrote the marker. The cost showed up in the weekly analysis, which
+ * told him: "You keep asking me to find DOCTOR_PROBE_KEY and paste it into
+ * forms." He never asked that once. It was a security probe checking the
+ * keyring would refuse to print a secret — asked twice, deliberately — and the
+ * system read its own test traffic back as a description of his behaviour, then
+ * drew conclusions about what to change from it.
+ */
+export async function startRun({ agent, request, probe = false }) {
   await ensureDirs();
   const t = stamp();
   const path = join(RUNS, `${t.file}-${slugify(request)}.md`);
@@ -96,6 +108,7 @@ export async function startRun({ agent, request }) {
     `agent: ${agent}\n` +
     `started: ${t.iso}\n` +
     `status: running\n` +
+    (probe ? `probe: true\n` : "") +
     `---\n\n` +
     `# ${request.replace(/\n+/g, " ").slice(0, 120)}\n\n` +
     `**Asked** ${t.date} ${t.time}\n\n` +
@@ -290,6 +303,31 @@ export async function recentRuns(limit = 12) {
 // and inserted ahead of any trailing section rather than at EOF.
 const LEARNED_HEADING = "## Learned by Cleetus";
 
+/**
+ * Keep the file's own "_Last updated:_" header honest.
+ *
+ * MEMORY.md carries a hand-written header. It read `_Last updated: 2026-05-01_`
+ * while the file had gained 29 lines in the previous two days, so asked what was
+ * outstanding Cleetus reported his memory as three months old — correctly, from
+ * the header. The header was the lie, not the answer.
+ *
+ * Same shape as the tool lists and the deck's agent grouping: a field kept by
+ * hand next to data that maintains itself. Left alone it only ever gets more
+ * wrong, and it is read by every agent on every message.
+ *
+ * Only rewrites a header that already exists. It is his file and his format;
+ * this corrects a date, it does not impose one.
+ */
+function touchLastUpdated(lines, date) {
+  for (let i = 0; i < Math.min(lines.length, 12); i++) {
+    if (/^_Last updated:.*_\s*$/.test(lines[i])) {
+      lines[i] = `_Last updated: ${date}_`;
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function remember(fact, { source = "chat" } = {}) {
   const t = stamp();
   const line = `- ${fact.trim().replace(/\n+/g, " ")} _(${t.date}, ${source})_`;
@@ -311,6 +349,7 @@ export async function remember(fact, { source = "chat" } = {}) {
       if (/^## /.test(lines[i])) { at = i; break; }
     }
     lines.splice(at, 0, LEARNED_HEADING, "", line, "");
+    touchLastUpdated(lines, t.date);
     await writeFile(MEMORY_FILE, lines.join("\n"), "utf8");
     return MEMORY_FILE;
   }
@@ -324,6 +363,7 @@ export async function remember(fact, { source = "chat" } = {}) {
   }
   while (end > start + 1 && !lines[end - 1].trim()) end--;
   lines.splice(end, 0, line);
+  touchLastUpdated(lines, t.date);
   await writeFile(MEMORY_FILE, lines.join("\n"), "utf8");
   return MEMORY_FILE;
 }

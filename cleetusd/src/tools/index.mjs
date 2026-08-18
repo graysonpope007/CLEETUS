@@ -25,6 +25,7 @@ import { trackTools } from "./tracking.mjs";
 import { repoTools } from "./repos.mjs";
 import { keyringTools } from "./keyring.mjs";
 import { recallTools } from "./recall.mjs";
+import { workTools } from "./work.mjs";
 
 // ── The vault ───────────────────────────────────────────────────────────────
 
@@ -241,7 +242,7 @@ const bridgeTools = {
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
-export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools };
+export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools };
 
 /** Ollama's native tool format. */
 export function toolSchemas(names = Object.keys(TOOLS)) {
@@ -331,8 +332,43 @@ export async function callTool(name, args, ctx) {
     );
   }
   try {
-    return await tool.run(args || {}, ctx);
+    return coerceResult(name, await tool.run(args || {}, ctx));
   } catch (e) {
     return `${name} failed: ${e.message}`;
+  }
+}
+
+/**
+ * A tool result the model can actually read.
+ *
+ * `look` returned an object once and the loop did String() on it, so the model
+ * was handed the literal text "[object Object]". It did not report an empty
+ * result — it filled the gap with what a desk usually has, and invented an
+ * MX Master 3 and an iPhone 15 Pro Max sitting on it. Two runs on 13 Aug show
+ * exactly that: the tool call recorded as "[object Object]", followed by a
+ * confident description of a desk nobody had looked at.
+ *
+ * That was fixed inside vision.mjs, on one tool, by making every path return a
+ * string. This is the same fix made structural: there are thirty-eight tools and
+ * any of them can grow a path that returns the wrong shape, and the symptom is
+ * not an error — it is a plausible answer about something that was never seen.
+ *
+ * The two dangerous shapes get opposite treatment, because they mean opposite
+ * things. An object HAS the information and only lost its formatting, so it is
+ * serialised and handed over. Nothing at all means the tool genuinely produced
+ * nothing, and the only safe thing to give a model then is a sentence telling it
+ * so — silence is what invention grows in.
+ */
+export function coerceResult(name, value) {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) {
+    return `${name} returned nothing at all. That is a bug in the tool, not an answer — ` +
+           `say you could not get the information rather than describing what is usually there.`;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return `${name} returned something that could not be read (${typeof value}). ` +
+           `Treat it as no answer and say so.`;
   }
 }

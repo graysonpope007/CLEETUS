@@ -199,6 +199,26 @@ for (const [name, ids] of Object.entries(GROUPS)) {
   for (const id of ids) if (byId[id]) addAgent(byId[id], false);
 }
 
+// Anything registered but not placed in a group above.
+//
+// GROUPS is a hand-written arrangement of a list that lives somewhere else, and
+// the loop that renders it only draws ids it was told about — so a new agent
+// added to the registry would simply never appear on the deck, with nothing
+// anywhere saying so. It would work perfectly over the API and be invisible to
+// the person it was built for.
+//
+// The groups are still hand-arranged, because the ordering is editorial and
+// worth keeping. This only guarantees that forgetting to arrange one is visible
+// rather than silent.
+const placed = new Set(Object.values(GROUPS).flat());
+const strays = agents.filter(a => a.id !== 'cleetus' && !placed.has(a.id));
+if (strays.length) {
+  const h = document.createElement('div');
+  h.className = 'group'; h.textContent = 'Ungrouped';
+  rail.appendChild(h);
+  for (const a of strays) addAgent(a, false);
+}
+
 // ── what he can actually reach. A denial must never look like an empty folder.
 fetch('/access').then(r => r.json()).then(a => {
   const box = $('access');
@@ -348,8 +368,17 @@ fetch('/access').then(r => r.json()).then(a => {
         // anything appended to the end is the first thing clipped — the
         // duration rendered correctly and was invisible in the panel, which is
         // the same as not rendering it.
-        el.textContent = '× ' + (f.since ? ago(f.since).padStart(3) + '  ' : '') + f.area + ': ' + f.name;
-        el.title = f.detail + (f.since ? '\\n\\nfailing since ' + f.since : '') + (f.fix ? '\\n\\nfix: ' + f.fix : '');
+        // The name is QUOTED because check names describe the HEALTHY state —
+        // "macOS is not refusing him anything", "integrations healthy".
+        // Unquoted in a red row it still reads as a statement about the world,
+        // and that exact wording was repeated back to him as fact from two
+        // other surfaces before anyone noticed. Quotes cost two characters and
+        // turn an assertion into a reference to one.
+        el.textContent = '× ' + (f.since ? ago(f.since).padStart(3) + '  ' : '') + f.area + ': "' + f.name + '"';
+        // Local time in the tooltip. The row carries a duration, but the hover
+        // was raw ISO in UTC — four hours off the clock on the wall, in the one
+        // place someone looks when they want the actual moment.
+        el.title = f.detail + (f.since ? '\\n\\nfalse since ' + new Date(f.since).toLocaleString() : '') + (f.fix ? '\\n\\nfix: ' + f.fix : '');
         box.appendChild(el);
       }
     } else {
@@ -400,6 +429,32 @@ fetch('/runs').then(r => r.json()).then(d => {
 // ── chat, streamed so tool calls appear as they happen ──
 const HISTORY = [];
 
+// One id per thread, kept in localStorage so a reload rejoins the same
+// conversation rather than orphaning it.
+//
+// Without this the deck was stateless: HISTORY is a variable in the page, so
+// closing the tab discarded everything said in it, and nothing was ever written
+// where recall_chat could find it. The server has accepted a conversation field
+// all along.
+//
+// The date is in the id on purpose — a thread that runs past midnight keeps the
+// id it started with, and the store is browsable by eye.
+const CONVO = (() => {
+  try {
+    const saved = localStorage.getItem('cleetus_convo');
+    if (saved) return saved;
+    const id = new Date().toISOString().slice(0, 10).replace(/-/g, '') +
+               '-' + Math.random().toString(36).slice(2, 8);
+    localStorage.setItem('cleetus_convo', id);
+    return id;
+  } catch {
+    // Private browsing, or storage disabled. A per-load id still persists the
+    // thread server-side; only the resume-after-reload is lost, which is
+    // strictly better than persisting nothing.
+    return 'deck-' + Math.random().toString(36).slice(2, 10);
+  }
+})();
+
 $('form').addEventListener('submit', async e => {
   e.preventDefault();
   const q = $('in').value.trim();
@@ -418,7 +473,15 @@ $('form').addEventListener('submit', async e => {
     const res = await fetch('/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: HISTORY.slice(-12), agent: AGENT }),
+      // The thread id goes with every message, so the server keeps the
+      // conversation on disk instead of it living only in this tab.
+      //
+      // The persistence was built and the deck never adopted it: the field
+      // appeared nowhere in this file, so every chat here existed only in the
+      // HISTORY variable and died with the page. Two demo threads were the
+      // entire contents of the store, which is why recall_chat could search
+      // "everything Grayson has ever said" and find nothing he had ever said.
+      body: JSON.stringify({ messages: HISTORY.slice(-12), agent: AGENT, conversation: CONVO }),
     });
     const reader = res.body.getReader();
     const dec = new TextDecoder();

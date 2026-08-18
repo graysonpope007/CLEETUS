@@ -25,5 +25,45 @@
   "skipWorkflowUsageWarning": true,
   "theme": "dark",
   "teammateMode": "tmux",
-  "skipAutoPermissionPrompt": true
+  "skipAutoPermissionPrompt": true,
+  "autoMode": {
+    "environment": [
+      "### Org-wide",
+      "**Organization**: graysonpope007 (personal GitHub account); also collaborates on tri4christ repos",
+      "**Cloud provider(s)**: Cloudflare (Pages, Workers, api.cloudflare.com), Supabase, Backblaze B2, Tailscale; occasional AWS CLI use (2x)",
+      "**Repository visibility**: PUBLIC (authoritative, via gh): graysonpope007/CLEETUS (this repo, and it tracks /Users/grayson as the working tree), GLM, cleetus-auth, cleetus-privacy. PRIVATE: tmro-pictures-site, cleetusv2, breitmann-audio, isaiah-davis-site, STEAP, higherways-worship-site. Any push to CLEETUS is publishing to a public repo from a home directory.",
+      "**Internal sharing / snippet hosting**: None configured — treat public paste/gist services as outside the trust boundary",
+      "**Secrets management**: local gitignored dotfiles (.env, .env.*, .dev.vars, credentials.json, token.json, *.key) and macOS keychain via the security CLI; no managed secret store configured",
+      "**Default / protected branches**: default branch main; gh reports no rulesets and no protected branches on graysonpope007/CLEETUS",
+      "**CI/CD deploy targets**: Cloudflare Pages projects observed in use (warren-church.pages.dev, hope-mental-wellness-center.pages.dev, breitmann-audio.pages.dev, oak-hill-consulting-group.pages.dev, oak-hill-blue.pages.dev, warren-augusta.pages.dev, good-get-apparel.pages.dev, cf-native-preview.warren-church.pages.dev); GitHub Actions deploy workflows; Expo/EAS (exp.host)",
+      "**Network posture**: mostly local macOS workstation plus SSH/rsync to hosts on a Tailscale tailnet (creo-bots-pi.tail32386f.ts.net); no VPN/zero-trust gateway configured",
+      "**Source control**: github.com/graysonpope007 (this repo and sibling repos) plus github.com/tri4christ repos checked out locally — as scoped by the Trusted repo and Repository visibility entries above",
+      "**Trusted internal domains**: warren-church.pages.dev, warren.church, warren-augusta.pages.dev, cf-native-preview.warren-church.pages.dev, hope-mental-wellness-center.pages.dev, hopemwc.org, breitmann-audio.pages.dev, oak-hill-consulting-group.pages.dev, oak-hill-blue.pages.dev, good-get-apparel.pages.dev, getcreo.ai, www.getcreo.ai, cleetusai.com, vipzrfqbbprbsletrupp.supabase.co, api.cloudflare.com, creo-bots-pi.tail32386f.ts.net",
+      "**Trusted cloud buckets**: None configured",
+      "**Key internal services**: Supabase org ihyksdfyxzjngrcjuuoe (project vipzrfqbbprbsletrupp — Creo AI prod, live client data), Cloudflare Pages/Workers, Backblaze B2 media storage, Tailscale node creo-bots-pi.tail32386f.ts.net, local ollama",
+      "**Internal package registry**: None configured",
+      "**Sensitive data locations & audiences**: the whole repo root is $HOME, so ~/.ssh, shell history, keychain exports, .env/.env.*/.dev.vars/credentials.json/token.json/*.key and any untracked home-directory file are sensitive and must never be staged, committed, or pushed to the public CLEETUS repo; Supabase project vipzrfqbbprbsletrupp holds live client data; otherwise any file or store holding personal data, confidential business data, credentials, regulated data, or similarly sensitive material — preserve exact handles when known and share only with audiences cleared at the [named+specifics] bar",
+      "**Data retention / declassification**: None configured",
+      "**Sensitive remote targets**: Supabase org ihyksdfyxzjngrcjuuoe and every project in it (including vipzrfqbbprbsletrupp, Creo AI prod) — reads on request are fine, every write needs an explicit yes/no first; live Cloudflare Pages production deployments and the public CLEETUS repo; plus any namespace, host, or container whose name carries prod or production as a whole word or name segment (hyphen/underscore/dot-delimited — e.g. matches prod-db, not producer)",
+      "**Protected deployment namespaces / environments**: Cloudflare Pages production branches for the listed .pages.dev projects, and Supabase org ihyksdfyxzjngrcjuuoe projects",
+      "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries prod or production as a whole word or name segment; also Cloudflare DNS/Pages project settings and Supabase branch/migration operations",
+      "### User-specific",
+      "**Primary use of Claude Code**: software development — static/Cloudflare Pages sites, Supabase-backed apps, and the local Cleetus agent tooling under $HOME",
+      "**Trusted repo**: the git repository at /Users/grayson with remote github.com/graysonpope007/CLEETUS. This remote is PUBLIC, so only that repo's own tracked work may be committed or pushed there; the .gitignore deny-by-default allowlist is a deliberate guard and must not be widened without confirmation. Content ported, repointed, or first read from outside this session's repo is not its own work, whoever directed the port. Visibility scopes confidential material only: secrets and sensitive data (personal & entrusted) are never cleared into any repo by its visibility.",
+      "**Org-specific CLIs**: npx, launchctl, ollama, ffmpeg, osascript, xcrun, plutil, system_profiler, blueutil, whisper-cli, aws, brew, cloudflared, tailscale, eas, gh",
+      "**Routine under grayson/ prefix**: work routinely spans sibling checkouts under ~ (tmro-pictures-site, breitmann-audio, cleetusv2, isaiah-davis-site, GLM); treat those as the user's own repos but apply each repo's own visibility when publishing"
+    ],
+    "allow": [
+      "$defaults",
+      "Bash(launchctl list:*)",
+      "Bash(ollama list:*)",
+      "Bash(ffprobe:*)"
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Bash(git add -A:*) in /Users/grayson — the repo root is $HOME and a broad stage can capture ~/.ssh and shell history",
+      "Bash(launchctl unload:*) and Bash(launchctl bootout:*) — removes persistent local jobs not created in this session",
+      "Writes to any Supabase project in org ihyksdfyxzjngrcjuuoe (insert/update/delete/alter, apply_migration, mutating execute_sql, deploy_edge_function, branch ops, supabase db push) without an explicit prior yes/no"
+    ]
+  }
 }

@@ -98,13 +98,23 @@ export async function load(id) {
  * was moved would otherwise be wedged: every message fails, and the only remedy
  * is knowing to clear site data.
  */
-export async function open(id, { agent = "cleetus" } = {}) {
+/**
+ * `probe` marks a thread the system opened while testing itself.
+ *
+ * Runs learned this distinction; conversations are a parallel store and never
+ * did. So a probe-marked chat created an UNMARKED thread, and recall_chat —
+ * whose whole job is searching everything Grayson has ever said — would surface
+ * it forever. Verifying that conversations persist at all created exactly such a
+ * thread, which is how this surfaced.
+ */
+export async function open(id, { agent = "cleetus", probe = false } = {}) {
   if (id) {
     const found = await load(id);
     if (found) return found;
     await ensure();
     const now = new Date().toISOString();
     const convo = { id: String(id).replace(/[^A-Za-z0-9_-]/g, ""), agent, title: "", created: now, updated: now, messages: [] };
+    if (probe) convo.probe = true;
     if (convo.id) {
       await writeFile(file(convo.id), JSON.stringify(convo, null, 2), "utf8");
       return convo;
@@ -164,7 +174,7 @@ export function replay(convo) {
 }
 
 /** Newest first, for the rail on the Reach page. */
-export async function list({ agent = null, limit = 40 } = {}) {
+export async function list({ agent = null, limit = 40, includeProbes = false } = {}) {
   await ensure();
   const files = (await readdir(DIR).catch(() => [])).filter((f) => f.endsWith(".json"));
   const rows = [];
@@ -173,6 +183,7 @@ export async function list({ agent = null, limit = 40 } = {}) {
       const c = JSON.parse(await readFile(join(DIR, f), "utf8"));
       if (agent && c.agent !== agent) continue;
       if (!c.messages?.length) continue;   // opened and abandoned; not a conversation
+      if (c.probe && !includeProbes) continue;   // the system testing itself
       rows.push({
         id: c.id,
         title: c.title || "Untitled",
@@ -202,7 +213,7 @@ export async function remove(id) {
  * reached over ten messages three weeks ago is not a fact anyone thought to
  * remember — it is a conversation, and until now nothing could go and read it.
  */
-export async function search(query, { limit = 5 } = {}) {
+export async function search(query, { limit = 5, includeProbes = false } = {}) {
   await ensure();
   const words = String(query).toLowerCase().match(/[a-z0-9]{3,}/g) || [];
   if (!words.length) return [];
@@ -212,6 +223,11 @@ export async function search(query, { limit = 5 } = {}) {
     try {
       const c = JSON.parse(await readFile(join(DIR, f), "utf8"));
       if (!c.messages?.length) continue;
+      // recall_chat runs on this. A thread the system opened while testing
+      // itself is not something Grayson said, and surfacing one as though it
+      // were is the same failure that had the weekly analysis telling him he
+      // kept asking for a secret he had never mentioned.
+      if (c.probe && !includeProbes) continue;
       const flat = c.messages
         .map((m) => (typeof m.content === "string" ? m.content : ""))
         .join("\n")

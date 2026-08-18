@@ -146,6 +146,18 @@ export const CONFIG = {
   // no-tools pass, so the work already done still becomes an answer.
   maxSteps: Number(env.CLEETUSD_MAX_STEPS || 20),
 
+  // The ceiling the budget above may climb to when a task is plainly not
+  // finished. Twenty is right for "what did I spend on coffee" and nowhere near
+  // enough for "add face recognition to studio-locate and gate the money
+  // screens on it" — that request spent all twenty calls reading files and then
+  // described the codebase back instead of changing it. Reading the project is
+  // not the task; it is the prologue.
+  //
+  // Extension is not the same as no limit. It is granted only while the model
+  // is still asking for tools, in chunks, and every extension is logged, so a
+  // loop that has genuinely lost the plot still stops.
+  maxStepsCeiling: Number(env.CLEETUSD_MAX_STEPS_CEILING || 120),
+
   // Kill switch for the shell tool specifically. Everything else stays usable.
   // Set CLEETUSD_NO_SHELL=1 to take the machine out of his hands without
   // stopping him answering questions.

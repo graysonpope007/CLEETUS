@@ -25,7 +25,7 @@
 import { execFile } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { promisify } from "node:util";
-import { readFile, readdir, writeFile, unlink } from "node:fs/promises";
+import { readFile, readdir, writeFile, unlink, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG, secrets } from "./config.mjs";
 import { accessReport } from "./access.mjs";
@@ -37,6 +37,36 @@ const sh = (c) => run("/bin/zsh", ["-lc", c], { timeout: 20_000 }).then(r => r.s
 // and the face recogniser are studio-locate's dependencies borrowed rather than
 // duplicated, so they borrow the same interpreter.
 const PY_CV = process.env.CLEETUSD_PYTHON || `${CONFIG.home}/studio-locate/.venv/bin/python`;
+
+/**
+ * Launch agents that exist on disk but are not loaded into launchd.
+ *
+ * On 14 Aug 2026 com.cleetus.ollama was not stopped — it was UNLOADED. That is
+ * why nothing recovered it: `KeepAlive` only applies to an agent launchd knows
+ * about, so an unloaded agent is not a service that is down, it is a service
+ * that no longer exists as far as the system is concerned. The local model was
+ * gone for some minutes and the plist, the binary and the log all looked fine.
+ *
+ * The check above this one is deliberately about the PATH rather than about
+ * whether a job is RUNNING, and that reasoning still holds: most of these are
+ * scheduled, so "not running" is their healthy state and says nothing. But
+ * "not loaded" is different in kind. A loaded agent that is idle will fire at
+ * its next interval. An unloaded one never will, and nothing else in this file
+ * can tell the difference.
+ *
+ * Split out and exported so the comparison can be tested without unloading a
+ * real service to see what happens.
+ */
+export function unloadedAgents(plistPaths = [], launchctlList = "") {
+  const loaded = new Set(
+    String(launchctlList).trim().split("\n").slice(1)
+      .map((l) => l.split("\t").pop().trim())
+      .filter(Boolean),
+  );
+  return plistPaths
+    .map((p) => String(p).split("/").pop().replace(/\.plist$/, ""))
+    .filter((label) => label && !loaded.has(label));
+}
 
 export async function runDoctor() {
   const results = [];
@@ -80,14 +110,47 @@ export async function runDoctor() {
   ["com.cleetus.studio", "studio-locate, the BRIO"],
   ];
   const uid = (await sh("id -u")).trim();
+  const DOWN_BECAUSE = new Map();
   for (const [label, what] of AGENTS) {
   const out = await sh(`launchctl print gui/${uid}/${label} 2>/dev/null | head -20`);
   const running = /state = running/.test(out);
   const loaded = out.trim().length > 0;
+
+  // WHY it is not running, from the service's own stderr.
+  //
+  // "loaded but not running" is a symptom, and the fix beside it — kickstart —
+  // is the wrong advice whenever the cause is not transient. The air trackpad
+  // went down and the panel said exactly that; the log said
+  // "No camera matching 'c920'. Available: [0] Logitech BRIO, ...", which is a
+  // webcam being unplugged and no amount of restarting will help.
+  //
+  // launchd already knows where each service writes its errors, so this reads
+  // the plist rather than guessing at a filename.
+  let why = "";
+  if (loaded && !running) {
+    const errPath = (out.match(/stderr path = (\S+)/) || [])[1]
+      || (await sh(`/usr/libexec/PlistBuddy -c "Print :StandardErrorPath" ~/Library/LaunchAgents/${label}.plist 2>/dev/null`)).trim();
+    if (errPath) {
+      const tail = await readFile(errPath.replace(/^~/, CONFIG.home), "utf8").catch(() => "");
+      const line = tail.trim().split("\n").reverse()
+        .find((l) => /error|exception|no such|not found|refused|denied|no camera|traceback/i.test(l));
+      if (line) why = ` — ${line.trim().slice(0, 120)}`;
+    }
+    // Remembered so the HTTP check for the same service can defer to it. Two
+    // checks describe one process; without this the port check kept advising a
+    // restart while the service check three lines up already knew the webcam
+    // was unplugged.
+    if (why) DOWN_BECAUSE.set(label.replace(/^com\.cleetus\./, ""), why.replace(/^ — /, ""));
+  }
+
   check("services", `${label} (${what})`, running,
-    loaded ? (running ? "running" : "loaded but not running") : "not loaded",
-    loaded ? `launchctl kickstart -k gui/$(id -u)/${label}`
-           : `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/${label}.plist`);
+    loaded ? (running ? "running" : `loaded but not running${why}`) : "not loaded",
+    !loaded ? `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/${label}.plist`
+      // When the log named a cause, restarting is the wrong first move. The air
+      // trackpad refused to start on every attempt while the C920 was unplugged,
+      // and a fix line reading "kickstart" invites exactly that loop.
+      : why ? "fix the cause above first — kickstart only helps if it was transient"
+            : `launchctl kickstart -k gui/$(id -u)/${label}`);
   }
 
   // ── every cleetus launch agent points at a file that exists ────────────────
@@ -134,6 +197,26 @@ export async function runDoctor() {
     // check would have gone green over a brief written where nobody looks.
     "point it at something that exists AND still works from there; `node ~/cleetusd/bin/job.mjs --list` for the rebuilt ones");
 
+  // ── every launch agent is actually loaded ───────────────────────────────────
+  //
+  // See unloadedAgents(): com.cleetus.ollama was unloaded rather than stopped,
+  // so KeepAlive had nothing to keep alive and the local model simply went away.
+  // The plist was on disk, the binary was on disk, and the log ended on "all
+  // slots are idle". Every check in this file passed while it was gone.
+  //
+  // The recovery is in the fix text on purpose, because the instinct on seeing a
+  // dead service is `kickstart` — and kickstart on an agent launchd has never
+  // heard of does nothing at all.
+  {
+    const listing = await sh("launchctl list 2>/dev/null");
+    const missing = unloadedAgents(plists, listing);
+    check("services", "every launch agent is loaded into launchd", missing.length === 0,
+      missing.length
+        ? `${missing.length} on disk but not loaded: ${missing.join(", ")} — launchd will never start ${missing.length === 1 ? "it" : "them"}`
+        : `all ${plists.length} agents loaded`,
+      "launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist — kickstart does nothing for an agent that is not loaded");
+  }
+
   // ── every plist is valid XML ────────────────────────────────────────────────
   //
   // launchd's parser is lenient and accepts things XML does not. A double
@@ -171,9 +254,16 @@ export async function runDoctor() {
   const NO_AGENT = {};
   for (const [name, url] of PORTS) {
   const r = await get(url);
+  // If the service check already worked out WHY this is down, say the same
+  // thing here. Two checks describe one process: while the C920 was unplugged
+  // the service line carried "No camera matching 'c920'" and this line still
+  // said "fetch failed — try kickstart", which is the wrong advice sitting on
+  // the same screen as the right one.
+  const cause = DOWN_BECAUSE.get(name === "cleetus-web" ? "web" : name);
   check("http", `${name} answers`, r.status === 200,
-    r.status ? `http ${r.status}` : r.error,
-    NO_AGENT[name] || `launchctl kickstart -k gui/$(id -u)/com.cleetus.${name === "cleetus-web" ? "web" : name}`);
+    (r.status ? `http ${r.status}` : r.error) + (cause ? ` — ${cause}` : ""),
+    cause ? "fix the cause above first — restarting will not help"
+          : NO_AGENT[name] || `launchctl kickstart -k gui/$(id -u)/com.cleetus.${name === "cleetus-web" ? "web" : name}`);
   }
 
   // ── cleetusd internals ──────────────────────────────────────────────────────
@@ -230,6 +320,34 @@ export async function runDoctor() {
   check("cameras", "one camera each", new Set(devs).size === devs.length,
   devs.length ? `capturing: ${devs.join(" | ")}` : "no capture running",
   "restart both services; each re-resolves its camera by name");
+  // Asked-for is not the same as capturing.
+  //
+  // The check above reads the `-i <device>` argument off the running ffmpeg
+  // processes, so it reports what each service INTENDED to open. With the BRIO
+  // physically unplugged, ffmpeg was still running, the command line still said
+  // "Logitech BRIO", and the check said `capturing: Logitech BRIO`.
+  //
+  // The service knew better and said so in the same breath:
+  //
+  //   {"camera":{"ok":true,"name":"Logitech BRIO",
+  //              "error":"Video device not found ... Input/output error"}}
+  //
+  // ok:true beside a device-not-found error. Both the service and the panel
+  // reported a healthy camera that was sitting on the desk unplugged — which is
+  // the exact shape this whole file exists to catch.
+  for (const [svc, port] of [["studio-locate", 8765], ["airpad", 8768]]) {
+    const st = await get(`http://127.0.0.1:${port}/api/state`, 5000);
+    if (st.status !== 200) { skip("cameras", `${svc} camera is really open`, `${svc} is not answering`); continue; }
+    let c = null;
+    try { c = JSON.parse(st.body).camera || null; } catch {}
+    if (!c) { skip("cameras", `${svc} camera is really open`, "no camera block in its state"); continue; }
+    const err = String(c.error || "").trim();
+    check("cameras", `${svc} camera is really open`, !err,
+      err ? `${c.name || "camera"} reports ok but: ${err.split("\n")[0].slice(0, 90)}`
+          : `${c.name || "camera"} open, no errors`,
+      "the camera is not on the bus — check the cable before restarting anything");
+  }
+
   check("cameras", "addressed by name, not index", !devs.some(d => /^\d+$/.test(d)),
   devs.filter(d => /^\d+$/.test(d)).join(", ") || "all by name",
   "an index binding drifts when AVFoundation reshuffles; restart the service");
@@ -581,6 +699,172 @@ export async function runDoctor() {
   skip("devices", "desk light", "not plugged in");
   }
 
+  // ── where a remembered fact actually lands ─────────────────────────────────
+  //
+  // remember() writes to the VAULT's MEMORY.md when that file is readable and
+  // silently falls back to ~/cleetus-memory/MEMORY.md when it is not. Both exist.
+  // The vault one is the file Grayson reads in Obsidian; the local one is a
+  // stub. So an iCloud hiccup does not fail a write — it quietly redirects it
+  // into a file nobody opens, and every fact learned during the outage is
+  // stranded there.
+  //
+  // This session diffed the stub and reported "MEMORY.md unchanged" about the
+  // wrong file, which is exactly how the fallback stays invisible.
+  {
+    const vaultMem = join(CONFIG.vault, "MEMORY.md");
+    const localMem = join(CONFIG.memoryRoot, "MEMORY.md");
+    const vaultReadable = await readFile(vaultMem, "utf8").then(() => true).catch(() => false);
+    const lines = async (p) => (await readFile(p, "utf8").catch(() => "")).split("\n").length;
+    const target = vaultReadable ? vaultMem : localMem;
+    check("memory", "new facts land where he reads them", vaultReadable,
+      vaultReadable
+        ? `the vault copy, ${await lines(vaultMem)} lines`
+        : `FALLING BACK to ${localMem} (${await lines(localMem)} lines) — the vault copy is unreadable, ` +
+          `so anything learned now will not appear in Obsidian`,
+      "if this is red, check iCloud: the daemon cannot read the vault MEMORY.md");
+    void target;
+  }
+
+  // ── no job has run for ever without once doing anything ────────────────────
+  //
+  // jobs.mjs names this failure at the top of the file: "a job that reports
+  // 'nothing to do' when it actually could not look would be the same bug in a
+  // new costume". It was right, and there was no check for it.
+  //
+  // pre-event-brief ran 152 times and 151 of those said "nothing starting in
+  // the next 45 minutes". That sentence is also what a correct run says on a
+  // quiet evening, which is why nobody looked — but a job that has never once
+  // produced a result across months of runs is not quiet, it is broken. The
+  // cause was one line that read a bare JSON array as an object.
+  //
+  // 100% is the threshold rather than "mostly", because a genuinely quiet job
+  // has SOME successes: text-monitor sits at 144 quiet runs out of 147 and must
+  // not be flagged. What is being caught is never, not seldom.
+  {
+    const MIN_RUNS = Number(process.env.CLEETUSD_JOB_MIN_RUNS || 20);
+    const text = await readFile(join(CONFIG.memoryRoot, "jobs.log"), "utf8").catch(() => "");
+    const byJob = new Map();
+    for (const line of text.trim().split("\n")) {
+      const m = line.match(/^\S+ (ok|FAIL)\s+(\S+) \([\d.]+s\) (.*)$/);
+      if (!m) continue;
+      const [, , job, summary] = m;
+      const e = byJob.get(job) || { runs: 0, empty: 0 };
+      e.runs++;
+      if (/^(nothing|no |none|0 |not )/i.test(summary)) e.empty++;
+      byJob.set(job, e);
+    }
+    const never = [...byJob].filter(([, e]) => e.runs >= MIN_RUNS && e.empty === e.runs)
+                            .map(([j, e]) => `${j} (${e.runs} runs, never once)`);
+    const worst = [...byJob].filter(([, e]) => e.runs >= MIN_RUNS)
+                            .sort((a, b) => (b[1].empty / b[1].runs) - (a[1].empty / a[1].runs))[0];
+    check("services", "every job has done something at least once", never.length === 0,
+      never.length ? never.join(", ") + " — it may be unable to see its input"
+        : worst ? `quietest is ${worst[0]}, ${worst[1].empty}/${worst[1].runs} runs with no result`
+                : `not enough history yet (fewer than ${MIN_RUNS} runs each)`,
+      "run it by hand and check what its INPUT looks like, not whether it exits 0");
+  }
+
+  // ── no log is running away ─────────────────────────────────────────────────
+  //
+  // This is the failure that defines the project's history. com.cleetus.chat
+  // respawned 423,179 times against a missing script and wrote a 113 MB error
+  // log doing it, and NOTHING SURFACED IT FOR THREE MONTHS. That incident is
+  // quoted at the top of jobs.mjs, and until now there was no check for it —
+  // the lesson was written down and never wired to anything.
+  //
+  // Nothing rotates these files either: there is no newsyslog rule for them.
+  // The threshold sits well above normal (ollama's stderr is legitimately a few
+  // MB and grows all day) and well below catastrophic.
+  {
+    const MAX_MB = Number(process.env.CLEETUSD_MAX_LOG_MB || 50);
+    const dir = join(CONFIG.home, "Library/Logs");
+    const names = (await readdir(dir).catch(() => [])).filter((f) => f.startsWith("cleetus-") && f.endsWith(".log"));
+    const sized = [];
+    for (const f of names) {
+      const st = await stat(join(dir, f)).catch(() => null);
+      if (st) sized.push({ f, mb: st.size / 1e6 });
+    }
+    sized.sort((a, b) => b.mb - a.mb);
+    const big = sized.filter((x) => x.mb > MAX_MB);
+    const total = sized.reduce((n, x) => n + x.mb, 0);
+    check("services", "no log is running away", big.length === 0,
+      big.length
+        ? `${big.map((x) => `${x.f} ${x.mb.toFixed(0)}MB`).join(", ")} — a job may be respawning`
+        : sized.length
+          ? `${sized.length} logs, ${total.toFixed(1)}MB total, largest ${sized[0].f} ${sized[0].mb.toFixed(1)}MB`
+          : "no logs yet",
+      "read the tail: a giant log is almost always one error repeating, not one big error");
+  }
+
+  // ── no tool is failing every time it is called ──────────────────────────────
+  //
+  // The check above tests two named tools by calling them. This is the same
+  // question asked of all thirty-eight at once, from evidence already on disk:
+  // every tool call and its result is written into the run files as it happens,
+  // so how often each tool actually WORKS is countable.
+  //
+  // Section 115 counted tools that had never been called. This catches the
+  // opposite and worse case — a tool called constantly and failing constantly,
+  // which that count cannot see and which is exactly what search_files did for
+  // most of 14 August.
+  //
+  // Honest with itself about its own limit: it only sees tools somebody used.
+  // A tool that breaks and then goes untouched for a week stays invisible here,
+  // which is why the two checks sit next to each other rather than replacing
+  // one another.
+  {
+    const { toolHealth } = await import("./toolhealth.mjs");
+    const th = await toolHealth({ days: 3 });
+    const bad = th.alwaysBroken;
+    const noisiest = [...th.tools].filter(([, e]) => e.broken).sort((a, b) => b[1].broken / b[1].calls - a[1].broken / a[1].calls)[0];
+    check("cleetusd", "no tool is failing every time it is called",
+      bad.length === 0,
+      bad.length
+        ? bad.map((b) => `${b.tool} failed all ${b.calls} calls — ${b.example}`).join("; ")
+        : th.tools.size
+          ? `${th.tools.size} tools used across ${th.files} runs` +
+            (noisiest ? `, worst is ${noisiest[0]} ${noisiest[1].broken}/${noisiest[1].calls}` : ", none failing")
+          : `no tool calls in the last ${th.days} days`,
+      "call the tool by hand — a tool can fail every time while every service around it looks healthy");
+  }
+
+  // ── his search tools still run ──────────────────────────────────────────────
+  //
+  // search_files and find_files were both written against ripgrep, and ripgrep
+  // left this machine sometime on 14 Aug 2026 — present at 11:21, gone by 15:30,
+  // with no Homebrew record of it ever being installed. Nothing announced it.
+  // Both tools began answering "search failed" to every question, and the only
+  // trace was a line buried in a run file that nobody reads unless they already
+  // suspect something.
+  //
+  // The disguise was unusually good: `rg` still resolves when a human types it,
+  // because the terminal defines it as a FUNCTION. So every way a person would
+  // check said the tool was fine, while every spawn from the daemon got ENOENT.
+  //
+  // Both now fall back to grep and find, which are in the base system and cannot
+  // go missing. This check exists because the fallback is not the lesson — the
+  // lesson is that a tool he relies on can stop working and nothing notices. So
+  // it CALLS them, on a directory known to contain the answer, and reads what
+  // comes back. Config inspection would have said everything was fine.
+  {
+    const { TOOLS } = await import("./tools/index.mjs");
+    const dir = join(CONFIG.home, "cleetusd/src");
+    const broke = [];
+    let detail = "";
+    try {
+      const hit = String(await TOOLS.search_files.run({ query: "export const CONFIG", path: dir }));
+      if (!hit.includes("config.mjs")) broke.push(`search_files: ${hit.split("\n")[0].slice(0, 90)}`);
+      const named = String(await TOOLS.find_files.run({ name: "doctor.mjs", path: dir }));
+      if (!named.includes("doctor.mjs")) broke.push(`find_files: ${named.split("\n")[0].slice(0, 90)}`);
+      detail = broke.length ? broke.join("; ") : "both answered correctly on a known directory";
+    } catch (e) {
+      broke.push(`threw: ${e.message.slice(0, 90)}`);
+      detail = broke.join("; ");
+    }
+    check("cleetusd", "his search tools still run", broke.length === 0, detail,
+      "call the tool yourself before believing any binary is installed — `rg` resolves as a shell function even when no binary exists");
+  }
+
   // ── the front door ──────────────────────────────────────────────────────────
   //
   // CLEETUSD_TOKEN is the only thing between a stranger and run_shell, the
@@ -704,13 +988,68 @@ export async function runDoctor() {
     if (flights.status === 200) {
       try {
         const f = JSON.parse(flights.body);
-        check("cloud", "flights swept by the Mac", f.swept_by === "mac-studio",
-          `${f.swept_by} · ${f.in_air} aircraft · ${f.anchors_answered}/${f.anchors} anchors`,
-          "launchctl kickstart -k gui/$(id -u)/com.cleetus.flights");
+
+        // A 200 is not an answer.
+        //
+        // This endpoint returns HTTP 200 with a body of
+        // {"ok":false,"error":"no_adsb_feed_reachable"} when it cannot reach any
+        // feed — no swept_by, no in_air, no degraded. Observed live during the
+        // outage this morning.
+        //
+        // That made the degraded check report GREEN, because `!f.degraded` is
+        // true when the field is absent: "flight data not degraded: ok" while
+        // the server was saying it could not reach a single feed. An absent
+        // field is unknown, not healthy, and this is the worst kind of green.
+        if (f.ok === false || f.swept_by === undefined) {
+          const why = f.error || "no swept_by in the response";
+          check("cloud", "flights swept by the Mac", false,
+            `the endpoint answered 200 but reported: ${why}`,
+            "the feed side is failing, not the Mac — check the ingest before restarting anything");
+          check("cloud", "flight data not degraded", false,
+            `cannot tell — the endpoint returned "${why}" instead of a reading`,
+            "an absent 'degraded' field is unknown, not healthy");
+        } else {
+        // When this is red, say WHICH SIDE failed.
+        //
+        // It read the served data and blamed the Mac, advising "kickstart
+        // com.cleetus.flights". During a real outage that advice was wrong: the
+        // sweeper had just logged "2893 aircraft, 20/20 anchors, adsb, 12.0s"
+        // and pushed them, and the INGEST answered {"ok":false,"stored":2893}.
+        // The Mac did its job and the panel told the reader to restart it.
+        //
+        // The sweeper's own log is the only place that separates "not sweeping"
+        // from "swept, and the write was refused".
+        const localSweep = await (async () => {
+          const log = await readFile(join(CONFIG.home, "Library/Logs/cleetus-flights.err.log"), "utf8").catch(() => "");
+          if (!log) return null;
+          const tail = log.slice(-4000);
+          const sweeps = [...tail.matchAll(/^(\d+) aircraft, (\d+\/\d+) anchors/gm)];
+          if (!sweeps.length) return null;
+          const pushes = [...tail.matchAll(/^push: \d+ (\{.*\})$/gm)];
+          let pushOk = null;
+          if (pushes.length) { try { pushOk = JSON.parse(pushes[pushes.length - 1][1]).ok; } catch {} }
+          const last = sweeps[sweeps.length - 1];
+          return { aircraft: Number(last[1]), anchors: last[2], pushOk };
+        })();
+
+        const macIsServing = f.swept_by === "mac-studio";
+        const macSwept = !!(localSweep && localSweep.aircraft > 0);
+        check("cloud", "flights swept by the Mac", macIsServing,
+          macIsServing
+            ? `${f.swept_by} · ${f.in_air} aircraft · ${f.anchors_answered}/${f.anchors} anchors`
+            : macSwept
+              ? `serving ${f.swept_by} (${f.in_air} aircraft) — but the Mac DID sweep ${localSweep.aircraft} ` +
+                `aircraft, ${localSweep.anchors} anchors` +
+                (localSweep.pushOk === false ? "; the ingest answered ok:false, so the write is being refused" : "")
+              : `${f.swept_by} · ${f.in_air} aircraft · ${f.anchors_answered}/${f.anchors} anchors — the Mac has not swept`,
+          macSwept
+            ? "do NOT restart the sweeper, it is working — the ingest is refusing the write"
+            : "launchctl kickstart -k gui/$(id -u)/com.cleetus.flights");
         // Degraded is the edge saying so out loud. Believe it.
         check("cloud", "flight data not degraded", !f.degraded,
           f.degraded ? `degraded: ${f.source}` : `source ${f.source}`,
           "the Mac's snapshot went stale; check com.cleetus.flights");
+        }
       } catch { check("cloud", "flights readable", false, "unparseable"); }
     } else {
       check("cloud", "flights endpoint", false, `http ${flights.status || flights.error}`);

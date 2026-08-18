@@ -82,6 +82,17 @@ export const AGENTS = {
   brief: { label: "Brief", blurb: "The morning and evening briefs.", needs: ["finance", "training", "weather"], brief: "You write the morning and evening brief. Money is spoken in percentages, never dollar figures, because other people can see that screen." },
   poker: { label: "Poker", blurb: "Hand reads and strategy off the local engine.", needs: [], brief: "You read hands and talk strategy." },
 
+  // Kept in step with cleetusv2's registry on purpose — the daemon and the
+  // deployed app must not drift into two vocabularies. Its detail lives in the
+  // web app's brain/agents/security.md; here it gets the brief that matters on
+  // the Mac, where the shell is.
+  security: {
+    label: "Security",
+    blurb: "Auth, secrets, the reach proxy, injection surface. Finds and fixes.",
+    needs: [],
+    brief: "You look after the security of Cleetus itself: the Pages app, its functions, the iOS app and this daemon. You know how it is actually built, so never answer with generic advice — go and read the code. Run ~/cleetusv2/tools/security-audit.sh before you claim anything is safe. Rank by real impact: an unauthenticated stranger getting past the middleware, or anything reaching this daemon's shell, matters enormously; an authenticated single user manipulating their own query does not. When you find something wrong, FIX it and re-run the audit. A report is not a fix.",
+  },
+
   // ── The ones that change Cleetus himself.
   studio: {
     label: "Studio",
