@@ -27,6 +27,7 @@ import { keyringTools } from "./keyring.mjs";
 import { recallTools } from "./recall.mjs";
 import { workTools } from "./work.mjs";
 import { securityTools } from "./security.mjs";
+import { mediaTools } from "./media.mjs";
 
 // ── The vault ───────────────────────────────────────────────────────────────
 
@@ -243,7 +244,7 @@ const bridgeTools = {
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
-export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools };
+export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools };
 
 /** Ollama's native tool format. */
 export function toolSchemas(names = Object.keys(TOOLS)) {
@@ -287,6 +288,20 @@ const ALIASES = {
   // six, so the names route to it rather than to the shell.
   repos: "list_repos",
   list_repositories: "list_repos",
+  // "Make me an image / draw / render / generate a picture" arrives in many
+  // spellings and one of them is always the model's first guess; route them all
+  // to the real generator rather than a "no such tool" and a retry.
+  make_image: "generate_image",
+  create_image: "generate_image",
+  draw_image: "generate_image",
+  render_image: "generate_image",
+  image_generation: "generate_image",
+  text_to_image: "generate_image",
+  make_video: "generate_video",
+  create_video: "generate_video",
+  render_video: "generate_video",
+  text_to_video: "generate_video",
+  animate_image: "generate_video",
   git_repos: "list_repos",
   github_repos: "list_repos",
   gh: "github",

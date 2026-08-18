@@ -1,3 +1,7 @@
 
 # Third-party skill library — reproducible via git clone (see src/tools/security.mjs)
 vendor/
+
+# Media generation: isolated venv (reproducible via media/requirements.txt) and outputs
+media/.venv/
+media/out/
