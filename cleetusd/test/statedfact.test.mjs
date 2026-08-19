@@ -155,7 +155,19 @@ test("a benchmark can never write into his memory", async () => {
      That promise was kept for the run files and broken for agent memory, so
      every benchmark in bin/ could permanently alter the thing it measures.
      Asserted on the source because the alternative is running a real turn and
-     checking his real memory file, which is the exact hazard being fixed. */
+     checking his real memory file, which is the exact hazard being fixed.
+
+     It WAS verified live once, both directions, and the second direction is
+     the one worth stating. A blanket "never remember anything" would pass the
+     first check and quietly destroy the feature:
+
+         "i prefer warm light in my photos", statedFact says true
+         after a turn with probe:true   ->  0 lines   (not remembered)
+         after a turn with probe:false  ->  1 line    (remembered)
+
+     So the guard is specific rather than a disable. The line that verification
+     added was removed afterwards, which is the whole point of the commit it
+     belongs to. */
   const src = readFileSync(new URL("../src/agent.mjs", import.meta.url), "utf8");
   assert.match(src, /if \(!probe && statedFact\(question\) && !used\.includes\("remember_fact"\)\)/,
     "probe traffic can still write into an agent's memory");
