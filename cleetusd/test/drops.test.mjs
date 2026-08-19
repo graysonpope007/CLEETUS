@@ -194,6 +194,67 @@ test("the deck actually sends what was dropped", () => {
   assert.match(uiSrc, /a\.state === 'ok'/, "a failed upload would be sent as though it worked");
 });
 
+test("a dropped file can actually be SHOWN, and nothing else can", async () => {
+  /* The gap this closes. safeAsset fenced to media/out; drops land in
+     media/drops; and /editor/asset is the only route that serves a file to a
+     chat window. So every dropped picture was refused by the display path —
+     the photo he had just sent from his phone could not be shown back to him,
+     and an answer naming the reference it started from rendered a dead path.
+
+     Same shape as the fault the media agent already has a memory of: the
+     generator was making a file every time and the DISPLAY was what was
+     broken. Both times it looked like the feature had not worked.
+
+     Widening a fence needs its escapes re-tested, not just its new case. The
+     sibling-prefix pair below are the ones a naive startsWith() lets through:
+     `media/outsider` is not inside `media/out`. */
+  const { safeAsset } = await import("../src/editor.mjs");
+  const { DROPS_DIR } = await import("../src/drops.mjs");
+  const dir = await tmp();
+
+  // A real file in the real drops folder, since safeAsset also checks existence.
+  const { mkdir, writeFile: wf, unlink } = await import("node:fs/promises");
+  await mkdir(DROPS_DIR, { recursive: true });
+  const dropped = join(DROPS_DIR, "__droptest__.png");
+  await wf(dropped, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+
+  // Cleaned up whatever happens below. This writes into the REAL drops folder,
+  // because safeAsset checks existence and a temp dir is the one place it must
+  // refuse. An earlier version of a check in this repo left its scratch key in
+  // the real keyring; a test that mutates real state and does not put it back
+  // is a test slowly making the machine worse.
+  try {
+    assert.ok(safeAsset(dropped), "a dropped file is still refused by the display path");
+
+    const outside = join(dir, "elsewhere.png");
+    await wf(outside, "x");
+    for (const bad of [
+      outside,
+      "/etc/passwd",
+      `${DROPS_DIR}/../../../.ssh/id_rsa`,
+      // Sibling prefixes: these START WITH the root string and are not inside it.
+      `${DROPS_DIR}y/x.png`,
+      "/Users/grayson/cleetusd/media/outsider/x.png",
+    ]) {
+      assert.equal(safeAsset(bad), null, `${bad} was allowed through the fence`);
+    }
+  } finally {
+    await unlink(dropped).catch(() => {});
+  }
+});
+
+test("the cutting room can see a clip he dropped", async () => {
+  // The most obvious thing in the world to want in an editor was the one thing
+  // the bin could not show: a video off his phone arrived on the Mac and then
+  // had to be found by hand to do anything with.
+  const editorSrc = readFileSync(new URL("../src/editor.mjs", import.meta.url), "utf8");
+  assert.match(editorSrc, /\[\[MEDIA_DIR, "made"\], \[ASSET_ROOTS\[1\], "dropped"\]\]/,
+    "listMedia reads only one folder again");
+  // The drop machinery's own scratch files are not bin assets.
+  assert.match(editorSrc, /\.vision\.jpg.*\.poster\.jpg|poster\.jpg/,
+    "the downscaled copies and poster frames would appear as clips");
+});
+
 test("the drop overlay cannot swallow the drop", () => {
   // An overlay that takes pointer events is an overlay that eats the event it
   // exists to advertise, and the page then looks like it does nothing at all.

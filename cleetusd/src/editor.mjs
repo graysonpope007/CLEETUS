@@ -36,37 +36,75 @@ export function kindOf(name) {
 }
 
 /**
- * A path is only allowed if it resolves INSIDE the media folder.
+ * A path is only allowed if it resolves inside a folder media is kept in.
  *
  * The editor takes asset paths from the browser, and an export shells out to
  * ffmpeg with them — so a path is a capability. Without this fence, a clip
  * pointing at ../../.ssh/id_rsa would be read and muxed into a video. Every
  * asset path, for preview and for export, goes through here first; anything
- * that escapes the folder is refused rather than sanitised, because a clever
- * sanitiser is a thing that gets outsmarted and a boundary check is not.
+ * that escapes is refused rather than sanitised, because a clever sanitiser is
+ * a thing that gets outsmarted and a boundary check is not.
+ *
+ * TWO ROOTS NOW, and the second one is why a dropped picture could not be
+ * seen. Files Grayson drops land in media/drops, this fence only knew about
+ * media/out, and /editor/asset is the ONLY route that serves a file to a chat
+ * window. So every dropped picture was refused by the display path — the photo
+ * he had just sent from his phone could not be shown back to him, and an
+ * answer that named the reference it started from rendered as a dead path.
+ *
+ * That is the same shape as the fault the media agent already has a memory of:
+ * the generator was making a file every time and the DISPLAY was what was
+ * broken. Worth stating plainly, because both times it looked like the feature
+ * had not worked.
+ *
+ * Widening it is safe on its own terms and not merely convenient: drops holds
+ * files Grayson himself put there through an authenticated route, under names
+ * this daemon sanitised, which is the same provenance as everything in
+ * media/out. What the fence exists to stop — a path pointing anywhere ELSE on
+ * the disk — is unchanged.
  */
+const ASSET_ROOTS = [
+  MEDIA_DIR,
+  process.env.CLEETUSD_DROPS_DIR || join(CONFIG.home, "cleetusd", "media", "drops"),
+];
+
 export function safeAsset(p) {
   if (!p) return null;
+  // A bare name still means the generated-media folder, which is what every
+  // existing caller passes and what the editor's bin is built from.
   const abs = resolve(p.startsWith("/") ? p : join(MEDIA_DIR, p));
-  const root = resolve(MEDIA_DIR) + "/";
-  if (abs !== resolve(MEDIA_DIR) && !abs.startsWith(root)) return null;
+  const inside = ASSET_ROOTS.some((dir) => {
+    const root = resolve(dir);
+    return abs === root || abs.startsWith(root + "/");
+  });
+  if (!inside) return null;
   if (!existsSync(abs)) return null;
   return abs;
 }
 
 /** The media bin: every image and clip in the folder, newest first. */
 export async function listMedia() {
-  if (!existsSync(MEDIA_DIR)) return [];
-  const names = await readdir(MEDIA_DIR).catch(() => []);
   const out = [];
-  for (const name of names) {
-    const kind = kindOf(name);
-    if (!kind) continue;
-    if (name.endsWith(".keyframe.png")) continue; // internal, not a bin asset
-    const abs = join(MEDIA_DIR, name);
-    const s = await stat(abs).catch(() => null);
-    if (!s || !s.isFile()) continue;
-    out.push({ name, kind, path: abs, bytes: s.size, mtime: s.mtimeMs });
+  // Both roots. A clip he DROPPED is the most obvious thing in the world to
+  // want in a cutting room, and it was the one thing the bin could not show:
+  // the folder was generated-media only, so a video off his phone arrived on
+  // the Mac and then had to be found by hand to do anything with.
+  //
+  // `origin` rather than two lists, because the timeline does not care where a
+  // clip came from and the page can label it if it wants to.
+  for (const [dir, origin] of [[MEDIA_DIR, "made"], [ASSET_ROOTS[1], "dropped"]]) {
+    if (!existsSync(dir)) continue;
+    const names = await readdir(dir).catch(() => []);
+    for (const name of names) {
+      const kind = kindOf(name);
+      if (!kind) continue;
+      if (name.endsWith(".keyframe.png")) continue;   // internal, not a bin asset
+      if (name.endsWith(".vision.jpg") || name.endsWith(".poster.jpg")) continue; // drops' own scratch
+      const abs = join(dir, name);
+      const s = await stat(abs).catch(() => null);
+      if (!s || !s.isFile()) continue;
+      out.push({ name, kind, origin, path: abs, bytes: s.size, mtime: s.mtimeMs });
+    }
   }
   out.sort((a, b) => b.mtime - a.mtime);
   return out;
