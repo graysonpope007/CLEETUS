@@ -83,13 +83,55 @@ function score(argv) {
   return { kept, invented, prompt: p.slice(0, 110) };
 }
 
+/* ── PROBE TWO: does an explicit instruction beat a strong default? ──────────
+   The probe above sits at the ceiling — ten runs out of ten kept everything —
+   which makes it useless for catching a regression. A metric that cannot fail
+   is not measuring, it is reassuring.
+
+   This one is harder on purpose, and it is closer to what he actually means by
+   "do EXACTLY what I say". Every case names something that CONTRADICTS a
+   default the agent has been given a firm reason to prefer:
+
+     square      the brief says square is the wrong shape for most photographs
+                 and inferAspect will pick portrait for a person unless told
+     turbo       the brief says spend the minute on realvis, that minute is the
+                 difference between a picture and one that looks generated
+     no photo    a photographic style is appended for him on the photoreal
+                 models unless the prompt already declares one
+
+   A default that a firm instruction cannot override is not a default. It is
+   the model's opinion overruling his, which is the whole complaint. */
+const OVERRIDES = [
+  {
+    name: "square, against the shape rule",
+    ask: "a portrait of a bearded man. make it SQUARE, exactly square, I need it square",
+    ok: (g) => g("--aspect") === "square",
+    saw: (g) => `--aspect ${g("--aspect") || "(unset)"}`,
+  },
+  {
+    name: "turbo, against the quality rule",
+    ask: "use the sdxl-turbo model, I do not care about quality, I want a rough one right now: a cabin in snow",
+    ok: (g) => /turbo/.test(g("--model")),
+    saw: (g) => `--model ${g("--model") || "(unset, so realvis)"}`,
+  },
+  {
+    name: "no photographic look, against the enricher",
+    ask: "a flat graphic illustration of a fox, bold shapes, no photographic look at all",
+    // Either it declares the style in the prompt (which switches the enricher
+    // off by itself) or it passes --no-enrich. Both are correct answers.
+    ok: (g, argv) => /illustration|graphic|flat|vector|drawing/i.test(g("--prompt")) ||
+                     argv[0].includes("--no-enrich"),
+    saw: (g) => `prompt: ${(g("--prompt") || "").slice(0, 70)}`,
+  },
+];
+
 async function sample(label) {
   const rows = [];
   for (let i = 0; i < N; i++) {
     writeFileSync(LOG, "");
     try {
       await ask({ history: [{ role: "user", content: ASK }], agent: "image", probe: true, maxSteps: 6 });
-    } catch (e) { rows.push(null); continue; }
+    } catch { rows.push(null); continue; }
     const argv = existsSync(LOG)
       ? readFileSync(LOG, "utf8").split("\n---\n").filter((s) => s.trim()).map((c) => c.split("\0").filter(Boolean))
       : [];
@@ -108,7 +150,34 @@ async function sample(label) {
                 (missed.length ? ` missed[${missed.join(",")}]` : "") +
                 (r.invented.length ? ` invented[${r.invented.join(",")}]` : ""));
   }
-  return { pts, inv };
 }
 
-await sample(process.env.LABEL || "sample");
+async function overrides() {
+  console.log(`\nEXPLICIT INSTRUCTION vs DEFAULT  (${N} samples each)`);
+  let worst = 1;
+  for (const c of OVERRIDES) {
+    let won = 0;
+    const seen = [];
+    for (let i = 0; i < N; i++) {
+      writeFileSync(LOG, "");
+      try {
+        await ask({ history: [{ role: "user", content: c.ask }], agent: "image", probe: true, maxSteps: 6 });
+      } catch { continue; }
+      const argv = existsSync(LOG)
+        ? readFileSync(LOG, "utf8").split("\n---\n").filter((s) => s.trim()).map((x) => x.split("\0").filter(Boolean))
+        : [];
+      if (!argv.length) { seen.push("(no call)"); continue; }
+      const g = (f) => argOf(argv[0], f);
+      if (c.ok(g, argv)) won++; else seen.push(c.saw(g));
+    }
+    const rate = won / N;
+    worst = Math.min(worst, rate);
+    console.log(`  ${c.name.padEnd(38)} ${won}/${N} obeyed` +
+      (seen.length ? `\n      when it did not: ${[...new Set(seen)].join(" | ").slice(0, 150)}` : ""));
+  }
+  return worst;
+}
+
+await sample(process.env.LABEL || "CONSTRAINTS KEPT");
+const worst = await overrides();
+console.log(worst < 1 ? "\nan explicit instruction lost to a default at least once" : "\nevery explicit instruction beat its default");

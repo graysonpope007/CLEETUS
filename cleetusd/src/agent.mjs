@@ -1001,6 +1001,12 @@ const ASKING_FOR_SOMETHING = new RegExp([
     "poster|cover|logo|graphic|site|website|page|draft|email|reply|message|list|summary|report)\\b",
   // "i want to see…", "i need to know…" — a request for output, not a disclosure.
   "\\bi (?:want|need)\\s+to\\s+(?:see|know|hear|get|have|be able to)\\b",
+  // "I need it square", "I want it warmer", "I need this bigger" — an
+  // instruction about the thing being made RIGHT NOW. It reads like a
+  // preference and it is the most perishable sentence in the conversation:
+  // square is what he wanted for that one picture, not a fact about him.
+  // Caught because a benchmark typed exactly this and it landed in image.md.
+  "\\bi (?:want|need|'?d like|would like)\\s+(?:it|this|that|them|these|those)\\b",
   // Bare imperatives aimed at the assistant.
   "\\b(?:make|give|show|send|draw|generate|create|render|build|write|find|get)\\s+me\\b",
   // "you are supposed to…", "remember that" attached to an instruction ABOUT a task.
@@ -1335,7 +1341,22 @@ export async function ask({ history, agent, onStep, probe = false, maxSteps = CO
   // on EVERY message, for good. A memory that fills with the questions he asked
   // makes the assistant worse the more it is used, which is the opposite of
   // what a learning loop is for.
-  if (statedFact(question) && !used.includes("remember_fact")) {
+  /* `probe` means this turn is not Grayson. The flag already exists and the
+     comment where it is read says exactly what it is for: "Callers testing the
+     system mark themselves, so their traffic is not read back later as
+     something Grayson asked for."
+
+     That promise was kept for the run files and broken here. Every benchmark
+     in bin/ goes through ask({ probe: true }), and every one of them could
+     write permanently into an agent's memory — read back into that agent's
+     prompt on every future message, forever.
+
+     It is not theoretical. bin/image-adherence-check.mjs put "a portrait of a
+     bearded man. make it SQUARE, exactly square, I need it square" into
+     image.md within a minute of being written, into the same file that had
+     been emptied an hour earlier for containing exactly this kind of line.
+     A test that permanently alters the thing it measures is not a test. */
+  if (!probe && statedFact(question) && !used.includes("remember_fact")) {
     // Told to a specialist, remembered by that specialist; told to the front
     // door, remembered by everyone. Where a fact lands should follow who he
     // was talking to.

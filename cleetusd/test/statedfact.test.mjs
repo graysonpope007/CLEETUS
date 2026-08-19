@@ -13,6 +13,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { statedFact } from "../src/agent.mjs";
+import { readFileSync } from "node:fs";
 
 test("the real junk it accumulated is rejected", () => {
   for (const q of [
@@ -123,4 +124,39 @@ test("and the preferences it exists for still get through", () => {
   ]) {
     assert.strictEqual(statedFact(q), true, `lost a real fact: "${q}"`);
   }
+});
+
+test("an instruction about the thing being made now is not a fact about him", () => {
+  /* "I need it square" reads like a preference and is the most perishable
+     sentence in a conversation: square is what he wanted for that ONE picture.
+
+     Caught the way these keep being caught — by a benchmark typing it. The
+     adherence probe's first case is "a portrait of a bearded man. make it
+     SQUARE, exactly square, I need it square", and it landed in image.md
+     within a minute of the probe being written, into the same file that had
+     been emptied an hour earlier for containing exactly this kind of line. */
+  for (const q of [
+    "a portrait of a bearded man. make it SQUARE, exactly square, I need it square",
+    "i want it warmer",
+    "i need this bigger",
+    "i would like it in black and white",
+    "i want them closer together",
+  ]) {
+    assert.strictEqual(statedFact(q), false, `remembered an instruction: "${q}"`);
+  }
+});
+
+test("a benchmark can never write into his memory", async () => {
+  /* `probe` means the turn is not Grayson. The flag already existed and the
+     comment where it is read says what it is for: "Callers testing the system
+     mark themselves, so their traffic is not read back later as something
+     Grayson asked for."
+
+     That promise was kept for the run files and broken for agent memory, so
+     every benchmark in bin/ could permanently alter the thing it measures.
+     Asserted on the source because the alternative is running a real turn and
+     checking his real memory file, which is the exact hazard being fixed. */
+  const src = readFileSync(new URL("../src/agent.mjs", import.meta.url), "utf8");
+  assert.match(src, /if \(!probe && statedFact\(question\) && !used\.includes\("remember_fact"\)\)/,
+    "probe traffic can still write into an agent's memory");
 });
