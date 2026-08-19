@@ -13,6 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { rosterText } from "../src/repos.mjs";
+import { AGENTS } from "../src/agents.mjs";
 
 const src = readFileSync(new URL("../src/repos.mjs", import.meta.url), "utf8");
 
@@ -61,4 +62,42 @@ test("the TTL is left long on purpose", () => {
   // line. The fix was to date it, not to rebuild it more often.
   assert.match(src, /CLEETUSD_REPO_TTL_MS \|\| 6 \* 60 \* 60 \* 1000/);
   assert.match(src, /The fix is not a shorter TTL/);
+});
+
+test("the repo roster goes only to agents that can act on it", () => {
+  /* It was injected everywhere, and the comment justifying that said it "costs
+     a few hundred characters". Measured: 10,131 — a THIRD of the image agent's
+     entire system prompt, which came to about 30,000 characters. The brief
+     that tells it how to make a good picture was 16%.
+
+     That is not free on a 33B, and it is the same shape as the agent-memory
+     contamination found the same night: the operative instruction buried under
+     context with nothing to do with the task, producing the symptom that was
+     being chased all along.
+
+     The PROTECTION it existed for — never answer "can you access my repos" by
+     running an unbounded `find ~` — is kept for everyone as a sentence. Only
+     the payload is gated. */
+  const agentSrc = readFileSync(new URL("../src/agent.mjs", import.meta.url), "utf8");
+
+  assert.match(agentSrc, /repos && \(isGeneralist \|\| \(agent\.needs \|\| \[\]\)\.includes\("codebase"\)\)/,
+    "the roster is injected unconditionally again");
+  // The one-line guard must survive for the agents that no longer get the list,
+  // or the flailing it was written to stop comes straight back.
+  assert.match(agentSrc, /Never go looking for repositories with find, search_files or a shell walk/,
+    "the agents without the roster lost the instruction not to go hunting");
+  // And the scan itself must be skipped, not run and discarded.
+  assert.match(agentSrc, /\? repoIndex\(\)\.then\(rosterText\)\.catch\(\(\) => ""\)\s*\n\s*: Promise\.resolve\(""\)/,
+    "the disk scan still runs for agents that will never see its output");
+});
+
+test("the agents that DO touch code still declare they need it", () => {
+  // The gate reads `needs`, so an agent that works on the codebase and forgets
+  // to say so silently loses the roster. Pinned so that stays visible.
+  for (const id of ["builder", "studio", "redesign"]) {
+    assert.ok((AGENTS[id].needs || []).includes("codebase"),
+      `${id} edits code but no longer declares needs:["codebase"], so it lost the roster`);
+  }
+  // And the picture agent must not acquire it by accident.
+  assert.ok(!(AGENTS.image.needs || []).includes("codebase"));
 });

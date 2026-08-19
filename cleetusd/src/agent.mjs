@@ -147,10 +147,18 @@ async function buildSystem(agentId, question) {
     // once a week, and both were previously things the model had to go and find
     // out with the shell. Asked "can you access my github repos" it ran an
     // unbounded `find ~`; asked to call an API it said it had no key while
-    // holding one. A roster costs a few hundred characters and removes an
-    // entire class of flailing, so it is not retrieved on demand — it is simply
-    // known. Never fatal: a scan that fails leaves the prompt as it was.
-    repoIndex().then(rosterText).catch(() => ""),
+    // holding one. Injecting them removes an entire class of flailing, so they
+    // are not retrieved on demand — they are simply known. Never fatal: a scan
+    // that fails leaves the prompt as it was.
+    //
+    // The line that used to be here said "a roster costs a few hundred
+    // characters". It did once. Measured today it is 10,131, which was a third
+    // of the image agent's entire system prompt — so it now goes only to the
+    // agents that can act on it, and the disk scan is skipped for the rest
+    // rather than run and thrown away. See where `repos` is used below.
+    (isGeneralist || (AGENTS[agentId]?.needs || []).includes("codebase"))
+      ? repoIndex().then(rosterText).catch(() => "")
+      : Promise.resolve(""),
     keyringRoster().catch(() => ""),
     // THAT other conversations exist, never their contents. Six lines, so the
     // model can say "we talked about that on Tuesday, let me read it back"
@@ -224,7 +232,30 @@ async function buildSystem(agentId, question) {
     memory ? `\n## What you know about Grayson\n(Shared. Everything here was told to Cleetus or to one of the agents, and every agent sees it.)\n${memory}` : "",
     own ? `\n## What YOU have learned as the ${agentId} agent\n(Yours specifically. He told you these; no other agent sees them.)\n${own}` : "",
     others ? `\n## What he has told the specialists\n(Headlines only — you are the generalist, so you know THAT they know. Read ${join(CONFIG.memoryRoot, "agents")}/<agent>.md with read_file for the detail.)\n${others}` : "",
-    repos ? `\n## His code\n(Already known — do NOT go looking for repositories with find, search_files or a shell walk of his home directory. Use list_repos to refresh this, repo_status for the state of one, github for the gh CLI, clone_repo for one that is not here yet.)\n${repos}` : "",
+    /* ── The roster is not a few hundred characters any more ─────────────────
+       It was, when the note above it was written, and injecting it everywhere
+       was obviously right: it removed an entire class of flailing, where the
+       model answered "can you access my github repos" by running an unbounded
+       `find ~`.
+
+       Measured today, on the image agent: the roster is 10,131 characters and
+       the whole system prompt is about 30,000. A third of what the picture
+       agent reads before every request is a list of git repositories. The
+       brief that actually tells it how to make a good picture is 16%.
+
+       That is not free on a 33B. It is the same shape as the memory
+       contamination found an hour ago — operative instructions buried under
+       context that has nothing to do with the task — and the symptom is the
+       one being chased all night: it did not do what I said.
+
+       So the PROTECTION stays for everyone and the PAYLOAD goes to the agents
+       that can act on it. Anything with the codebase dossier, plus the
+       generalist, which is what the question "can you access my repos"
+       actually reaches. Everyone else gets the sentence, which is the part
+       that was doing the work. */
+    repos && (isGeneralist || (agent.needs || []).includes("codebase"))
+      ? `\n## His code\n(Already known — do NOT go looking for repositories with find, search_files or a shell walk of his home directory. Use list_repos to refresh this, repo_status for the state of one, github for the gh CLI, clone_repo for one that is not here yet.)\n${repos}`
+      : "\nHis code is already indexed on this machine. Never go looking for repositories with find, search_files or a shell walk of his home directory — call list_repos if you actually need them.",
     keys ? `\n## Keys you hold\n${keys}` : "",
     threads ? `\n## Conversations you have had with him\n(Every conversation is kept on his Mac and any agent can read any of them. This is a list, not their contents — read one with read_chat, or search all of them with recall_chat. You are not a stateless chat window: if he refers to something from before, go and look before you say you do not remember it.)\n${threads}` : "",
     dossiers.length ? `\n## Dossier\n${dossiers.join("\n\n")}` : "",
