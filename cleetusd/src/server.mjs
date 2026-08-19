@@ -25,6 +25,7 @@ import { createReadStream, existsSync } from "node:fs";
 import { extname } from "node:path";
 import * as keyring from "./keyring.mjs";
 import * as convos from "./conversations.mjs";
+import { acceptDrop, attachmentLine, listDrops } from "./drops.mjs";
 
 // Last health pass, shared by every caller. See the /doctor route.
 const DOCTOR_TTL = 60_000;
@@ -176,6 +177,14 @@ async function handle(req, res) {
                           "/light", "/doctor", "/repos", "/secrets", "/conversations",
                           "/editor", "/editor/media", "/editor/asset", "/editor/probe",
                           "/editor/export",
+                          // Dropping a file on the chat window is part of asking a
+                          // question, so it is admitted exactly as /chat/stream is:
+                          // this machine's own browser, no forwarding headers. It
+                          // is deliberately NOT reachable through the tunnel — an
+                          // upload route writes to the disk, and the one gate a
+                          // stolen bearer token cannot satisfy is the one that asks
+                          // where the request physically came from.
+                          "/upload", "/drops",
                           // /reach is the deck's own page served from here, so a
                           // browser ON this Mac never has to cross an origin to
                           // talk to the daemon. Same gate as the dashboard:
@@ -291,6 +300,39 @@ async function handle(req, res) {
     res.writeHead(200, { "Content-Type": "image/svg+xml", "Cache-Control": "max-age=3600" });
     return res.end(await readFile(file, "utf8"));
   }
+  /* ── /upload — a file dropped on a chat window ──────────────────────────────
+     The body IS the file. No multipart, no form encoding, no parser: the name
+     rides in a header and the bytes are the request, which is what lets this
+     stream straight to disk instead of assembling a phone video in memory
+     inside the daemon everything else is also living in.
+
+     What comes back is not an id to be redeemed later, it is the whole
+     description — the path on disk, a downscaled picture when there is one to
+     look at, the extracted words when there are any, and the sentence that
+     goes into the conversation. The browser's job is then only to attach it,
+     and both chat windows attach it the same way because the wording is made
+     here rather than in either page.  See drops.mjs. */
+  if (url.pathname === "/upload" && req.method === "POST") {
+    const name = decodeURIComponent(String(req.headers["x-drop-name"] || "file"));
+    const mime = String(req.headers["content-type"] || "");
+    try {
+      const d = await acceptDrop(req, { name, mime });
+      return json(res, { ...d, line: attachmentLine(d) });
+    } catch (e) {
+      // The reasons a drop fails are things a person can act on — too big, an
+      // empty file, a full disk — so they are said in those words rather than
+      // as a 500 the page reports as "something went wrong".
+      return json(res, { ok: false, error: e.message }, 400);
+    }
+  }
+
+  // Everything dropped so far, newest first. The chat writes the path into the
+  // message, so this is for the human who wants yesterday's file back without
+  // going through the thread to find what it was called.
+  if (url.pathname === "/drops") {
+    return json(res, { ok: true, items: await listDrops() });
+  }
+
   if (url.pathname === "/editor/media") {
     return json(res, { ok: true, items: await listMedia() });
   }

@@ -72,6 +72,35 @@ body{display:grid;grid-template-columns:210px 1fr 260px;gap:10px;padding:10px;ov
 .step{font-family:var(--mono);font-size:.66rem;color:var(--dim)}
 .step b{color:var(--teal);font-weight:500}
 .step i{color:var(--faint);font-style:normal}
+/* ── Dropping things on the window ──────────────────────────────────────────
+   The overlay is the whole point of the feature being discoverable: without a
+   target that lights up, a person who has never been told this works will
+   never find out, because nothing about a text box says "you may also drop a
+   contract on me". pointer-events:none matters — an overlay that swallows the
+   drop event is an overlay that breaks the thing it is advertising. */
+.dropveil{position:fixed;inset:0;z-index:50;display:none;place-items:center;
+  background:rgba(14,9,23,.82);border:2px dashed var(--amber);border-radius:8px;
+  pointer-events:none}
+.dropveil.on{display:grid}
+.dropveil b{font-size:.8rem;letter-spacing:.16em;text-transform:uppercase;color:var(--amber)}
+.dropveil span{display:block;margin-top:6px;font-family:var(--mono);font-size:.66rem;
+  color:var(--dim);text-align:center;letter-spacing:0;text-transform:none}
+.clips{display:flex;flex-wrap:wrap;gap:5px;padding:8px 10px 0}
+.clips:empty{display:none}
+.clip{display:flex;align-items:center;gap:6px;background:var(--screen2);
+  border:1px solid #2f2740;border-radius:4px;padding:3px 5px 3px 3px;
+  font-family:var(--mono);font-size:.62rem;color:var(--dim);max-width:230px}
+.clip img{width:26px;height:26px;object-fit:cover;border-radius:2px;flex:none}
+.clip .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clip .m{color:var(--faint);flex:none}
+.clip.work{color:var(--amber);border-color:#4a3a1c}
+.clip.bad{color:var(--coral);border-color:#5a231c}
+.clip button{background:none;border:0;color:var(--faint);cursor:pointer;
+  font:inherit;padding:0 2px;flex:none}
+.clip button:hover{color:var(--coral)}
+.paperclip{background:var(--screen2);border:1px solid #2f2740;border-radius:4px;
+  color:var(--dim);cursor:pointer;font-size:.9rem;padding:0 9px;flex:none}
+.paperclip:hover{color:var(--amber);border-color:var(--amber)}
 .ask{display:flex;gap:7px;padding:10px;border-top:1px solid #2a2337}
 .ask input{flex:1;background:var(--screen);border:1px solid #2f2740;border-radius:4px;
   color:var(--cream);font-family:var(--sans);font-size:.82rem;padding:9px 11px}
@@ -107,11 +136,16 @@ body{display:grid;grid-template-columns:210px 1fr 260px;gap:10px;padding:10px;ov
   <div class="log" id="log">
     <div class="msg sys">Running on your Mac. Real access to your files, your shell and your vault — ask him to read something.</div>
   </div>
+  <div class="clips" id="clips"></div>
   <form class="ask" id="form" autocomplete="off">
-    <input id="in" placeholder="Ask Cleetus — he can open your files" autofocus>
+    <input type="file" id="picker" multiple hidden>
+    <button type="button" class="paperclip" id="clipbtn" title="Attach a file — or just drop one on the window">&#128206;</button>
+    <input id="in" placeholder="Ask Cleetus — drop a file on this window, or paste one" autofocus>
     <button type="submit" id="send">Send</button>
   </form>
 </main>
+
+<div class="dropveil" id="veil"><div><b>Drop it anywhere</b><span>pictures, video, PDFs, documents, anything<br>it lands on this Mac and nowhere else</span></div></div>
 
 <aside class="side">
   <div class="hdr"><b>Reach</b></div>
@@ -456,14 +490,152 @@ const CONVO = (() => {
   }
 })();
 
+/* ── Attachments: drop, paste, or pick ───────────────────────────────────────
+   Everything here is about one property: what he dropped is what gets sent.
+   The bytes go to /upload, which puts them on this Mac and hands back a
+   description — a path, a picture to look at when there is one, the words
+   inside when there are any. The page never interprets the file itself, so the
+   deck and /reach cannot drift into describing the same PDF two ways.
+
+   A file that FAILED stays on screen as a red chip instead of vanishing. A
+   silent drop is the worst outcome available: he watches the file disappear,
+   assumes it arrived, and asks a question about a document nobody read. */
+const ATTACH = [];
+let uploading = 0;
+
+function clipRow(a, i) {
+  const el = document.createElement('div');
+  el.className = 'clip' + (a.state === 'work' ? ' work' : '') + (a.state === 'bad' ? ' bad' : '');
+  if (a.vision) {
+    const img = document.createElement('img');
+    img.src = 'data:image/jpeg;base64,' + a.vision;
+    el.appendChild(img);
+  }
+  const n = document.createElement('span');
+  n.className = 'n';
+  n.textContent = a.name;
+  el.appendChild(n);
+  const m = document.createElement('span');
+  m.className = 'm';
+  m.textContent = a.state === 'work' ? 'reading…'
+    : a.state === 'bad' ? (a.error || 'failed')
+    : [a.kind, a.size, a.seconds != null ? a.seconds + 's' : '', a.text ? 'text read' : '']
+        .filter(Boolean).join(' · ');
+  el.appendChild(m);
+  const x = document.createElement('button');
+  x.type = 'button';
+  x.textContent = '\u00d7';
+  x.title = 'remove';
+  x.onclick = () => { ATTACH.splice(i, 1); drawClips(); };
+  el.appendChild(x);
+  return el;
+}
+
+function drawClips() {
+  const box = $('clips');
+  box.textContent = '';
+  ATTACH.forEach((a, i) => box.appendChild(clipRow(a, i)));
+  $('send').disabled = uploading > 0;
+}
+
+async function takeFiles(list) {
+  const files = Array.from(list || []);
+  if (!files.length) return;
+  for (const f of files) {
+    const slot = { name: f.name || 'pasted', state: 'work' };
+    ATTACH.push(slot);
+    uploading++;
+    drawClips();
+    try {
+      const res = await fetch('/upload', {
+        method: 'POST',
+        headers: {
+          // encodeURIComponent because a header may only carry latin-1 and a
+          // filename routinely is not — an em dash or an accent in the name
+          // throws before the request is ever sent.
+          'X-Drop-Name': encodeURIComponent(f.name || 'pasted'),
+          'Content-Type': f.type || 'application/octet-stream',
+        },
+        body: f,
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || 'upload failed');
+      Object.assign(slot, d, { state: 'ok' });
+    } catch (err) {
+      Object.assign(slot, { state: 'bad', error: err.message });
+    } finally {
+      uploading--;
+      drawClips();
+    }
+  }
+  $('in').focus();
+}
+
+/* The counter, rather than a plain dragleave handler.
+   Dragging across the page fires dragleave on every element boundary crossed,
+   so a single boolean flickers the overlay off and on the whole way to the
+   composer. Counting enter and leave is the standard fix and the only one that
+   survives a page made of nested panels like this one. */
+let dragDepth = 0;
+const carriesFiles = (e) => Array.from(e.dataTransfer ? e.dataTransfer.types : [])
+  .some(t => t === 'Files');
+
+window.addEventListener('dragenter', e => {
+  if (!carriesFiles(e)) return;
+  e.preventDefault();
+  dragDepth++;
+  $('veil').classList.add('on');
+});
+window.addEventListener('dragover', e => { if (carriesFiles(e)) e.preventDefault(); });
+window.addEventListener('dragleave', e => {
+  if (!carriesFiles(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) $('veil').classList.remove('on');
+});
+window.addEventListener('drop', e => {
+  if (!carriesFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  $('veil').classList.remove('on');
+  takeFiles(e.dataTransfer.files);
+});
+
+// A screenshot lives on the clipboard, not on the disk, and cmd-shift-4 then
+// cmd-v is how a person actually shows somebody their screen.
+window.addEventListener('paste', e => {
+  const files = e.clipboardData && e.clipboardData.files;
+  if (files && files.length) { e.preventDefault(); takeFiles(files); }
+});
+
+$('clipbtn').onclick = () => $('picker').click();
+$('picker').onchange = () => { takeFiles($('picker').files); $('picker').value = ''; };
+
 $('form').addEventListener('submit', async e => {
   e.preventDefault();
   const q = $('in').value.trim();
-  if (!q) return;
+  // Only the ones that actually arrived. A chip that failed is still on screen
+  // on purpose, and sending its name without its contents is exactly the
+  // "discussed a document it never read" failure the red chip exists to stop.
+  const files = ATTACH.filter(a => a.state === 'ok');
+  if (!q && !files.length) return;
+  if (uploading) return;
   $('in').value = '';
   $('send').disabled = true;
-  say('me', '> ' + q);
-  HISTORY.push({ role: 'user', content: q });
+
+  // The line for each file is written by the server, not here, so this window
+  // and /reach word the same dropped file identically. See drops.mjs.
+  const said = [q].concat(files.map(f => f.line)).filter(Boolean).join('\n\n');
+  const pictures = files.filter(f => f.vision);
+  const content = pictures.length
+    ? [{ type: 'text', text: said }].concat(
+        pictures.map(f => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.vision } })))
+    : said;
+
+  say('me', '> ' + (q || '(no message)') +
+      (files.length ? '\n  ' + files.map(f => '\u{1F4CE} ' + f.name).join('\n  ') : ''));
+  ATTACH.length = 0;
+  drawClips();
+  HISTORY.push({ role: 'user', content });
 
   const steps = document.createElement('div');
   steps.className = 'steps';
