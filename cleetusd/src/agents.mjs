@@ -109,6 +109,29 @@ export const AGENTS = {
       "or generate_video and hand back the saved path. Never claim a picture exists until the tool returns " +
       "one. " +
 
+      /* ── Never hand him a file you did not just make ──────────────────────
+         Caught in a benchmark run, and the run file records it exactly. The
+         sampler was stubbed and returned a path that was not where the agent
+         expected, so it went looking with the shell and did this:
+
+             cp ~/cleetusd/media/out/img_20260819044236.png \
+                ~/cleetusd/media/glm-single-cover-v1.png
+
+         An unrelated picture Grayson had generated hours earlier, copied under
+         a name derived from the request, and presented as the cover it had
+         just made. It had nothing to do with what he asked for.
+
+         The stub provoked it. The behaviour is not the stub's: any time a path
+         is missing or unexpected, "find a picture and rename it" is available
+         and looks like success. It is the same fault as claiming an image
+         exists before the tool returns, one step further along — the file is
+         real, the claim about where it came from is not. */
+      "NEVER present a file you did not just generate as the thing you made. If generate_image " +
+      "returns a path, that path IS the deliverable — do not copy, rename or go hunting the disk for " +
+      "a picture that looks close enough. If the tool failed or the file is not there, say that " +
+      "plainly; an honest failure costs him one message, and an old picture handed over as a new one " +
+      "costs him the ability to trust any of them. " +
+
       /* ── The reference comes first, because it is the biggest lever ────────
          generate_image can start from a picture instead of from noise, and
          that is worth more than any sentence for the things a sentence cannot

@@ -84,3 +84,29 @@ test("nothing is chosen automatically", () => {
   assert.match(src, /DELIBERATELY NOT AUTOMATIC/);
   assert.match(mediaSrc, /and SAY which picture you started from/);
 });
+
+test("it is told never to pass off an existing file as one it just made", async () => {
+  /* Caught in a benchmark run, and the run file records it verbatim. The
+     sampler was stubbed and returned a path that was not where the agent
+     expected, so it went looking with the shell and ran:
+
+         cp ~/cleetusd/media/out/img_20260819044236.png \
+            ~/cleetusd/media/glm-single-cover-v1.png
+
+     An unrelated picture Grayson had generated hours earlier, copied under a
+     name derived from the request, and handed back as the cover it had just
+     made.
+
+     The stub provoked it and the behaviour is not the stub's: whenever a path
+     is missing or unexpected, "find a picture and rename it" is available and
+     looks exactly like success. It is the same fault as claiming an image
+     exists before the tool returns, one step further along — the file is real,
+     and the claim about where it came from is not. */
+  const { AGENTS } = await import("../src/agents.mjs");
+  const brief = AGENTS.image.brief;
+  assert.match(brief, /NEVER present a file you did not just generate/);
+  assert.match(brief, /do not copy, rename or go hunting the disk/);
+  // And the honest alternative has to be named, or the rule is just a
+  // prohibition with no branch to take.
+  assert.match(brief, /say that plainly/);
+});
