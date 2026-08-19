@@ -18,6 +18,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { CONFIG } from "../config.mjs";
 import { liftNegations } from "../literal.mjs";
+import { inferAspect } from "../aspect.mjs";
 
 // media_cli.py lives beside the daemon; its interpreter is the isolated media
 // venv, overridable for a machine that keeps it elsewhere.
@@ -101,7 +102,7 @@ export const mediaTools = {
           guidance: { type: "number", description: "How hard to follow the prompt. Leave unset unless he asks for looser or tighter." },
           seed: { type: "number", description: "Set for a reproducible image; omit for a new one each time. Pass the SAME seed to tweak an image he liked." },
           reference: { type: "string", description: "Path to an image to start FROM instead of noise. Use whenever he attached a picture and wants something like it, edited, or restyled — it carries what words cannot." },
-          strength: { type: "number", description: "Only with reference. How far to move from it: 0.25 a grade or small edit, 0.55 the same scene reinterpreted, 0.85 loosely inspired. Default 0.55." },
+          strength: { type: "number", description: "Only with reference. How far to move from the reference, and it is the difference between editing his picture and replacing it. Take it from HIS WORDS. 'this exact photo but…', 'same shot', 'keep it, just…', a colour or light change, a small fix: 0.25-0.35. 'same scene', 'like this but different angle/season/weather': 0.5-0.6. 'inspired by', 'in this style', 'something like this': 0.8-0.9. Above 0.6 the people and the composition in his picture do NOT survive, so never use it for anything he called the same. Default 0.55." },
           out: { type: "string", description: "Output path. Omit to save a timestamped PNG in the media folder." },
         },
         required: ["prompt"],
@@ -132,10 +133,30 @@ export const mediaTools = {
         ? [String(negative || ""), ...lifted.terms].filter(Boolean).join(", ")
         : negative;
 
+      /* ── Declining to choose a shape IS choosing square ──────────────────
+         His brief says it twice: "Otherwise assume 4:5", and "square only when
+         square is genuinely what it is for — square is the default and it is
+         the wrong shape for most photographs of people." The code did the
+         opposite: no --aspect meant 1024x1024.
+
+         So the documented rule and the machine disagreed, and the machine won
+         every time the model forgot the parameter — which bin/image-behaviour-
+         check.mjs caught it doing twice in one evening.
+
+         This is not a case for a firmer instruction. The instruction is
+         already there and already emphatic. Forgetting should simply land on
+         his stated default rather than on the shape he has twice written down
+         as wrong.
+
+         Skipped entirely when there is a reference: that picture's own shape
+         is the answer, and media_cli takes it from the file. */
+      const shape = (!aspect && !reference) ? inferAspect(promptUsed) : null;
+      const aspectUsed = aspect || shape?.aspect || null;
+
       const args = ["image", "--prompt", promptUsed, "--out", dest];
       if (negativeUsed) args.push("--negative", String(negativeUsed));
       if (model) args.push("--model", String(model));
-      if (aspect) args.push("--aspect", String(aspect));
+      if (aspectUsed) args.push("--aspect", String(aspectUsed));
       if (Number.isFinite(steps)) args.push("--steps", String(steps));
       if (Number.isFinite(guidance)) args.push("--guidance", String(guidance));
       if (Number.isFinite(seed)) args.push("--seed", String(seed));
@@ -157,12 +178,17 @@ export const mediaTools = {
       const kept = lifted.terms.length
         ? ` Kept out via the negative prompt rather than the positive one, which a sampler reads backwards: ${lifted.terms.join(", ")}.`
         : "";
+      // Said out loud, like the lifted negations. A silent crop is the most
+      // visible unasked-for change there is.
+      const shaped = shape
+        ? ` He set no shape, so it was rendered ${shape.aspect} (${shape.why}) rather than square — say so, and offer another shape if that is wrong.`
+        : "";
       const from = r.reference
         ? ` Started from ${r.reference} at strength ${r.strength} rather than from noise, so its composition and colour carry through.`
         : "";
       return `Made a ${r.width}x${r.height} image with ${r.model} in ${r.seconds}s ` +
              `(${r.steps} steps, guidance ${r.guidance}` +
-             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}${from}${long}${kept}`;
+             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}${from}${shaped}${long}${kept}`;
     },
   },
 

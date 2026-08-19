@@ -156,6 +156,44 @@ test("the model's tuned negative prompt survives a negative of his own", () => {
     "the replacing form is still in the file");
 });
 
+test("his exclusions survive the model rewording them away", async () => {
+  /* liftNegations inside generate_image can only see the prompt the MODEL
+     wrote, which is one rewrite too late.
+
+     Measured by bin/image-behaviour-check.mjs, and it is the reason this
+     function exists. Asked for "an empty beach at sunrise, no people", the
+     model wrote "Empty beach at sunrise, soft golden light…" and passed no
+     negative prompt at all. It had handled the exclusion by rewording it, so
+     there was nothing left to lift, and the sampler was told to avoid nothing.
+     "Empty beach" in the positive prompt is a far weaker instrument than
+     `people` in the negative one, and the difference is people on the beach. */
+  const { insistOnExclusions } = await import("../src/agent.mjs");
+  const q = "make me a photo of an empty beach at sunrise, no people";
+
+  const dropped = insistOnExclusions("generate_image", { prompt: "Empty beach at sunrise" }, q);
+  assert.equal(dropped.negative, "people", "his exclusion never reached the sampler");
+
+  // ADDITIVE. A model that chose good exclusions of its own keeps all of them.
+  const kept = insistOnExclusions("generate_image", { prompt: "beach", negative: "boats, litter" }, q);
+  assert.equal(kept.negative, "boats, litter, people");
+
+  // And it does not repeat a term they both thought of — a negative prompt is
+  // a token budget like any other.
+  const dup = insistOnExclusions("generate_image", { prompt: "beach", negative: "People, boats" }, q);
+  assert.equal(dup.negative, "People, boats");
+
+  // Narrow on purpose: not every tool, and nothing when he excluded nothing.
+  assert.equal(insistOnExclusions("run_shell", { command: "ls" }, q).negative, undefined);
+  assert.equal(insistOnExclusions("generate_image", { prompt: "a dog" }, "make me a dog").negative, undefined);
+});
+
+test("the insistence runs on the real tool-call path, not just in isolation", () => {
+  // A helper nothing calls is a helper that fixes nothing, and this one sits
+  // in the middle of the loop rather than at a door with a test on it.
+  assert.match(agentSrc, /insistOnExclusions\(name, args, question\);\s*\n\s*onStep\?\.\(\{ tool: name, args \}\)/,
+    "it is not called before the tool runs, or not before the step is logged");
+});
+
 test("the expansion rung is skipped when he has already been specific", () => {
   const wr = agentSrc.slice(agentSrc.indexOf("async function writeAndRender"),
                             agentSrc.indexOf("async function renderPrompt"));

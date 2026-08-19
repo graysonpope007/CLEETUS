@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
 import { chat, quick, see, visionReady } from "./ollama.mjs";
 import { AGENTS, isAgent, agentMenu, agentList } from "./agents.mjs";
-import { literalMode, literalClause, verbatimText } from "./literal.mjs";
+import { literalMode, literalClause, verbatimText, liftNegations } from "./literal.mjs";
 import { TOOLS, toolSchemas, callTool } from "./tools/index.mjs";
 import { startRun, logStep, finishRun, loadMemory, relevantSkills, remember,
          rememberForAgent, loadAgentMemory, loadAllAgentMemory } from "./memory.mjs";
@@ -588,6 +588,32 @@ export function promptForRender(question, history = []) {
 }
 
 /**
+ * Put his own exclusions back into a generation call.
+ *
+ * Deliberately narrow: only the two generation tools, only the `negative`
+ * field, and only ADDING. A model that chose good exclusions of its own keeps
+ * every one of them; a model that dropped his keeps none of the credit.
+ *
+ * The de-duplication is case-insensitive and by whole term, so "people" said
+ * by both of them appears once rather than twice — a negative prompt is a
+ * token budget like any other and repeating a term buys nothing.
+ */
+export function insistOnExclusions(tool, args, question) {
+  if (tool !== "generate_image" && tool !== "generate_video") return args;
+  const { terms } = liftNegations(String(question || ""));
+  if (!terms.length) return args;
+
+  const already = new Set(
+    String(args.negative || "").split(",").map((t) => t.trim().toLowerCase()).filter(Boolean),
+  );
+  const missing = terms.filter((t) => !already.has(t.toLowerCase()));
+  if (!missing.length) return args;
+
+  args.negative = [String(args.negative || "").trim(), ...missing].filter(Boolean).join(", ");
+  return args;
+}
+
+/**
  * Make the picture without asking the model whether it would like to.
  *
  * Restricting the tool list was not enough on its own. Measured, with ONLY
@@ -1093,6 +1119,23 @@ export async function ask({ history, agent, onStep, probe = false, maxSteps = CO
     for (const call of res.toolCalls) {
       const name = call.function?.name;
       const args = call.function?.arguments || {};
+      /* ── What he said to leave out has to survive the rewrite ────────────
+         liftNegations already runs inside generate_image, but it can only see
+         the prompt the MODEL wrote, and that is one rewrite too late.
+
+         Measured by bin/image-behaviour-check.mjs. Asked for "an empty beach
+         at sunrise, no people", the model wrote the prompt as "Empty beach at
+         sunrise, soft golden light…" and passed no negative prompt at all. It
+         had handled the exclusion by rewording it, so there was nothing left
+         for the lifter to lift, and the sampler was told to avoid nothing.
+         "Empty beach" in the positive prompt is a much weaker instrument than
+         `people` in the negative one, and the difference is people on the
+         beach.
+
+         So the guarantee is taken from HIS message instead, where he actually
+         said it, and merged into whatever the model came up with. Additive
+         only — it never removes an exclusion the model chose. */
+      insistOnExclusions(name, args, question);
       onStep?.({ tool: name, args });
       const result = await callTool(name, args, { agentId });
       used.push(name);

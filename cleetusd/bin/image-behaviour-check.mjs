@@ -107,6 +107,21 @@ async function run(label, message) {
   check("passed the attached picture as a reference", !!used,
     used ? `reference=${argOf(used, "--reference")} strength=${argOf(used, "--strength")}`
          : "no --reference in any call, so it described the picture instead of using it");
+
+  /* Strength is the difference between editing his picture and replacing it,
+     and the model was picking it inconsistently: 0.25 on one run of this exact
+     case and 0.85 on the next. He said "this SAME shot", and above about 0.6
+     the person in his photograph does not survive — so the high roll quietly
+     hands back a different woman in a different gym and calls it his picture.
+
+     Asserted as a ceiling rather than a value, because 0.25 and 0.4 are both
+     defensible for a relight and only the top of the range is wrong. */
+  if (used) {
+    const s = Number(argOf(used, "--strength"));
+    check("kept the strength low enough that his picture survives",
+      Number.isFinite(s) && s <= 0.6,
+      `strength=${s} — he said "same shot", and above 0.6 the reference stops being the same photograph`);
+  }
 }
 
 // ── 2. "It put in the thing I said to leave out" ─────────────────────────────
