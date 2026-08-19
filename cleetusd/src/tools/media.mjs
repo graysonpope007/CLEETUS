@@ -211,17 +211,39 @@ export const mediaTools = {
           seconds: { type: "number", description: "Clip length target (default 4 for motion; svd is ~2-3s of frames)." },
           model: { type: "string", enum: ["sdxl-turbo", "sd-turbo", "sdxl"], description: "Keyframe model (default sdxl-turbo)." },
           seed: { type: "number", description: "Reproducible keyframe/motion." },
+          aspect: { type: "string", enum: ["square", "portrait", "tall", "landscape", "wide"], description: "Shape of the clip. 'tall' for a story or a reel, 'wide' for a hero or YouTube, 'portrait' for a person. The video comes out the shape of its keyframe, so this decides both." },
+          negative: { type: "string", description: "What to keep out of the keyframe, and therefore out of the clip." },
           out: { type: "string", description: "Output MP4 path. Omit for a timestamped file in the media folder." },
         },
       },
     },
-    async run({ prompt, image, mode, seconds, model, seed, out }) {
+    async run({ prompt, image, mode, seconds, model, seed, out, aspect, negative }) {
       if (!ready()) return ABSENT;
       if (!prompt && !image) return "Give me a prompt to make the keyframe from, or an image path to animate.";
       const dest = out || `${OUT_DIR}/vid_${stamp()}.mp4`;
       const args = ["video", "--out", dest, "--mode", mode || "motion"];
-      if (prompt) args.push("--prompt", String(prompt));
+      /* A clip gets the same two guarantees a still does, for the same
+         reasons. The keyframe is an image made by the same sampler, so a
+         negation in the prompt puts the thing in the frame exactly as it does
+         for a photograph — and the video then holds it for four seconds.
+
+         The shape matters MORE here than for a still, because the clip comes
+         out the shape of its keyframe: getting it wrong is a story that cannot
+         go in a story, and there is no cropping it back afterwards without
+         losing the move. Skipped when he is animating a picture he already
+         has, whose shape is already decided. */
+      const lifted = liftNegations(String(prompt || ""));
+      const promptUsed = lifted.terms.length ? lifted.cleaned : String(prompt || "");
+      const negativeUsed = lifted.terms.length
+        ? [String(negative || ""), ...lifted.terms].filter(Boolean).join(", ")
+        : negative;
+      const shape = (!aspect && !image && promptUsed) ? inferAspect(promptUsed) : null;
+      const aspectUsed = aspect || shape?.aspect || null;
+
+      if (promptUsed) args.push("--prompt", promptUsed);
       if (image) args.push("--image", String(image));
+      if (negativeUsed) args.push("--negative", String(negativeUsed));
+      if (aspectUsed) args.push("--aspect", String(aspectUsed));
       if (model) args.push("--model", String(model));
       if (Number.isFinite(seconds)) args.push("--seconds", String(seconds));
       if (Number.isFinite(seed)) args.push("--seed", String(seed));
@@ -232,8 +254,14 @@ export const mediaTools = {
         return `Made a ${r.frames}-frame video with Stable Video Diffusion in ${r.seconds}s. ` +
                `Saved to ${r.path} (keyframe ${r.keyframe}).`;
       }
-      return `Made a ${r.seconds}s pan-and-zoom video (${r.fps}fps) in ${r.render_seconds}s. ` +
-             `Saved to ${r.path} (keyframe ${r.keyframe}). For genuine generative motion, ask for svd mode.`;
+      const dims = r.width && r.height ? ` at ${r.width}x${r.height}` : "";
+      const shaped = shape ? ` He set no shape, so it was made ${shape.aspect} (${shape.why}).` : "";
+      const kept = lifted.terms.length
+        ? ` Kept out via the negative prompt rather than the positive one: ${lifted.terms.join(", ")}.`
+        : "";
+      return `Made a ${r.seconds}s pan-and-zoom video (${r.fps}fps)${dims} in ${r.render_seconds}s. ` +
+             `Saved to ${r.path} (keyframe ${r.keyframe}).${shaped}${kept} ` +
+             `For genuine generative motion, ask for svd mode.`;
     },
   },
 

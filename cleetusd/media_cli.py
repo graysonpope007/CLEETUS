@@ -723,6 +723,13 @@ def _gen_keyframe(ns):
     _render(ns, ns.model if ns.model in MODELS else DEFAULT_MODEL)
 
 
+def _image_size(path):
+    """Width and height of a file on disk, without loading the pixels."""
+    from PIL import Image
+    with Image.open(Path(path).expanduser()) as img:
+        return img.size
+
+
 def _video_motion(args, keyframe):
     """A real pan-and-zoom move over the keyframe, rendered by ffmpeg.
 
@@ -736,12 +743,28 @@ def _video_motion(args, keyframe):
     frames = seconds * fps
     dest = Path(args.out).expanduser()
     dest.parent.mkdir(parents=True, exist_ok=True)
-    # Zoompan over the still: a slow push-in with a gentle drift. The scale up
-    # front is what stops zoompan's single-pixel-per-frame jitter.
+
+    # ── The video is the shape of the keyframe, not always a square ──────────
+    #
+    # This used to be `scale=2048:2048` and `s=1024x1024`, hardcoded, with no
+    # aspect preservation on either. Measured: an 832x1216 portrait keyframe
+    # came out a 1024x1024 video, which is not a crop — it is the whole picture
+    # SQUASHED, every face and every proportion in it wrong, silently, on every
+    # video this file has ever made.
+    #
+    # It also meant a 9:16 story and a 16:9 hero were both impossible to make,
+    # whatever --aspect said, because the aspect only ever reached the keyframe
+    # and the render threw it away again.
+    kw, kh = _image_size(keyframe)
+    # h264 needs even dimensions; an odd one fails the encode outright.
+    kw, kh = kw - (kw % 2), kh - (kh % 2)
     zoom = "zoompan=z='min(zoom+0.0009,1.18)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'" \
-           f":d={frames}:s=1024x1024:fps={fps}"
+           f":d={frames}:s={kw}x{kh}:fps={fps}"
     cmd = [_ffmpeg(), "-y", "-loglevel", "error", "-loop", "1", "-i", keyframe,
-           "-vf", f"scale=2048:2048,{zoom},format=yuv420p", "-t", str(seconds),
+           # Doubled before the zoompan for the same reason as before — it is
+           # what stops zoompan's single-pixel-per-frame jitter — but doubled
+           # in BOTH dimensions from the real size rather than to a square.
+           "-vf", f"scale={kw * 2}:{kh * 2},{zoom},format=yuv420p", "-t", str(seconds),
            "-c:v", "libx264", "-preset", "medium", "-movflags", "+faststart", str(dest)]
     t0 = time.time()
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -749,6 +772,7 @@ def _video_motion(args, keyframe):
         out({"ok": False, "error": f"ffmpeg failed: {r.stderr[-400:]}", "keyframe": keyframe})
     out({"ok": True, "kind": "video", "mode": "motion", "path": str(dest),
          "keyframe": keyframe, "seconds": seconds, "fps": fps,
+         "width": kw, "height": kh,
          "render_seconds": round(time.time() - t0, 1)})
 
 
