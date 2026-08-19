@@ -157,6 +157,33 @@ test("the tool actually offers a reference, and says when it used one", () => {
     "using a reference is invisible in the answer he reads");
 });
 
+test("the brief teaches the reference, in both copies of it", async () => {
+  // A capability the brief does not mention is a capability that does not
+  // exist. The tool has had `reference` in its schema since it was written and
+  // the agent will still describe an attached picture back in words, because
+  // that is what its brief told it to do — the schema is a menu and the brief
+  // is the habit.
+  //
+  // Both copies, because the daemon reads src/agents.mjs and the deployed web
+  // app reads cleetusv2/brain/agents/image.md. They have drifted before, and
+  // the symptom is a Cleetus that behaves differently depending on which
+  // window he typed into.
+  const { AGENTS } = await import("../src/agents.mjs");
+  const brief = AGENTS.image.brief;
+  assert.match(brief, /IF HE HAS GIVEN YOU A PICTURE, START FROM IT/);
+  assert.match(brief, /`strength`/, "no guidance on how far to travel from a reference");
+  assert.match(brief, /ALREADY BEEN SPECIFIC, ADD NOTHING/);
+  assert.match(brief, /Length is NOT a limit/,
+    "the brief still tells it to compress prompts that no longer need compressing");
+  assert.match(brief, /'no X' is safe/, "it does not know exclusions are handled for it");
+
+  const web = join(dirname(ROOT), "cleetusv2/brain/agents/image.md");
+  if (!existsSync(web)) return; // the web app is not checked out beside this one
+  const md = readFileSync(web, "utf8");
+  assert.match(md, /Start from his picture/i, "the web app's brief never learned about references");
+  assert.match(md, /already been specific/i);
+});
+
 test("a dropped picture tells the agent it can be a reference", () => {
   // The two features are only worth as much as the join between them. Left to
   // itself the agent describes an attached picture back in words, which is the
