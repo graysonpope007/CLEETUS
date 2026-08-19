@@ -83,8 +83,27 @@ test("search and list both exclude probe threads", () => {
   // filter on one and not the other would look fixed from whichever surface
   // happened to be checked.
   assert.match(convos, /export async function search\(query, \{ limit = 5, includeProbes = false \} = \{\}\)/);
-  assert.match(convos, /export async function list\(\{ agent = null, limit = 40, includeProbes = false \} = \{\}\)/);
+  assert.match(convos, /export async function list\(\{ agent = null, limit = 40, includeProbes = false, includeCleared = false \} = \{\}\)/);
   assert.strictEqual((convos.match(/if \(c\.probe && !includeProbes\) continue;/g) || []).length, 2);
+});
+
+test("clearing a thread hides it from the rail and from nothing else", () => {
+  // Grayson asked for a Clear chat button and, in the same breath, for Cleetus
+  // to still remember what was cleared. Those are not opposites: what he wants
+  // gone is the transcript in front of him, and what he wants kept is being
+  // able to ask about it later. A delete gives him the first by destroying the
+  // second, so this is a flag — and the flag has to be honoured in exactly one
+  // place. Honoured in search() too and recall_chat would go blind to every
+  // conversation he ever tidied away, which is the failure worth testing for.
+  assert.match(convos, /export async function clear\(id, cleared = true\)/,
+    "clearing must be its own call, not a delete");
+  assert.match(convos, /if \(c\.cleared && !includeCleared\) continue;/,
+    "list() must skip cleared threads");
+  assert.strictEqual((convos.match(/c\.cleared && !includeCleared/g) || []).length, 1,
+    "exactly one place may honour `cleared` — search() must NOT, or recall goes blind");
+  // The messages are what recall reads. Clearing must not touch them.
+  assert.doesNotMatch(convos, /cleared[\s\S]{0,120}messages = \[\]/,
+    "clearing must never empty the thread");
 });
 
 test("probes can still be read back deliberately", () => {

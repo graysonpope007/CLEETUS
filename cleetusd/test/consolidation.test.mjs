@@ -17,7 +17,11 @@ test("a job asking the model marks itself as a probe", () => {
   // day's digest pasted into a prompt — becomes one of tomorrow's runs and is
   // read back as something Grayson said. brain-analysis did exactly that, and
   // its run had to be marked by hand afterwards.
-  assert.match(src, /async function askModel\(question, agent\) \{[\s\S]{0,300}?probe: true/,
+  // Bounded by the function, not by a character count. The 300-char window this
+  // used to have failed the day a comment was added above the ask() call — the
+  // behaviour was untouched and the test went red anyway, which teaches the
+  // next person that the assertion is noise.
+  assert.match(src, /async function askModel\(question, agent\) \{(?:[^}]|\}(?!\n))*?probe: true/,
     "askModel must pass probe: true to ask()");
 });
 

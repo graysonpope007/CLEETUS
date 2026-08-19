@@ -12,6 +12,8 @@ import { readFileSync } from "node:fs";
 
 const agent = readFileSync(new URL("../src/agent.mjs", import.meta.url), "utf8");
 const improve = readFileSync(new URL("../src/improve.mjs", import.meta.url), "utf8");
+const config = readFileSync(new URL("../src/config.mjs", import.meta.url), "utf8");
+const jobs = readFileSync(new URL("../src/jobs.mjs", import.meta.url), "utf8");
 
 test("the step budget is a parameter, not a constant", () => {
   assert.match(agent, /export async function ask\(\{[^}]*maxSteps = CONFIG\.maxSteps[^}]*\}\)/,
@@ -60,10 +62,56 @@ test("hitting the ceiling is marked on the FACT, not on the prose", () => {
   // Verified live: with maxSteps 2 the answer now carries "[Answered from
   // partial information: all 2 tool calls were used…]", and an ordinary
   // completed answer ("what is 2+2") carries no marker at all.
-  assert.match(agent, /if \(finalText\) \{[\s\S]{0,400}?Answered from partial information/,
+  // The window is generous because the marker now has THREE branches, not two:
+  // out of steps, out of time, and out of steps mid-sentence. A tight character
+  // count here goes red every time a comment is added next to the code it is
+  // guarding, which is how a real assertion turns into noise nobody reads.
+  assert.match(agent, /if \(finalText\) \{[\s\S]{0,1200}?Answered from partial information/,
     "an exhausted run must be marked whatever the sentence looks like");
   assert.match(agent, /endsOnAPromise\(finalText\)\s*\?/,
     "the two cases should still read differently");
   assert.doesNotMatch(agent, /if \(finalText && endsOnAPromise\(finalText\)\) \{/,
     "the marker is conditional on the prose again");
+});
+
+test("a conversational turn is bounded in TIME, not only in steps", () => {
+  // The bug this exists for is on disk. Asked to build a site and open it on
+  // localhost, the website agent ran
+  //     pkill vite; npm run dev &; sleep 8; curl localhost:5173
+  // and read the output to decide whether the page looked right. A Vite dev
+  // server returns <div id="root"></div>; React renders in the browser. So the
+  // check could not pass however many times it ran, and it went round again —
+  // run file 2026-08-18-2051-make-a-website-… still said `status: running`
+  // thirty-five minutes later, while Grayson looked at a question with nothing
+  // under it and reported that he could not send messages.
+  //
+  // The step ceiling did not save him and could not: 120 steps at thirty to
+  // sixty seconds a turn is an hour and a half. Steps are not the unit the
+  // person waiting is counting in.
+  assert.match(agent, /deadlineMs = CONFIG\.turnDeadlineMs/,
+    "ask() must take a wall-clock deadline");
+  assert.match(agent, /if \(Date\.now\(\) > deadline\)/,
+    "the deadline must be checked inside the loop, not only around it");
+  assert.match(config, /turnDeadlineMs: Number\(env\.CLEETUSD_TURN_DEADLINE_MS \|\| \d+ \* 60_000\)/,
+    "the deadline must be configurable");
+
+  // Long enough for real work. The longest honest run in the logs is under four
+  // minutes, so a bound below that would cut off work that was going to finish.
+  const mins = Number(config.match(/CLEETUSD_TURN_DEADLINE_MS \|\| (\d+) \* 60_000/)[1]);
+  assert.ok(mins >= 5 && mins <= 20, `${mins} minutes is not a sane interactive bound`);
+
+  // Stopping must salvage, not discard. ranLong feeds the same forceAnswer path
+  // as running out of steps, so the tool calls already made still become an
+  // answer — the files it wrote are written either way.
+  assert.match(agent, /ranLong = true;/);
+  assert.match(agent, /ranOut && used\.length/,
+    "hitting the deadline must still go through the salvage pass");
+});
+
+test("work with nobody waiting on it is not put on the interactive clock", () => {
+  // The eight-minute bound is for a person in front of a chat box. A nightly
+  // job or a self-repair run cut off mid-edit leaves the machine worse than not
+  // having tried, and there is nobody there to be kept waiting.
+  assert.match(improve, /deadlineMs: 0/, "the improve loop must opt out of the turn deadline");
+  assert.match(jobs, /deadlineMs: 0/, "scheduled jobs must opt out of the turn deadline");
 });
