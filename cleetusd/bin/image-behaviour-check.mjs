@@ -27,7 +27,7 @@
 // of using it, it put in the thing I said to leave out, and it embroidered
 // what I told it exactly.
 
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +49,23 @@ echo '{"ok": true, "kind": "image", "path": "'"\${OUT:-/tmp/stub.png}"'", "model
 `);
 chmodSync(STUB, 0o755);
 process.env.CLEETUSD_MEDIA_PYTHON = STUB;
+
+/* ── This check must not write into the real media folder ────────────────────
+   The stub truncates whatever --out it is handed, and the agent defaults that
+   to ~/cleetusd/media/out. Three runs of this file left twenty-two zero-byte
+   PNGs sitting in with his actual pictures — invisible in a listing, and each
+   one a broken image in the chat window when anything tried to show it.
+
+   That is how it was found, in fact: the deck's new inline media rendering
+   silently dropped one of two pictures, and the missing one was a corpse this
+   very script had left there an hour earlier. A test that litters the thing it
+   is testing eventually gets mistaken for the bug.
+
+   Set BEFORE the media tool is imported, because it reads the path once at
+   module load. */
+process.env.CLEETUSD_MEDIA_OUT = join(dir, "out");
+mkdirSync(process.env.CLEETUSD_MEDIA_OUT, { recursive: true });
+
 writeFileSync(LOG, "");
 
 // Imported AFTER the stub is in place: the media tool reads the interpreter

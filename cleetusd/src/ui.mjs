@@ -72,6 +72,23 @@ body{display:grid;grid-template-columns:210px 1fr 260px;gap:10px;padding:10px;ov
 .step{font-family:var(--mono);font-size:.66rem;color:var(--dim)}
 .step b{color:var(--teal);font-weight:500}
 .step i{color:var(--faint);font-style:normal}
+/* ── Showing what he made, instead of telling him where it is ─────────────
+   The deck has never displayed a picture. It printed the path as text, and a
+   path is not a picture — he had to go and open it in Finder to see whether
+   the thing he asked for is the thing he got. /reach has shown them for
+   months, which made this the same product behaving two ways depending on
+   which window he happened to be in. */
+.gen-media{margin:8px 0 2px;max-width:min(420px,100%)}
+.gen-media img,.gen-media video{width:100%;border-radius:6px;display:block;
+  border:1px solid #2f2740;cursor:zoom-in}
+.gen-media video{cursor:default}
+.gen-actions{display:flex;gap:12px;margin-top:5px;font-family:var(--mono);font-size:.6rem}
+.gen-actions a{color:var(--teal);text-decoration:none}
+.gen-actions a:hover{color:var(--amber)}
+.lightbox{position:fixed;inset:0;z-index:80;display:none;place-items:center;
+  background:rgba(8,5,14,.92);cursor:zoom-out;padding:24px}
+.lightbox.on{display:grid}
+.lightbox img{max-width:100%;max-height:100%;border-radius:6px}
 /* ── Dropping things on the window ──────────────────────────────────────────
    The overlay is the whole point of the feature being discoverable: without a
    target that lights up, a person who has never been told this works will
@@ -145,6 +162,8 @@ body{display:grid;grid-template-columns:210px 1fr 260px;gap:10px;padding:10px;ov
   </form>
 </main>
 
+<div class="lightbox" id="lightbox"></div>
+
 <div class="dropveil" id="veil"><div><b>Drop it anywhere</b><span>pictures, video, PDFs, documents, anything<br>it lands on this Mac and nowhere else</span></div></div>
 
 <aside class="side">
@@ -181,10 +200,74 @@ body{display:grid;grid-template-columns:210px 1fr 260px;gap:10px;padding:10px;ov
 const $ = id => document.getElementById(id);
 let AGENT = null;
 
+/* ── A path is not a picture ─────────────────────────────────────────────────
+   The deck printed "Saved to /Users/.../img_2026….png" and stopped there, so
+   the only way to see whether the thing he asked for is the thing he got was
+   to go and open it in Finder. /reach has rendered them inline for months,
+   which made this one product behaving two ways depending on which window he
+   was in.
+
+   BOTH folders. media/out is what the sampler wrote; media/drops is what he
+   sent. Recognising only the first is the mistake that made a dropped photo
+   servable by the daemon and still a line of text on the screen. */
+const MEDIA_RE = /(\/[^\s'"()]+\/media\/(?:out|drops)\/[^\s'"()]+\.(?:png|jpe?g|webp|gif|mp4|mov|webm|m4v))/gi;
+
+function lightbox(src) {
+  const box = $('lightbox');
+  box.textContent = '';
+  const img = document.createElement('img');
+  img.src = src;
+  box.appendChild(img);
+  box.classList.add('on');
+  box.onclick = () => box.classList.remove('on');
+}
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') $('lightbox').classList.remove('on');
+});
+
+function attachMedia(container, path) {
+  const isVideo = /\.(mp4|mov|webm|m4v)$/i.test(path);
+  // Same origin as this page, so no base and no CORS — the deck IS the daemon.
+  const src = '/editor/asset?path=' + encodeURIComponent(path);
+  const wrap = document.createElement('div');
+  wrap.className = 'gen-media';
+  const el = document.createElement(isVideo ? 'video' : 'img');
+  el.src = src;
+  el.loading = 'lazy';
+  if (isVideo) el.controls = true; else el.onclick = () => lightbox(src);
+  // A picture that will not load must not leave a broken-image glyph pretending
+  // to be one — the whole point here is that he can trust what he is looking at.
+  el.onerror = () => { wrap.remove(); };
+  wrap.appendChild(el);
+
+  const actions = document.createElement('div');
+  actions.className = 'gen-actions';
+  const name = path.split('/').pop();
+  const dl = document.createElement('a');
+  dl.href = src + '&dl=1';
+  dl.download = name;
+  dl.textContent = '\u2193 download';
+  actions.appendChild(dl);
+  if (!isVideo) {
+    const ex = document.createElement('a');
+    ex.href = '#';
+    ex.textContent = '\u2922 expand';
+    ex.onclick = (e) => { e.preventDefault(); lightbox(src); };
+    actions.appendChild(ex);
+  }
+  wrap.appendChild(actions);
+  container.appendChild(wrap);
+}
+
 const say = (cls, text) => {
   const p = document.createElement('div');
   p.className = 'msg ' + cls;
   p.textContent = text;
+  // Only on an ANSWER. His own echoed message already shows its attachments as
+  // chips, and a step line naming a path is a trace rather than a result.
+  if (cls === '') for (const path of [...new Set(String(text).match(MEDIA_RE) || [])]) {
+    attachMedia(p, path);
+  }
   $('log').appendChild(p);
   $('log').scrollTop = $('log').scrollHeight;
   return p;
