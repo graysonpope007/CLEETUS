@@ -167,8 +167,9 @@ if (health) {
 const { agents } = await fetch('/agents').then(r => r.json());
 const GROUPS = {
   Body: ['hair','skin','muscle','nutrition','fitness'],
-  Presentation: ['fashion','redesign'],
+  Presentation: ['fashion','redesign','website'],
   'Money and work': ['deals','finance','stocks','tax','books','booking','writing','image','music','brief','poker'],
+  Investigation: ['pi'],
   Itself: ['studio','builder','security'],
 };
 const byId = Object.fromEntries(agents.map(a => [a.id, a]));

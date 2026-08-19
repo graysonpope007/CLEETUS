@@ -28,6 +28,7 @@ import { recallTools } from "./recall.mjs";
 import { workTools } from "./work.mjs";
 import { securityTools } from "./security.mjs";
 import { mediaTools } from "./media.mjs";
+import { piTools } from "./pi.mjs";
 
 // ── The vault ───────────────────────────────────────────────────────────────
 
@@ -244,7 +245,7 @@ const bridgeTools = {
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
-export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools };
+export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools, ...piTools };
 
 /** Ollama's native tool format. */
 export function toolSchemas(names = Object.keys(TOOLS)) {
