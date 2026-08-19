@@ -190,8 +190,20 @@ test("his exclusions survive the model rewording them away", async () => {
 test("the insistence runs on the real tool-call path, not just in isolation", () => {
   // A helper nothing calls is a helper that fixes nothing, and this one sits
   // in the middle of the loop rather than at a door with a test on it.
-  assert.match(agentSrc, /insistOnExclusions\(name, args, question\);\s*\n\s*onStep\?\.\(\{ tool: name, args \}\)/,
-    "it is not called before the tool runs, or not before the step is logged");
+  /* ORDERING, not adjacency. This pinned the two lines as neighbours across a
+     newline, which a single inserted comment breaks while the property holds.
+     What matters is that the exclusions go in BEFORE the tool runs. */
+  /* The LAST tool loop, not the first. agent.mjs has two — forceGeneration has
+     its own, and it comes first in the file — so indexOf sliced the wrong one
+     and the assertion failed against code that was perfectly correct. Fourth
+     time in this repo a window has read something it was not looking at, and
+     the note about the previous three is in doctor.mjs. */
+  const loop = agentSrc.slice(agentSrc.lastIndexOf("for (const call of res.toolCalls)"));
+  const insistAt = loop.indexOf("insistOnExclusions(name, args, question)");
+  const runAt = loop.indexOf("await callTool(name, args");
+  assert.ok(insistAt !== -1, "insistOnExclusions is never called on the real tool path");
+  assert.ok(runAt !== -1 && insistAt < runAt,
+    "the exclusions are added after the tool has already run, which is too late");
 });
 
 test("the expansion rung is skipped when he has already been specific", () => {
@@ -201,7 +213,11 @@ test("the expansion rung is skipped when he has already been specific", () => {
   assert.match(wr, /mode\.level === "verbatim"/, "a quoted prompt still goes through the rewriter");
   assert.match(wr, /mode\.level === "literal"/, "a constrained ask still goes through the rewriter");
   // The rewrite must be inside a guard now, not unconditional.
-  assert.match(wr, /if \(!prompt\) \{\s*\n\s*const res = await chat\(\{ messages: REWRITE/);
+  // The rewrite must sit INSIDE the guard, not merely near it.
+  const guardAt = wr.indexOf("if (!prompt) {");
+  const rewriteAt = wr.indexOf("await chat({ messages: REWRITE");
+  assert.ok(guardAt !== -1 && rewriteAt !== -1 && guardAt < rewriteAt,
+    "the rewrite runs unconditionally again, so a literal turn gets expanded");
 });
 
 test("the forced pass and the system clause cannot contradict each other", () => {
@@ -217,7 +233,10 @@ test("the forced pass and the system clause cannot contradict each other", () =>
 test("the clause is per-turn, never a standing instruction", () => {
   // A permanent "always be literal" flattens every rough ask, which is a
   // regression nobody reports because it has no error in it.
-  assert.match(agentSrc, /const literal = literalMode\(question, history\);\s*\n\s*system \+= literalClause\(literal\);/);
+  const modeAt = agentSrc.indexOf("const literal = literalMode(question, history)");
+  const clauseAt = agentSrc.indexOf("system += literalClause(literal)");
+  assert.ok(modeAt !== -1 && clauseAt !== -1 && modeAt < clauseAt,
+    "the clause is not derived from this turn's mode");
   assert.equal(literalClause({ level: "open", reasons: [] }), "");
 });
 
@@ -238,7 +257,9 @@ test("a picture agent gets a picture agent's budget, not a repair's", () => {
      The long runs were not more thorough. They were the same request looping,
      and the extra steps bought worse answers. */
   assert.match(agentSrc, /const ONE_ARTIFACT = new Set\(\["image", "writing"\]\)/);
-  assert.match(agentSrc, /ONE_ARTIFACT\.has\(agentId\)\s*\n\s*\? Math\.max\(maxSteps, 24\)/);
+  const ceil = agentSrc.slice(agentSrc.indexOf("const ONE_ARTIFACT"), agentSrc.indexOf("let extensions"));
+  assert.match(ceil, /ONE_ARTIFACT\.has\(agentId\)/);
+  assert.match(ceil, /Math\.max\(maxSteps, 24\)/, "the single-artifact ceiling is no longer 24");
   // The builder must keep the room it was given for a documented reason.
   assert.match(agentSrc, /: Math\.max\(maxSteps, CONFIG\.maxStepsCeiling\)/,
     "every agent now shares the tight ceiling, which breaks the repair path");

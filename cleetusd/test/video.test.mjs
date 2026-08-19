@@ -86,8 +86,13 @@ test("a clip gets the same two guarantees a still does", () => {
   // thing in the frame exactly as it does for a photograph — and the video
   // then holds it for four seconds.
   assert.match(fn, /const lifted = liftNegations\(String\(prompt \|\| ""\)\)/);
-  assert.match(fn, /const shape = \(!aspect && !image && promptUsed\) \? inferAspect\(promptUsed\) : null/,
-    "inference must not run when he is animating a picture whose shape is already decided");
+  // The parts, not the punctuation: inference must be skipped when he named a
+  // shape AND when he is animating a picture whose shape is already decided.
+  const shapeLine = fn.slice(fn.indexOf("const shape ="), fn.indexOf("const aspectUsed"));
+  assert.match(shapeLine, /!aspect/, "his explicit aspect no longer wins");
+  assert.match(shapeLine, /!image/,
+    "inference runs even when animating a picture whose shape is already decided");
+  assert.match(shapeLine, /inferAspect\(promptUsed\)/);
   assert.match(fn, /He set no shape, so it was made/, "choosing the shape for him is not said");
 });
 
