@@ -80,7 +80,16 @@ export const mediaTools = {
         "The FIRST use of a model downloads it (multi-GB) — if that is a concern, call list_media_models " +
         "first. Write a vivid, concrete prompt: subject, setting, lighting, style, lens. On the photoreal " +
         "models a photographic style is appended for you unless the prompt already names a style, so do not " +
-        "pad it with 'photorealistic, 8k, masterpiece'. Do not claim an image exists until this returns a path.",
+        "pad it with 'photorealistic, 8k, masterpiece'. " +
+        "REFERENCE: pass `reference` (a path to a picture on this Mac) to start from that image instead of " +
+        "from noise. This is the strongest tool you have for accuracy, because some things cannot be said " +
+        "in words at all — the exact blue of a brand, the grain of a photograph he likes, a room's real " +
+        "proportions, the composition of a shot. WHENEVER he has attached a picture and is asking for " +
+        "something like it, edited, restyled, in a different light, or 'more like this', USE IT as the " +
+        "reference rather than trying to describe it back. `strength` is how far to travel from it: 0.25 is " +
+        "a grade or a small edit, 0.55 is the same scene reinterpreted, 0.85 is loosely inspired by it. " +
+        "The output takes the reference's own shape unless you set aspect. " +
+        "Do not claim an image exists until this returns a path.",
       parameters: {
         type: "object",
         properties: {
@@ -91,12 +100,14 @@ export const mediaTools = {
           steps: { type: "number", description: "Denoising steps. Leave unset to use the model's tuned default." },
           guidance: { type: "number", description: "How hard to follow the prompt. Leave unset unless he asks for looser or tighter." },
           seed: { type: "number", description: "Set for a reproducible image; omit for a new one each time. Pass the SAME seed to tweak an image he liked." },
+          reference: { type: "string", description: "Path to an image to start FROM instead of noise. Use whenever he attached a picture and wants something like it, edited, or restyled — it carries what words cannot." },
+          strength: { type: "number", description: "Only with reference. How far to move from it: 0.25 a grade or small edit, 0.55 the same scene reinterpreted, 0.85 loosely inspired. Default 0.55." },
           out: { type: "string", description: "Output path. Omit to save a timestamped PNG in the media folder." },
         },
         required: ["prompt"],
       },
     },
-    async run({ prompt, negative, model, aspect, steps, guidance, seed, out }) {
+    async run({ prompt, negative, model, aspect, steps, guidance, seed, out, reference, strength }) {
       if (!ready()) return ABSENT;
       const dest = out || `${OUT_DIR}/img_${stamp()}.png`;
 
@@ -128,6 +139,8 @@ export const mediaTools = {
       if (Number.isFinite(steps)) args.push("--steps", String(steps));
       if (Number.isFinite(guidance)) args.push("--guidance", String(guidance));
       if (Number.isFinite(seed)) args.push("--seed", String(seed));
+      if (reference) args.push("--reference", String(reference));
+      if (Number.isFinite(strength)) args.push("--strength", String(strength));
       // Generous: the first call to a model downloads gigabytes, then generates.
       const r = await py(args, 20 * 60_000);
       if (!r.ok) return `Could not generate the image: ${r.error}`;
@@ -144,9 +157,12 @@ export const mediaTools = {
       const kept = lifted.terms.length
         ? ` Kept out via the negative prompt rather than the positive one, which a sampler reads backwards: ${lifted.terms.join(", ")}.`
         : "";
+      const from = r.reference
+        ? ` Started from ${r.reference} at strength ${r.strength} rather than from noise, so its composition and colour carry through.`
+        : "";
       return `Made a ${r.width}x${r.height} image with ${r.model} in ${r.seconds}s ` +
              `(${r.steps} steps, guidance ${r.guidance}` +
-             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}${long}${kept}`;
+             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}${from}${long}${kept}`;
     },
   },
 

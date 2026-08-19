@@ -270,6 +270,102 @@ def _load_image_pipe(model_key: str):
     return pipe
 
 
+# ── Starting from a picture instead of from noise ────────────────────────────
+#
+# Every accuracy problem so far has been about getting words to the sampler
+# intact. This is the other half, and it is the bigger one: some things cannot
+# be said in words at all. The exact blue of a brand. The particular grain and
+# colour of a photograph he likes. A room's real proportions. He can describe
+# those for a paragraph and still not get them, because the description is
+# lossy in a way the picture is not.
+#
+# So: hand it the picture. Text-to-image starts from pure noise; image-to-image
+# starts from HIS image with some noise added, and STRENGTH is how much. 0.25
+# is a grade and a nudge, 0.5 is the same scene reinterpreted, 0.8 is loosely
+# inspired by. At 1.0 the reference is gone and this is text-to-image again.
+#
+# from_pipe rather than a second from_pretrained: it reuses the UNet, VAE and
+# both text encoders already resident, so a reference costs no extra download
+# and no extra memory on a machine where the model is most of the 64 GB.
+_I2I_CACHE = {}
+
+
+def _load_img2img_pipe(model_key: str):
+    if model_key in _I2I_CACHE:
+        return _I2I_CACHE[model_key]
+    from diffusers import AutoPipelineForImage2Image
+    base = _load_image_pipe(model_key)
+    pipe = AutoPipelineForImage2Image.from_pipe(base)
+
+    # ── Attention slicing produces NaN here, and only here ──────────────────
+    #
+    # Measured, not guessed. The first reference image came back pure black
+    # with `"ok": true` on it. The VAE encode was clean — no NaN, latents with
+    # an absmax of 21 — so the overflow was in the denoise, and the variable
+    # was slicing:
+    #
+    #   slicing on,  strength 0.55  ->  nan
+    #   slicing off, strength 0.55  ->  absmax 2.49
+    #   slicing off, strength 0.30  ->  absmax 2.44
+    #   slicing off, strength 0.90  ->  absmax 3.25
+    #
+    # Text-to-image with the same sliced UNet is fine, which is exactly why
+    # nothing caught this: every picture this file has ever made took the other
+    # path. The extra memory is affordable and a black image is not.
+    #
+    # Safe despite sharing the UNet with the text2img pipe above, because this
+    # process makes ONE image and exits — there is no later text2img call in it
+    # to be affected.
+    try:
+        pipe.disable_attention_slicing()
+    except Exception:
+        pass
+
+    _I2I_CACHE[model_key] = pipe
+    return pipe
+
+
+def _load_reference(path: str, width: int, height: int):
+    """His picture, opened and fitted to the output size.
+
+    COVER, not stretch. A 4:5 reference squeezed into 16:9 changes every face
+    and every proportion in it, which is the one thing a reference is for. So
+    it is scaled to cover and centre-cropped, the way any layout tool would.
+    """
+    from PIL import Image
+    img = Image.open(Path(path).expanduser()).convert("RGB")
+    src_w, src_h = img.size
+    scale = max(width / src_w, height / src_h)
+    fitted = img.resize((max(1, round(src_w * scale)), max(1, round(src_h * scale))), Image.LANCZOS)
+    left = (fitted.width - width) // 2
+    top = (fitted.height - height) // 2
+    return fitted.crop((left, top, left + width, top + height))
+
+
+def _reference_aspect(path: str):
+    """The shape of his reference, as the nearest thing this file can render.
+
+    If he handed over a picture and did not say what shape he wanted, the
+    picture is the answer. Silently rendering his 4:5 reference as a square is
+    a variation he did not ask for, and the most visible kind.
+    """
+    try:
+        from PIL import Image
+        with Image.open(Path(path).expanduser()) as img:
+            w, h = img.size
+    except Exception:
+        return None
+    if not w or not h:
+        return None
+    ratio = w / h
+    best, gap = None, None
+    for name, (aw, ah) in ASPECTS.items():
+        d = abs(ratio - aw / ah)
+        if gap is None or d < gap:
+            best, gap = name, d
+    return best
+
+
 def _warn_if_truncated(pipe, label: str, text: str) -> None:
     """Count the tokens and say so when CLIP is going to cut the tail off.
 
@@ -403,11 +499,19 @@ def _long_prompt_kwargs(pipe, prompt, negative, device):
 
 
 def _dimensions(args, spec):
-    """Width and height, from --aspect or an explicit --size."""
+    """Width and height, from --aspect, an explicit --size, or the reference."""
     if args.size:
         return int(args.size), int(args.size)
     if args.aspect and args.aspect in ASPECTS:
         return ASPECTS[args.aspect]
+    # He handed over a picture and did not say what shape he wanted. The
+    # picture is the answer, and rendering his 4:5 reference as a square is the
+    # most visible possible variation on what he asked for.
+    ref = getattr(args, "reference", "")
+    if ref:
+        from_ref = _reference_aspect(ref)
+        if from_ref:
+            return ASPECTS[from_ref]
     n = int(spec["size"])
     return n, n
 
@@ -463,7 +567,16 @@ def _render(args, model_key, enrich=True):
         log(f"[media] note: {model_key} runs at guidance {guidance}, so the negative prompt is ignored "
             f"(no classifier-free guidance to steer). Use a guided model for it to count.")
 
-    pipe = _load_image_pipe(model_key)
+    reference = getattr(args, "reference", "") or ""
+    strength = getattr(args, "strength", None)
+    if reference and not Path(reference).expanduser().exists():
+        return {"ok": False, "error": f"no such reference image: {reference}"}
+    if reference:
+        # Clamped rather than rejected: a 0 would hand his own file back
+        # unchanged and a 1.2 would throw from inside the scheduler.
+        strength = 0.55 if strength is None else max(0.05, min(1.0, float(strength)))
+
+    pipe = _load_img2img_pipe(model_key) if reference else _load_image_pipe(model_key)
 
     # Nothing is dropped any more, but say what had to be done about it.
     # FLUX is on T5 with room to spare and takes the ordinary path.
@@ -491,9 +604,26 @@ def _render(args, model_key, enrich=True):
     # CPU generator; the small transfer is free next to the denoise.
     gen = torch.Generator(device="cpu").manual_seed(seed)
 
-    log(f"[media] generating {width}x{height}, {steps} steps, guidance {guidance}, model {model_key}")
+    kw = dict(prompt=prompt, num_inference_steps=steps, generator=gen)
+    if reference:
+        # img2img takes its size FROM the image, and passing height/width as
+        # well is an error rather than a preference — the picture is already
+        # the shape it is going to be, which is why it is fitted on the way in.
+        kw["image"] = _load_reference(reference, width, height)
+        kw["strength"] = strength
+        # Steps are spent proportionally to strength: diffusers starts the
+        # denoise partway along the schedule, so 30 steps at strength 0.4 is
+        # twelve actual steps and a mushy picture. Scale up so the number of
+        # steps that RUN is the number the model was tuned for.
+        steps = min(120, max(steps, int(round(steps / max(strength, 0.15)))))
+        kw["num_inference_steps"] = steps
+        log(f"[media] generating from a reference at strength {strength}, "
+            f"{width}x{height}, {steps} scheduled steps, model {model_key}")
+    else:
+        kw["height"] = height
+        kw["width"] = width
+        log(f"[media] generating {width}x{height}, {steps} steps, guidance {guidance}, model {model_key}")
     t0 = time.time()
-    kw = dict(prompt=prompt, num_inference_steps=steps, height=height, width=width, generator=gen)
     if spec.get("flux"):
         # FLUX has no negative prompt and reads `guidance_scale` differently
         # from SDXL; schnell is distilled for guidance 0.
@@ -513,13 +643,33 @@ def _render(args, model_key, enrich=True):
     image = pipe(**kw).images[0]
     dt = time.time() - t0
 
+    # ── An all-black frame is a FAILURE, and it used to report success ──────
+    #
+    # A NaN anywhere in the denoise decodes to a uniform black picture, and
+    # every layer above happily called that a finished image: `"ok": true`, a
+    # path, a seed, a plausible duration. The agent then told him it had made
+    # his picture. That is the worst shape a bug can take here — not a crash,
+    # an assurance.
+    #
+    # So the pixels are looked at before the result is written. A real photograph
+    # of a dark room still has variation in it; a NaN decode has none at all,
+    # which is what makes this cheap to test and safe against false positives.
+    stats = image.convert("L").getextrema()
+    if stats[1] <= 2:
+        return {"ok": False,
+                "error": "the sampler produced an all-black frame, which means a numeric overflow "
+                         "in the denoise rather than a picture. Nothing was saved. If this used a "
+                         "reference image, try again without one, or with a different model.",
+                "model": model_key, "seed": seed}
+
     dest = Path(args.out).expanduser()
     dest.parent.mkdir(parents=True, exist_ok=True)
     image.save(dest)
     return {"ok": True, "kind": "image", "path": str(dest), "model": model_key,
             "steps": steps, "width": width, "height": height, "guidance": guidance,
             "negative_applied": negative_used, "prompt_used": prompt,
-            "long_prompt": long_note, "seed": seed, "seconds": round(dt, 1)}
+            "long_prompt": long_note, "seed": seed, "seconds": round(dt, 1),
+            "reference": reference or None, "strength": strength if reference else None}
 
 
 def cmd_image(args):
@@ -670,6 +820,11 @@ def main():
     pi.add_argument("--no-enrich", dest="no_enrich", action="store_true",
                     help="Do not append photographic style to the prompt.")
     pi.add_argument("--seed", type=int, default=None)
+    pi.add_argument("--reference", default="",
+                    help="An image to start from instead of noise (image-to-image).")
+    pi.add_argument("--strength", type=float, default=None,
+                    help="How far to move from the reference: 0.25 a nudge, 0.55 default, "
+                         "0.85 loosely inspired by. Only meaningful with --reference.")
     pi.add_argument("--out", required=True)
     pi.set_defaults(func=cmd_image)
 

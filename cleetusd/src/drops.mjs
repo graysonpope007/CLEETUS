@@ -434,6 +434,16 @@ export function attachmentLine(d) {
   if (d.width && d.height) bits.push(`${d.width}x${d.height}`);
   if (d.seconds != null) bits.push(`${d.seconds}s`);
   let line = `[Grayson attached ${d.name} (${bits.join(", ")}). It is on disk at ${d.path} — use that path with read_file, the shell, ffmpeg or the editor.]`;
+  if (d.kind === "image") {
+    // The two features are only worth as much as the join between them. A
+    // picture he dropped is the best possible input to generate_image, and the
+    // agent will not think to use it that way unless the attachment says so:
+    // left to itself it describes the picture back in words, which is the lossy
+    // step the reference exists to remove.
+    line += ` [If he is asking for a picture LIKE this one, edited, restyled or in a different light, ` +
+            `pass this path to generate_image as its 'reference' rather than describing it back in words. ` +
+            `A description loses the exact colour, grain and composition; the file does not.]`;
+  }
   if (d.kind === "video" && d.vision) {
     line += ` [The picture attached with it is a single frame from ${d.frame_at === 0 ? "the start" : "one second in"}, not the whole clip: describe it as a frame and do not claim to have watched the video.]`;
   }
