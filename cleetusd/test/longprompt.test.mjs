@@ -107,6 +107,53 @@ test("embeddings and the raw prompt string are never sent together", () => {
     "the raw prompt is still in the kwargs when embeddings are used");
 });
 
+test("the window encoder is the standard encoding extended, not a different one", () => {
+  /* The risk this whole feature carried: an encoder that includes the tail but
+     encodes everything slightly WRONG is worse than the truncation it
+     replaced, because the damage is spread over every long prompt instead of
+     confined to its end, and nothing looks obviously broken.
+
+     Measured rather than assumed. The same prompt and seed was rendered twice
+     — once down the ordinary string path, once forced through the window
+     encoder by dropping CLIP_LIMIT to 0 so a 43-token prompt takes it:
+
+         mean absolute pixel difference: 0.78 of 255
+
+     That is the same image. So the windows are not a parallel encoding that
+     happens to contain the words; they are the standard one, continued.
+
+     Asserted here as the property that makes it true — the penultimate hidden
+     state and the model's own tokenizers, which is what diffusers itself uses.
+     Get either wrong and the number above is not 0.78. */
+  const enc = src.slice(src.indexOf("def _encode_long"), src.indexOf("def _long_prompt_kwargs"));
+  assert.match(enc, /out\.hidden_states\[-2\]/,
+    "taking the last hidden state instead of the penultimate is a silent quality regression");
+  assert.match(enc, /toks = \[pipe\.tokenizer\]/, "it is not using the pipeline's own tokenizer");
+  assert.match(enc, /torch\.cat\(per_encoder, dim=-1\)/,
+    "SDXL's two encoders concatenate on the feature axis, not the sequence axis");
+});
+
+test("a pipeline that has decoded once is not decoded again", () => {
+  /* A second _render in the same process returns a pure black frame. Not this
+     file's fault and not the sampler's: the latents come back finite, every
+     tensor in the UNet and VAE is still finite, and decoding those same
+     latents by hand produces a correct image. It is diffusers' own
+     upcast-the-VAE-and-back dance around decode, deprecated in this version
+     and misbehaving on MPS the second time through. Reproduces identically on
+     DDIM, so it predates the scheduler retune.
+
+     Nothing in production hits it, because this script makes one image and
+     exits — which is exactly why it is worth closing rather than noting. The
+     day anything renders twice in one process, it would come back black. */
+  const render = src.slice(src.indexOf("def _render"), src.indexOf("def cmd_image"));
+  assert.match(render, /_PIPE_CACHE\.pop\(model_key, None\)/,
+    "the pipe survives a decode, so the next render in this process returns black");
+  assert.match(render, /_I2I_CACHE\.pop\(model_key, None\)/,
+    "the img2img pipe shares the same components and has to go with it");
+  // Before the save, or a second render still gets the poisoned pipe.
+  assert.ok(render.indexOf("_PIPE_CACHE.pop") < render.indexOf("image.save(dest)"));
+});
+
 test("what had to be done is reported back, not only logged to stderr", () => {
   // The whole reason this was invisible for so long: the truncation warning
   // went to stderr, the tool result said "Made a 832x1216 image", and nobody

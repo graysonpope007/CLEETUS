@@ -706,6 +706,36 @@ def _render(args, model_key, enrich=True):
                          "reference image, try again without one, or with a different model.",
                 "model": model_key, "seed": seed}
 
+    # ── A pipeline that has decoded once will not decode again ──────────────
+    #
+    # Measured, and it is not this file's fault. A second _render in the same
+    # process returns a pure black frame, every time:
+    #
+    #   run 1  -> a picture
+    #   run 2  -> black
+    #   run 3  -> black
+    #
+    # It is NOT the model and it is NOT the sampler. Diagnosed by taking the
+    # stages apart on run 2: the latents come back finite with a normal absmax,
+    # every tensor in the UNet and the VAE is still finite, and decoding those
+    # same latents BY HAND produces a correct image. The fault is inside
+    # diffusers' own postprocess — the upcast-the-VAE-to-fp32-and-back dance it
+    # does around decode, which is deprecated in this version and misbehaves on
+    # MPS the second time through. It reproduces identically on DDIM, so it
+    # predates the scheduler retune.
+    #
+    # Nothing in production hits it today, because this script makes one image
+    # and exits. That is exactly what makes it worth handling rather than
+    # noting: the day anything renders twice in one process — a batch of
+    # variations, a contact sheet, a retry — it would come back black.
+    #
+    # So the pipe is dropped from the cache once it has produced a picture. A
+    # second render in the same process pays a few seconds to reload rather
+    # than returning nothing, and the weights are still in the OS page cache so
+    # it is cheaper than it sounds.
+    _PIPE_CACHE.pop(model_key, None)
+    _I2I_CACHE.pop(model_key, None)
+
     dest = Path(args.out).expanduser()
     dest.parent.mkdir(parents=True, exist_ok=True)
     image.save(dest)
