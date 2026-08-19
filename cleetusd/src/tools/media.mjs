@@ -35,7 +35,7 @@ const ABSENT =
 
 function stamp() {
   // No Date fields the model has to format — just enough to sort and not collide.
-  return new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
+  return new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14);
 }
 
 function py(args, ms) {

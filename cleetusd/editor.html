@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cleetus · Cutting Room</title>
+<!-- A built-in editor in the shape of the rest of Cleetus: one file, no build,
+     served by the daemon at /editor. The bin is the media agent's output
+     folder, so a picture you just generated is a clip you can cut a second
+     later. Export is one ffmpeg pass on this Mac (src/editor.mjs) — nothing
+     leaves the machine, same bargain as the generator that fed it. -->
+<style>
+:root{
+  --ground:#16111f;--panel:#1e1829;--screen:#120d1b;--line:#2a2337;
+  --amber:#f0b13f;--teal:#5f9e93;--coral:#e8412a;--cream:#efe6d8;
+  --dim:#9d94a6;--faint:#6a6376;--mauve:#4a3f5e;
+  --mono:'Chakra Petch',ui-monospace,Menlo,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--ground);color:var(--cream);font-family:var(--mono);
+  height:100vh;display:grid;grid-template-rows:auto 1fr auto;overflow:hidden}
+header{display:flex;align-items:center;gap:14px;padding:9px 14px;border-bottom:1px solid var(--line)}
+header h1{font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);font-weight:600}
+header .sub{font-size:.64rem;color:var(--faint);letter-spacing:.06em}
+header .grow{flex:1}
+button{font-family:var(--mono);cursor:pointer;border:1px solid var(--mauve);background:var(--panel);
+  color:var(--cream);border-radius:4px;padding:5px 11px;font-size:.68rem;letter-spacing:.05em}
+button:hover{border-color:var(--teal)}
+button.primary{background:var(--teal);border-color:var(--teal);color:#0c1614;font-weight:600}
+button.primary:disabled{opacity:.4;cursor:default}
+button.danger:hover{border-color:var(--coral);color:var(--coral)}
+.main{display:grid;grid-template-columns:210px 1fr 240px;overflow:hidden}
+.col{overflow-y:auto;padding:10px}
+.col.bin{border-right:1px solid var(--line)}
+.col.insp{border-left:1px solid var(--line)}
+.label{font-size:.6rem;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);margin:2px 0 8px}
+.bin-item{display:flex;gap:8px;align-items:center;padding:6px;border:1px solid transparent;border-radius:5px;cursor:pointer}
+.bin-item:hover{border-color:var(--mauve);background:var(--panel)}
+.bin-item .thumb{width:44px;height:44px;border-radius:4px;object-fit:cover;background:#000;flex:0 0 auto}
+.bin-item .meta{min-width:0}
+.bin-item .n{font-size:.62rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream)}
+.bin-item .k{font-size:.55rem;color:var(--faint);text-transform:uppercase;letter-spacing:.08em}
+.stage{display:flex;flex-direction:column;overflow:hidden;background:var(--screen)}
+.preview{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;min-height:0}
+.preview video,.preview img{max-width:100%;max-height:100%;display:none}
+.preview .empty{color:var(--faint);font-size:.7rem;letter-spacing:.06em;text-align:center;padding:20px}
+.transport{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--line)}
+.transport .t{font-size:.62rem;color:var(--dim);font-variant-numeric:tabular-nums}
+.insp .row{margin-bottom:12px}
+.insp .row label{display:block;font-size:.58rem;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);margin-bottom:4px}
+.insp input[type=range]{width:100%}
+.insp input[type=number]{width:100%;background:var(--screen);border:1px solid var(--line);color:var(--cream);
+  border-radius:4px;padding:4px 6px;font-family:var(--mono);font-size:.7rem}
+.insp .val{font-size:.62rem;color:var(--teal);font-variant-numeric:tabular-nums}
+.insp .hint{font-size:.58rem;color:var(--faint);line-height:1.5}
+/* timeline */
+.timeline{border-top:1px solid var(--line);background:var(--panel);padding:9px 12px;height:132px;overflow-x:auto;overflow-y:hidden}
+.track{display:flex;gap:4px;align-items:stretch;min-height:70px}
+.clip{position:relative;min-width:60px;border:1px solid var(--mauve);border-radius:5px;background:var(--screen);
+  display:flex;flex-direction:column;justify-content:flex-end;padding:5px;cursor:pointer;flex:0 0 auto;overflow:hidden}
+.clip.sel{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset}
+.clip .cn{font-size:.55rem;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:1}
+.clip .cd{font-size:.52rem;color:var(--teal);z-index:1;font-variant-numeric:tabular-nums}
+.clip .bg{position:absolute;inset:0;opacity:.32;object-fit:cover;width:100%;height:100%}
+.clip .kbadge{position:absolute;top:4px;right:5px;font-size:.5rem;color:var(--faint);text-transform:uppercase;z-index:1}
+.tl-empty{color:var(--faint);font-size:.64rem;letter-spacing:.05em;padding:24px 6px}
+.status{padding:6px 14px;border-top:1px solid var(--line);font-size:.62rem;color:var(--dim);min-height:28px;display:flex;align-items:center;gap:8px}
+.status.err{color:var(--coral)}
+.status.ok{color:var(--teal)}
+a.dl{color:var(--amber);text-decoration:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Cutting Room</h1>
+  <span class="sub" id="proj-info">local · ffmpeg · nothing leaves this Mac</span>
+  <span class="grow"></span>
+  <button id="refresh">↻ bin</button>
+  <button id="add-black">+ title</button>
+  <button class="danger" id="clear">clear</button>
+  <button class="primary" id="export" disabled>Export MP4</button>
+</header>
+
+<div class="main">
+  <div class="col bin">
+    <div class="label">Media bin</div>
+    <div id="bin"></div>
+  </div>
+
+  <div class="stage">
+    <div class="preview" id="preview">
+      <div class="empty" id="prev-empty">Add clips from the bin, then press play.<br>Generated images and videos show up here automatically.</div>
+      <video id="pv-video" playsinline muted></video>
+      <img id="pv-image" alt="">
+    </div>
+    <div class="transport">
+      <button id="play">▶ Play</button>
+      <button id="stop">■</button>
+      <span class="t" id="clock">0.0s / 0.0s</span>
+      <span class="grow" style="flex:1"></span>
+      <span class="t" id="dims">—</span>
+    </div>
+  </div>
+
+  <div class="col insp">
+    <div class="label">Inspector</div>
+    <div id="insp-body"><div class="hint">Select a clip on the timeline to trim it.</div></div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:14px 0">
+    <div class="label">Output</div>
+    <div class="row">
+      <label>Size</label>
+      <select id="out-size" style="width:100%;background:var(--screen);border:1px solid var(--line);color:var(--cream);border-radius:4px;padding:4px;font-family:var(--mono);font-size:.7rem">
+        <option value="1024x1024">1024 × 1024 (square)</option>
+        <option value="1280x720">1280 × 720 (16:9)</option>
+        <option value="1080x1920">1080 × 1920 (vertical)</option>
+        <option value="1920x1080">1920 × 1080 (16:9 HD)</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>FPS</label>
+      <input type="number" id="out-fps" value="30" min="1" max="60">
+    </div>
+  </div>
+</div>
+
+<div class="timeline" id="timeline">
+  <div class="track" id="track"><div class="tl-empty">Timeline empty — click bin items to add clips.</div></div>
+</div>
+<div class="status" id="status">Ready.</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const asset = p => '/editor/asset?path=' + encodeURIComponent(p);
+let BIN = [];
+let CLIPS = [];       // {id, name, path, kind, duration, inPoint, outPoint, srcDur}
+let SEL = null;       // selected clip id
+let CID = 1;
+
+function setStatus(msg, cls='') { const s = $('status'); s.textContent = msg; s.className = 'status ' + cls; }
+
+async function loadBin() {
+  setStatus('Loading bin…');
+  try {
+    const r = await fetch('/editor/media').then(r => r.json());
+    BIN = r.items || [];
+    renderBin();
+    setStatus(BIN.length ? `${BIN.length} item(s) in the bin.` : 'Bin is empty — generate an image or video first.', BIN.length ? 'ok' : '');
+  } catch (e) { setStatus('Could not load the bin: ' + e.message, 'err'); }
+}
+
+function renderBin() {
+  const host = $('bin'); host.innerHTML = '';
+  if (!BIN.length) { host.innerHTML = '<div class="hint" style="color:var(--faint);font-size:.6rem">Nothing yet. Ask Cleetus to generate an image or video and it lands here.</div>'; return; }
+  for (const m of BIN) {
+    const el = document.createElement('div');
+    el.className = 'bin-item';
+    const thumb = m.kind === 'image'
+      ? `<img class="thumb" src="${asset(m.path)}" alt="">`
+      : `<video class="thumb" src="${asset(m.path)}#t=0.1" muted preload="metadata"></video>`;
+    el.innerHTML = `${thumb}<div class="meta"><div class="n">${m.name}</div><div class="k">${m.kind} · ${(m.bytes/1024).toFixed(0)}KB</div></div>`;
+    el.onclick = () => addClip(m);
+    host.appendChild(el);
+  }
+}
+
+async function addClip(m) {
+  const clip = { id: CID++, name: m.name, path: m.path, kind: m.kind,
+                 duration: 3, inPoint: 0, outPoint: null, srcDur: null };
+  if (m.kind === 'video') {
+    // Ask the backend for the true duration so trim bounds are real.
+    try {
+      const r = await fetch('/editor/probe?path=' + encodeURIComponent(m.path)).then(r => r.json());
+      if (r.ok && r.duration) { clip.srcDur = r.duration; clip.outPoint = r.duration; clip.duration = r.duration; }
+    } catch {}
+  }
+  CLIPS.push(clip);
+  SEL = clip.id;
+  renderTimeline(); renderInspector();
+  setStatus(`Added ${m.name}. ${CLIPS.length} clip(s) on the timeline.`, 'ok');
+}
+
+function totalDuration() {
+  return CLIPS.reduce((s, c) => s + clipLen(c), 0);
+}
+function clipLen(c) {
+  if (c.kind === 'image') return c.duration;
+  const out = c.outPoint != null ? c.outPoint : (c.srcDur || c.duration);
+  return Math.max(0.05, out - c.inPoint);
+}
+
+function renderTimeline() {
+  const track = $('track');
+  $('export').disabled = CLIPS.length === 0;
+  if (!CLIPS.length) { track.innerHTML = '<div class="tl-empty">Timeline empty — click bin items to add clips.</div>'; return; }
+  track.innerHTML = '';
+  for (const c of CLIPS) {
+    const el = document.createElement('div');
+    el.className = 'clip' + (c.id === SEL ? ' sel' : '');
+    const len = clipLen(c);
+    el.style.width = Math.max(60, len * 26) + 'px';
+    const bg = c.kind === 'image'
+      ? `<img class="bg" src="${asset(c.path)}">`
+      : `<video class="bg" src="${asset(c.path)}#t=0.1" muted preload="metadata"></video>`;
+    el.innerHTML = `${bg}<span class="kbadge">${c.kind}</span><span class="cn">${c.name}</span><span class="cd">${len.toFixed(1)}s</span>`;
+    el.onclick = () => { SEL = c.id; renderTimeline(); renderInspector(); };
+    track.appendChild(el);
+  }
+  $('clock').textContent = `0.0s / ${totalDuration().toFixed(1)}s`;
+}
+
+function renderInspector() {
+  const host = $('insp-body');
+  const c = CLIPS.find(x => x.id === SEL);
+  if (!c) { host.innerHTML = '<div class="hint">Select a clip on the timeline to trim it.</div>'; return; }
+  const idx = CLIPS.indexOf(c);
+  if (c.kind === 'image') {
+    host.innerHTML = `
+      <div class="row"><label>Still · duration</label>
+        <input type="number" id="i-dur" value="${c.duration}" min="0.2" max="60" step="0.1">
+        <div class="hint">Seconds this image is on screen.</div></div>`;
+    $('i-dur').oninput = e => { c.duration = Math.max(0.2, +e.target.value || 0.2); renderTimeline(); };
+  } else {
+    const dur = c.srcDur || c.duration;
+    host.innerHTML = `
+      <div class="row"><label>Trim in</label>
+        <input type="range" id="i-in" min="0" max="${dur}" step="0.05" value="${c.inPoint}">
+        <span class="val" id="v-in">${c.inPoint.toFixed(2)}s</span></div>
+      <div class="row"><label>Trim out</label>
+        <input type="range" id="i-out" min="0" max="${dur}" step="0.05" value="${c.outPoint ?? dur}">
+        <span class="val" id="v-out">${(c.outPoint ?? dur).toFixed(2)}s</span></div>
+      <div class="hint">Source is ${dur.toFixed(2)}s. Kept: <span id="v-keep">${clipLen(c).toFixed(2)}</span>s.</div>`;
+    const upd = () => {
+      let iin = +$('i-in').value, iout = +$('i-out').value;
+      if (iout <= iin) iout = Math.min(dur, iin + 0.1);
+      c.inPoint = iin; c.outPoint = iout;
+      $('v-in').textContent = iin.toFixed(2) + 's';
+      $('v-out').textContent = iout.toFixed(2) + 's';
+      $('v-keep').textContent = clipLen(c).toFixed(2);
+      renderTimeline();
+    };
+    $('i-in').oninput = upd; $('i-out').oninput = upd;
+  }
+  const ctrl = document.createElement('div'); ctrl.className = 'row';
+  ctrl.innerHTML = `<div style="display:flex;gap:6px">
+      <button id="mv-l" ${idx===0?'disabled':''}>◀ move</button>
+      <button id="mv-r" ${idx===CLIPS.length-1?'disabled':''}>move ▶</button>
+      <button class="danger" id="del">delete</button></div>`;
+  host.appendChild(ctrl);
+  $('del').onclick = () => { CLIPS = CLIPS.filter(x => x.id !== c.id); SEL = null; renderTimeline(); renderInspector(); };
+  $('mv-l').onclick = () => { if (idx>0){ [CLIPS[idx-1],CLIPS[idx]]=[CLIPS[idx],CLIPS[idx-1]]; renderTimeline(); renderInspector(); } };
+  $('mv-r').onclick = () => { if (idx<CLIPS.length-1){ [CLIPS[idx+1],CLIPS[idx]]=[CLIPS[idx],CLIPS[idx+1]]; renderTimeline(); renderInspector(); } };
+}
+
+// ── Preview: step through clips in the pane ──────────────────────────────────
+let playing = false, playIdx = 0, imgTimer = null, elapsedBase = 0;
+const pvVideo = $('pv-video'), pvImage = $('pv-image');
+function showEl(which) {
+  $('prev-empty').style.display = 'none';
+  pvVideo.style.display = which === 'video' ? 'block' : 'none';
+  pvImage.style.display = which === 'image' ? 'block' : 'none';
+}
+function stopPreview() {
+  playing = false; pvVideo.pause(); clearTimeout(imgTimer);
+  $('play').textContent = '▶ Play';
+}
+async function playFrom(i) {
+  if (i >= CLIPS.length) { stopPreview(); $('clock').textContent = `${totalDuration().toFixed(1)}s / ${totalDuration().toFixed(1)}s`; return; }
+  playIdx = i;
+  elapsedBase = CLIPS.slice(0, i).reduce((s, c) => s + clipLen(c), 0);
+  const c = CLIPS[i];
+  if (c.kind === 'image') {
+    showEl('image'); pvImage.src = asset(c.path);
+    $('clock').textContent = `${elapsedBase.toFixed(1)}s / ${totalDuration().toFixed(1)}s`;
+    imgTimer = setTimeout(() => playing && playFrom(i + 1), c.duration * 1000);
+  } else {
+    showEl('video');
+    pvVideo.src = asset(c.path);
+    pvVideo.currentTime = c.inPoint || 0;
+    const out = c.outPoint ?? (c.srcDur || 999);
+    await pvVideo.play().catch(()=>{});
+    pvVideo.ontimeupdate = () => {
+      $('clock').textContent = `${(elapsedBase + (pvVideo.currentTime - (c.inPoint||0))).toFixed(1)}s / ${totalDuration().toFixed(1)}s`;
+      if (pvVideo.currentTime >= out) { pvVideo.ontimeupdate = null; if (playing) playFrom(i + 1); }
+    };
+  }
+}
+$('play').onclick = () => {
+  if (!CLIPS.length) return;
+  if (playing) { stopPreview(); return; }
+  playing = true; $('play').textContent = '❚❚ Pause'; playFrom(0);
+};
+$('stop').onclick = () => { stopPreview(); playFrom(0); stopPreview(); };
+
+// ── Export ───────────────────────────────────────────────────────────────────
+$('export').onclick = async () => {
+  if (!CLIPS.length) return;
+  const [w, h] = $('out-size').value.split('x').map(Number);
+  const fps = Math.max(1, Math.min(60, +$('out-fps').value || 30));
+  const timeline = { width: w, height: h, fps, clips: CLIPS.map(c => ({
+    asset: c.path, kind: c.kind, duration: c.duration, inPoint: c.inPoint, outPoint: c.outPoint,
+  })) };
+  $('export').disabled = true;
+  setStatus(`Rendering ${CLIPS.length} clip(s) at ${w}×${h}…`);
+  try {
+    const r = await fetch('/editor/export', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(timeline) }).then(r => r.json());
+    if (r.ok) {
+      setStatus('', 'ok');
+      $('status').innerHTML = `Exported ${r.clips} clip(s) → ${r.width}×${r.height} · <a class="dl" href="${asset(r.path)}" download>${r.name}</a> — also in the bin.`;
+      loadBin();
+    } else {
+      setStatus('Export failed: ' + r.error, 'err');
+    }
+  } catch (e) { setStatus('Export failed: ' + e.message, 'err'); }
+  $('export').disabled = false;
+};
+
+$('refresh').onclick = loadBin;
+$('clear').onclick = () => { CLIPS = []; SEL = null; renderTimeline(); renderInspector(); stopPreview(); $('prev-empty').style.display=''; pvVideo.style.display='none'; pvImage.style.display='none'; setStatus('Cleared.'); };
+$('add-black').onclick = () => {
+  // A titled black card: a still with no image, useful as a lead-in/out.
+  CLIPS.push({ id: CID++, name: 'black', path: '__black__', kind: 'image', duration: 2, inPoint: 0, outPoint: null, srcDur: null });
+  renderTimeline();
+};
+$('out-size').onchange = () => { const [w,h]=$('out-size').value.split('x'); $('dims').textContent = `${w}×${h}`; };
+$('dims').textContent = '1024×1024';
+
+loadBin();
+</script>
+</body>
+</html>

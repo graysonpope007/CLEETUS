@@ -20,6 +20,9 @@ import { accessReport } from "./access.mjs";
 import { litraRaw } from "./tools/devices.mjs";
 import { runDoctor } from "./doctor.mjs";
 import { repoIndex } from "./repos.mjs";
+import { listMedia, probeDuration, safeAsset, exportTimeline, kindOf, MEDIA_DIR } from "./editor.mjs";
+import { createReadStream, existsSync } from "node:fs";
+import { extname } from "node:path";
 import * as keyring from "./keyring.mjs";
 import * as convos from "./conversations.mjs";
 
@@ -170,7 +173,9 @@ async function handle(req, res) {
   // to the bearer gate below like every other request.
   const BROWSER_ROUTES = ["/", "/index.html", "/skills", "/runs", "/chat/stream",
                           "/airpad/state", "/airpad/stream.mjpg",
-                          "/light", "/doctor", "/repos", "/secrets", "/conversations"];
+                          "/light", "/doctor", "/repos", "/secrets", "/conversations",
+                          "/editor", "/editor/media", "/editor/asset", "/editor/probe",
+                          "/editor/export"];
   const localBrowser = isLocalBrowser(req) &&
     (BROWSER_ROUTES.includes(url.pathname) || url.pathname.startsWith("/conversations/"));
 
@@ -219,6 +224,47 @@ async function handle(req, res) {
   if (url.pathname === "/" || url.pathname === "/index.html") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     return res.end(DASHBOARD);
+  }
+
+  // ── The editor ──
+  // A built-in cutting room over the media agent's output folder. The page is a
+  // single file read from disk (like reach.html on the web side), and it talks
+  // only to these same-origin routes; the ffmpeg export lives in editor.mjs.
+  // Every asset path from the browser is fenced to the media folder before it
+  // reaches disk or ffmpeg — see safeAsset — because here a path is a capability.
+  if (url.pathname === "/editor") {
+    const file = join(CONFIG.home, "cleetusd", "editor.html");
+    if (!existsSync(file)) return json(res, { ok: false, error: "editor.html missing" }, 404);
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    return res.end(await readFile(file, "utf8"));
+  }
+  if (url.pathname === "/editor/media") {
+    return json(res, { ok: true, items: await listMedia() });
+  }
+  if (url.pathname === "/editor/probe") {
+    const abs = safeAsset(url.searchParams.get("path"));
+    if (!abs) return json(res, { ok: false, error: "no such asset" }, 404);
+    return json(res, { ok: true, duration: await probeDuration(abs) });
+  }
+  if (url.pathname === "/editor/asset") {
+    const abs = safeAsset(url.searchParams.get("path"));
+    if (!abs) return json(res, { ok: false, error: "asset outside media folder" }, 403);
+    const TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+      ".webp": "image/webp", ".gif": "image/gif", ".mp4": "video/mp4", ".mov": "video/quicktime",
+      ".m4v": "video/mp4", ".webm": "video/webm" };
+    res.writeHead(200, {
+      "Content-Type": TYPES[extname(abs).toLowerCase()] || "application/octet-stream",
+      "Cache-Control": "no-store",
+    });
+    // Stream rather than buffer: a video clip can be tens of MB and the preview
+    // pane seeks into it, so handing it as a file stream is both lighter and
+    // what lets the <video> element range-request.
+    return createReadStream(abs).on("error", () => res.end()).pipe(res);
+  }
+  if (url.pathname === "/editor/export" && req.method === "POST") {
+    const timeline = await readBody(req);
+    const out = join(MEDIA_DIR, `cut_${new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14)}.mp4`);
+    return json(res, await exportTimeline(timeline, out));
   }
 
   // ── The air trackpad, proxied ──
