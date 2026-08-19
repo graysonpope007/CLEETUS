@@ -292,6 +292,77 @@ async function posterFrame(abs, seconds) {
   }
 }
 
+/* ── What was SAID in it ──────────────────────────────────────────────────────
+   This file used to tell the model, about any audio he dropped: "nothing on
+   this machine transcribes it yet — say so rather than guessing what is in
+   it." That was written without looking. whisper.cpp is installed, and three
+   models are already sitting in ~/.cache/whisper-models including
+   large-v3-turbo, which did a five-second clip in 1.4 seconds and got the
+   money and the time right:
+
+       "The venue wants a $1,500 deposit by Friday, and the load-in is at 4.30."
+
+   A claim about what the machine cannot do is worth checking before it is
+   written down, because nobody re-checks it afterwards — it just quietly caps
+   what the assistant is willing to try.
+
+   VIDEO GETS THIS TOO, and that is the bigger half. A dropped clip already
+   yields one frame to look at; the soundtrack is usually where the actual
+   content is. A voice memo, a rehearsal, somebody explaining something on a
+   call. */
+const WHISPER_MODELS = [
+  // Best first. Turbo is large-quality at roughly three times real time here.
+  "ggml-large-v3-turbo.bin",
+  "ggml-small.en.bin",
+  "ggml-base.en.bin",
+];
+
+function whisperModel() {
+  for (const name of WHISPER_MODELS) {
+    const p = `${CONFIG.home}/.cache/whisper-models/${name}`;
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+const WHISPER = () => bin("whisper-cli", "/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli");
+
+/**
+ * Speech in a file, as text. Null when there is nothing to hear or no way to
+ * hear it — never a guess, and never an empty string dressed up as silence.
+ */
+async function transcribe(abs, seconds) {
+  const model = whisperModel();
+  if (!model || !existsSync(WHISPER())) return { error: "whisper is not installed on this Mac" };
+
+  const wav = `${abs}.16k.wav`;
+  try {
+    // whisper.cpp wants 16kHz mono PCM and will refuse anything else, which is
+    // what the first attempt at this ran into. -vn drops the video stream so a
+    // clip costs no more than its soundtrack.
+    await run(FFMPEG(), ["-v", "error", "-y", "-i", abs, "-vn",
+      "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], { timeout: 300_000 });
+  } catch {
+    await unlink(wav).catch(() => {});
+    // Overwhelmingly this is a video with no audio track at all, which is a
+    // fact about the file rather than a failure.
+    return { error: "no audio track in it" };
+  }
+
+  try {
+    // Roughly 3x real time on this machine, so the ceiling is generous and
+    // scaled to the clip rather than fixed.
+    const budget = Math.min(20 * 60_000, Math.max(120_000, (seconds || 60) * 1500));
+    const { stdout } = await run(WHISPER(), ["-m", model, "-f", wav, "-nt", "-np"],
+      { timeout: budget, maxBuffer: 20_000_000 });
+    const text = String(stdout || "").trim();
+    return text ? { text, model: basename(model) } : { error: "no speech in it" };
+  } catch (e) {
+    return { error: `transcription failed: ${String(e.message || e).split("\n")[0].slice(0, 120)}` };
+  } finally {
+    await unlink(wav).catch(() => {});
+  }
+}
+
 /**
  * The words inside a document.
  *
@@ -376,13 +447,32 @@ export async function describe(abs, { bytes, mime, original } = {}) {
     d.vision = await posterFrame(abs, info?.seconds);
     d.frame_at = d.vision ? (info?.seconds && info.seconds < 1.5 ? 0 : 1) : null;
     if (!d.vision) d.note = "no frame could be pulled out of this clip, but the file is on disk";
+    // The soundtrack is usually where the content actually is. One frame shows
+    // what it looks like; this is what was said in it.
+    if (info?.audio_codec) {
+      const heard = await transcribe(abs, info?.seconds);
+      if (heard.text) {
+        d.text = heard.text.length > MAX_INLINE_TEXT
+          ? `${heard.text.slice(0, MAX_INLINE_TEXT)}\n\n[…truncated at ${MAX_INLINE_TEXT} of ${heard.text.length} characters.]`
+          : heard.text;
+        d.transcribed_by = heard.model;
+      }
+    }
     return d;
   }
 
   if (kind === "audio") {
     const info = await probe(abs);
     if (info) d.seconds = info.seconds;
-    d.note = "audio: on disk and playable, but nothing on this machine transcribes it yet — say so rather than guessing what is in it";
+    const heard = await transcribe(abs, d.seconds);
+    if (heard.text) {
+      d.text = heard.text.length > MAX_INLINE_TEXT
+        ? `${heard.text.slice(0, MAX_INLINE_TEXT)}\n\n[…truncated at ${MAX_INLINE_TEXT} of ${heard.text.length} characters. The audio is at ${abs}.]`
+        : heard.text;
+      d.transcribed_by = heard.model;
+    } else {
+      d.note = `audio: on disk and playable, but ${heard.error}. Do not guess what is in it.`;
+    }
     return d;
   }
 
@@ -448,7 +538,12 @@ export function attachmentLine(d) {
     line += ` [The picture attached with it is a single frame from ${d.frame_at === 0 ? "the start" : "one second in"}, not the whole clip: describe it as a frame and do not claim to have watched the video.]`;
   }
   if (d.note) line += ` [${d.note}]`;
-  if (d.text) line += `\n\n--- contents of ${d.name} ---\n${d.text}\n--- end of ${d.name} ---`;
+  if (d.text) {
+    const what = d.transcribed_by
+      ? `what is said in ${d.name} (transcribed on this Mac with ${d.transcribed_by})`
+      : `contents of ${d.name}`;
+    line += `\n\n--- ${what} ---\n${d.text}\n--- end of ${d.name} ---`;
+  }
   return line;
 }
 

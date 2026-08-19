@@ -261,3 +261,42 @@ test("the drop overlay cannot swallow the drop", () => {
   const veil = uiSrc.slice(uiSrc.indexOf(".dropveil{"), uiSrc.indexOf(".dropveil.on"));
   assert.match(veil, /pointer-events:none/);
 });
+
+test("a dropped voice memo comes back as words", { skip: !existsSync("/opt/homebrew/bin/whisper-cli") && "whisper.cpp is not on this machine" }, async () => {
+  /* This file used to tell the model, about any audio: "nothing on this
+     machine transcribes it yet". That was written without looking. whisper.cpp
+     was installed and three models were sitting in ~/.cache/whisper-models.
+
+     A claim about what the machine CANNOT do is worth checking before writing
+     it down, because nobody re-checks it afterwards. It just quietly caps what
+     the assistant is willing to try. */
+  const dir = await tmp();
+  const wav = join(dir, "memo.wav");
+  // Real speech, synthesised locally, so the assertion is about words and not
+  // about the plumbing returning something.
+  execFileSync("/usr/bin/say", ["-o", wav, "--data-format=LEI16@16000",
+    "The load in is at four thirty"], { timeout: 60_000 });
+
+  const d = await describe(wav);
+  assert.equal(d.kind, "audio");
+  assert.ok(d.text, `no transcript: ${d.note}`);
+  assert.match(d.text, /load.?in/i);
+  assert.match(d.text, /four thirty|4.?30/i);
+  assert.ok(d.transcribed_by, "nothing recorded which model heard it");
+});
+
+test("a silent video claims no transcript, and a soundtrack is transcribed", async function (t) {
+  const ffmpeg = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"].find((p) => existsSync(p));
+  if (!ffmpeg) return t.skip("ffmpeg is not on this machine");
+  const dir = await tmp();
+  const silent = join(dir, "silent.mp4");
+  execFileSync(ffmpeg, ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=10",
+    "-t", "2", "-pix_fmt", "yuv420p", silent]);
+
+  const d = await describe(silent);
+  // The failure that matters: inventing a transcript for a clip with no audio.
+  // A frame it can genuinely see is fine; words it cannot hear are not.
+  assert.equal(d.audio_codec, null);
+  assert.equal(d.text, undefined, "a silent clip came back with something it claimed was said in it");
+  assert.ok(d.vision, "the frame is still expected");
+});
