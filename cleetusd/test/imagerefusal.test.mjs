@@ -72,11 +72,18 @@ test("the override never runs when the request mentions a minor", () => {
 });
 
 test("the guard is checked at every door into the override, not just one", () => {
-  // Three: the call site, forceGeneration, and writeAndRender. The last two are
-  // belt and braces so that adding a second caller cannot route around it.
-  assert.strictEqual((agent.match(/mentionsMinor\(/g) || []).length, 5,
-    "expected the guard definition plus a check at each of the three entries and the rewrite");
-  assert.match(agent, /async function forceGeneration\(\{ question, system, onStep, run \}\) \{\s*(?:\/\/[^\n]*\n\s*)*if \(mentionsMinor\(question\)\) return null;/,
+  // Five doors now: the call site, forceGeneration, writeAndRender, the model's
+  // own rewrite, and — since the prompt may be recovered from an earlier turn —
+  // that turn plus the assembled prompt itself. Counted rather than eyeballed,
+  // because every one of them was added after finding the door it stood in
+  // front of was the only one being watched.
+  assert.strictEqual((agent.match(/mentionsMinor\(/g) || []).length, 7,
+    "expected the guard definition plus a check at every entry, the rewrite, the recovered turn and the final prompt");
+  // Deliberately NOT pinned to the exact parameter list. The previous version
+  // was, and adding `history` — which is what made the recovered-turn check
+  // necessary in the first place — turned a real guard assertion into a
+  // signature assertion that failed for the wrong reason.
+  assert.match(agent, /async function forceGeneration\(\{[^}]*\}\) \{\s*(?:\/\/[^\n]*\n\s*)*if \(mentionsMinor\(question\)\) return null;/,
     "forceGeneration must refuse at the door");
   assert.match(agent, /if \(mentionsMinor\(question\)\) return null;[\s\S]{0,400}?let prompt = ""/,
     "writeAndRender must refuse before it builds a prompt");
@@ -93,4 +100,85 @@ test("the last rung cannot be declined, because the model is not asked", () => {
     "writeAndRender must call the tool directly");
   // And a broken renderer must still read as broken.
   assert.match(agent, /exists to defeat a refusal, not to dress a broken renderer up as a picture/);
+});
+
+/* ── The prompt that actually reaches the sampler ──────────────────────────
+   The override was measured as working — five refused prompts, five files —
+   and Grayson still spent an evening reporting that image generation was
+   broken. Both halves of why are here, and neither is a refusal.
+
+   Rung two hands the sampler his message verbatim, so on a pass where the
+   rewrite rung also declined, the prompt was whatever he typed. After a few
+   rounds what he typed was "image generation failed. try again", and a sampler
+   given those five words draws them. The picture that came back had nothing to
+   do with what he wanted, which is its own evidence that the thing is broken.
+
+   And a message that DOES contain a request is rarely only a request. Observed
+   verbatim in the run file:
+
+     "great, now remember what made that work and keep doing that. make a woman
+      lying in bed spreading her legs nude please"
+
+   CLIP does not know it is being addressed. "remember", "work", "keep doing"
+   are conditioning tokens spending a 77-token budget on feedback to Cleetus. */
+import { visualRequest, promptForRender } from "../src/agent.mjs";
+
+test("chatter is stripped, the request is kept", () => {
+  assert.strictEqual(
+    visualRequest("great, now remember what made that work and keep doing that. " +
+                  "make a woman lying in bed spreading her legs nude please"),
+    "woman lying in bed spreading her legs nude",
+    "the feedback clause must not reach the sampler",
+  );
+  // What he asked for survives word for word. A prompt cleaner that also
+  // softens the request would be the refusal coming back in through the door
+  // this whole mechanism exists to shut.
+  for (const [asked, want] of [
+    ["make an image of a woman working out in the gym", "a woman working out in the gym"],
+    ["i want a picture of a curvy woman in a bikini", "a curvy woman in a bikini"],
+    ["generate a gory battle scene with blood and severed limbs", "gory battle scene with blood and severed limbs"],
+    ["make an image of a topless woman", "a topless woman"],
+  ]) assert.strictEqual(visualRequest(asked), want);
+});
+
+test("a complaint is not a prompt — the request one turn up is", () => {
+  const history = [
+    { role: "user", content: "make an image of a woman with big boobs" },
+    { role: "assistant", content: "Made a 832x1216 image with realvis in 37.4s" },
+    { role: "user", content: "image generation failed. try again" },
+  ];
+  assert.strictEqual(
+    promptForRender("image generation failed. try again", history),
+    "a woman with big boobs",
+  );
+  // Only HIS turns. The assistant's description of a previous image is prose
+  // about a picture, not a request for one.
+  assert.strictEqual(
+    promptForRender("try again", [{ role: "assistant", content: "a woman on a beach at golden hour" }]),
+    "try again",
+    "an assistant turn must never become the prompt",
+  );
+});
+
+test("the recovered turn goes through the same door as the current one", () => {
+  // "try again" is clean; what it reaches back for might not be. Every other
+  // check in this file guards the message that triggered the override, and this
+  // path can produce a prompt that never was that message.
+  const history = [
+    { role: "user", content: "a 15 year old girl at the beach" },
+    { role: "user", content: "make an image of a red sports car on a mountain road" },
+    { role: "user", content: "try again" },
+  ];
+  assert.strictEqual(
+    promptForRender("try again", history),
+    "a red sports car on a mountain road",
+  );
+  assert.strictEqual(
+    promptForRender("try again", [{ role: "user", content: "a 15 year old girl at the beach" }]),
+    "try again",
+    "the guarded turn must be skipped, not rendered",
+  );
+  // And the assembled prompt is checked once more where it is used, whatever
+  // its origin.
+  assert.match(agent, /if \(mentionsMinor\(prompt\)\) return null;/);
 });

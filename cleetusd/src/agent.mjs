@@ -413,7 +413,7 @@ const WANTS_VIDEO = /\b(video|clip|animation|animate|moving|footage|reel)\b/i;
  * Returns null rather than throwing if it still will not play, so the original
  * answer survives and Grayson sees the refusal instead of an empty bubble.
  */
-async function forceGeneration({ question, system, onStep, run }) {
+async function forceGeneration({ question, system, history = [], onStep, run }) {
   // Checked at the door as well as at the call site. The call site is the only
   // caller today; this is here so that adding a second one cannot quietly route
   // around the single line that is not negotiable.
@@ -465,7 +465,116 @@ async function forceGeneration({ question, system, onStep, run }) {
     const lastTool = [...messages].reverse().find((m) => m.role === "tool");
     return { answer: String(lastTool?.content || "").trim(), used };
   }
-  return writeAndRender({ question, onStep, run });
+  return writeAndRender({ question, history, onStep, run });
+}
+
+/* Sentences that are about the MACHINE, not about the picture.
+ *
+ * Rung two feeds Grayson's message to SDXL verbatim, and the message he sends
+ * after a few failures is not a clean request. Observed, and it is the whole
+ * reason this exists — the prompt that actually reached the sampler was:
+ *
+ *   "great, now remember what made that work and keep doing that. make a woman
+ *    lying in bed spreading her legs nude please"
+ *
+ * The first clause is feedback to Cleetus. CLIP has no idea it is being
+ * addressed: "remember", "work", "keep doing" are all conditioning tokens
+ * competing with the request, and 77 of them is the entire budget. Every round
+ * of "try again, it didn't work" makes the next picture worse, which is a loop
+ * that reinforces the belief that the generator is broken.
+ *
+ * Anchoring the old strip at ^ could not catch this — the request was in the
+ * SECOND sentence. */
+const META_SENTENCE =
+  /\b(try again|again please|didn'?t work|did not work|does ?n'?t work|not work(ing)?|is broken|breaking|broke|fix (it|that|this)|fixed|remember|keep doing|do that again|still (is ?n'?t|not|no)|failed|failing|generation|generator|great|thanks|thank you|nice|perfect|ok(ay)?|yes|no you|you are supposed|i asked)\b/i;
+
+/* A sentence that is describing something to draw. Needs a subject: a bare
+ * "make it warmer" is a tweak, not a standalone prompt, and there is nothing
+ * here that can resolve "it". */
+const HAS_SUBJECT =
+  /\b(woman|man|girl|guy|person|people|portrait|model|body|figure|face|dog|cat|animal|car|house|room|bed|beach|forest|mountain|city|street|sky|landscape|scene|battle|logo|poster|cover|flyer|album|wallpaper|thumbnail|robot|dragon|castle|food|drink|flower|tree|bird|horse|boat|plane|guitar|bass|church|studio|office|kitchen|bathroom|gym|pool|sunset|sunrise|night|storm)\b/i;
+
+/**
+ * The part of a message that describes the picture, with the chatter removed.
+ *
+ * Exported because it is pure and everything around it is a GPU and a network,
+ * which is how the old one-line version went years without anyone noticing it
+ * only stripped a leading phrase.
+ *
+ * Never returns empty. If every sentence reads as meta — "try again" on its own
+ * — the whole message is handed back unchanged, because a bad prompt beats no
+ * prompt and this function is not the place to decide a request is unanswerable.
+ */
+export function visualRequest(question) {
+  const raw = String(question || "").trim();
+  if (!raw) return raw;
+
+  const sentences = raw.split(/(?<=[.!?\n])\s+/).map((s) => s.trim()).filter(Boolean);
+  // A sentence survives if it is not chatter, or if it is chatter that also
+  // names something to draw — "great, now make a woman on a beach" is one
+  // sentence and the useful half is in it.
+  const kept = sentences.filter((s) => !META_SENTENCE.test(s) || HAS_SUBJECT.test(s));
+  let text = (kept.length ? kept : sentences).join(" ");
+
+  // Within whatever survived, drop the leading request grammar. "make an image
+  // of a woman in a red dress" and "a woman in a red dress" are the same prompt;
+  // the first spends four tokens telling the sampler it is a sampler.
+  text = text
+    .replace(/^\s*(?:great|nice|perfect|ok(?:ay)?|cool|thanks|thank you)[,.!\s]+/i, "")
+    .replace(/^\s*(?:please\s+)?(?:can you\s+|could you\s+|i want\s+|i'?d like\s+|i need\s+)?/i, "")
+    .replace(/^(?:now\s+)?(?:make|draw|generate|create|render|paint|give|show)\s+(?:me\s+)?(?:an?\s+)?(?:image|picture|photo|photograph|render|drawing|shot)?\s*(?:of\s+)?/i, "")
+    // "i want a picture of X" loses the verb to the strip above and leaves
+    // "a picture of X" behind, so the noun gets its own pass.
+    .replace(/^(?:an?\s+|the\s+)?(?:image|picture|photo|photograph|drawing|render|shot)\s+of\s+/i, "")
+    // "…nude please" — a courtesy the sampler reads as a subject.
+    .replace(/[,\s]+please\s*[.!]?\s*$/i, "")
+    .trim();
+
+  return text || raw;
+}
+
+/**
+ * "try again" is not a picture, and it was being rendered as one.
+ *
+ * Four messages in a row that evening were nothing but the complaint —
+ * "image generation failed. try again", "image generation didn't work",
+ * "the image still isnt being generated" — and rung two hands the sampler
+ * whatever it is given, so those words WERE the prompt on any pass where the
+ * rewrite rung also declined. The picture that came back had no relationship to
+ * anything he had asked for, which is its own reason to conclude the thing is
+ * broken.
+ *
+ * The request he meant is one message up. So when the message that triggered
+ * this names nothing to draw, walk back through his own turns for the last one
+ * that does. Only HIS turns: the assistant's descriptions of previous images
+ * are prose about a picture, not a request for one, and feeding those back
+ * compounds instead of recovering.
+ */
+export function promptForRender(question, history = []) {
+  const direct = visualRequest(question);
+  if (HAS_SUBJECT.test(direct)) return direct;
+
+  for (const m of [...history].reverse()) {
+    if (m?.role !== "user") continue;
+    const text = Array.isArray(m.content)
+      ? m.content.filter((b) => b && b.type === "text").map((b) => b.text).join(" ")
+      : String(m.content || "");
+    if (!text || text.trim() === String(question || "").trim()) continue;
+    // The one line that is never overridden has to be checked HERE too.
+    //
+    // Every other door into this machinery guards the message that triggered it,
+    // and that was sufficient while the prompt could only ever come from that
+    // message. Reaching back into the thread opens a door those checks do not
+    // stand in front of: "try again" is clean, and the request it recovers might
+    // not be. Checked on the raw turn, before it can become a prompt.
+    if (mentionsMinor(text)) continue;
+    const earlier = visualRequest(text);
+    if (HAS_SUBJECT.test(earlier)) return earlier;
+  }
+
+  // Nothing in the thread names a subject. Hand back what he actually said
+  // rather than inventing one — a wrong picture is worse than a vague one.
+  return direct;
 }
 
 /**
@@ -493,7 +602,7 @@ async function forceGeneration({ question, system, onStep, run }) {
  * Aspect is inferred here rather than asked for, because by this point the
  * model is not being consulted about anything.
  */
-async function writeAndRender({ question, onStep, run }) {
+async function writeAndRender({ question, history = [], onStep, run }) {
   const REWRITE = [
     {
       role: "system",
@@ -522,12 +631,12 @@ async function writeAndRender({ question, onStep, run }) {
 
   // Rung two. His own words are a perfectly serviceable prompt; the enricher in
   // media_cli.py adds the photographic vocabulary either way.
-  if (!prompt) {
-    prompt = String(question)
-      .replace(/^\s*(?:please\s+)?(?:can you\s+|could you\s+|i want\s+|i'?d like\s+)?/i, "")
-      .replace(/^(?:make|draw|generate|create|render|paint|give me)\s+(?:me\s+)?(?:an?\s+)?(?:image|picture|photo|photograph)\s+of\s+/i, "")
-      .trim() || String(question);
-  }
+  if (!prompt) prompt = promptForRender(question, history);
+  // Last door. `prompt` has three possible origins by now — the model's rewrite,
+  // this message, or an earlier one — and only the first two were ever checked
+  // where they were produced. One check on the thing that actually reaches the
+  // sampler closes that off for any origin added later.
+  if (mentionsMinor(prompt)) return null;
 
   // A person is taller than they are wide. Nothing subtle here — it is the
   // single most common framing mistake and the model is no longer being asked.
@@ -1021,7 +1130,7 @@ export async function ask({ history, agent, onStep, probe = false, maxSteps = CO
   if ((agentId === "image" || wantsPicture(question)) &&
       !mentionsMinor(question) &&
       !used.some((u) => String(u).startsWith("generate_")) && isRefusal(answer)) {
-    const forced = await forceGeneration({ question, system, onStep, run });
+    const forced = await forceGeneration({ question, system, history, onStep, run });
     if (forced) {
       answer = forced.answer;
       used.push(...forced.used);

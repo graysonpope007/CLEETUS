@@ -827,6 +827,29 @@ export const JOBS = {
     },
   },
 
+  /* 04:00. The overnight review Grayson asked for: what broke yesterday, what
+     got fixed, and what to fix next — landing in the morning brief three hours
+     later.
+
+     The work is in selfreview.mjs, imported lazily like the model is: this
+     module is loaded by every one of the ten jobs including reindex, which runs
+     every fifteen minutes, and selfreview pulls in improve.mjs and the whole
+     agent loop behind it.
+
+     It does NOT get its own autonomous push machinery. The fix phase calls
+     improveOnce(), which already knows how to ship a change, wait for the
+     deploy, and revert it if health drops. Two loops pushing to the same branch
+     with two different ideas of what a baseline is would spend the small hours
+     undoing each other. */
+  "self-improve": {
+    what: "Reviews yesterday's failures and the day's commits, fixes what it safely can, proposes the rest.",
+    async run() {
+      const { reviewOnce } = await import("./selfreview.mjs");
+      const out = await reviewOnce({});
+      return { ok: true, summary: out.summary };
+    },
+  },
+
   /* Was a KeepAlive Python chat server on its own port.
      Cleetusd IS that server now, and has been since it was written: same job,
      same machine, plus the disk, the shell, the vault and the agents. Standing

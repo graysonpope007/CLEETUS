@@ -560,6 +560,42 @@ export async function runDoctor() {
     check("jobs", "the scheduled jobs are working", false, e.message);
   }
 
+  // ── the overnight review reached the brief ─────────────────────────────────
+  //
+  // The 04:00 job has two halves that fail independently, and only one of them
+  // is visible in jobs.log. It can look at everything, write a good report to
+  // ~/cleetus-memory/jobs, exit 0 — and fail to publish, because Supabase was
+  // unreachable or a key rotated. jobs.log then says "ok" and the 7am brief
+  // simply has no Cleetus section in it.
+  //
+  // That is the shape of failure this whole system keeps being caught by: not a
+  // crash, an absence. The brief already names it in words when the row is
+  // missing; this makes it a check, so it is red on the machine rather than a
+  // sentence on a phone that reads like a quiet morning.
+  //
+  // Judged on the LAST night that ran, not on today: at 09:00 today's row
+  // exists, and at 03:00 it legitimately does not.
+  try {
+    const state = JSON.parse(
+      await readFile(join(CONFIG.memoryRoot, "selfreview-state.json"), "utf8").catch(() => "{}"));
+    const nights = Array.isArray(state.nights) ? state.nights : [];
+    const last = nights[nights.length - 1];
+    const ageH = last ? (Date.now() - Date.parse(last.at)) / 3_600_000 : Infinity;
+    check("jobs", "the overnight code review is reaching the morning brief",
+      // Never having run is not a failure on a fresh install; a run that did not
+      // publish is. And a review that last ran more than two days ago has
+      // stopped happening, whatever it said when it did.
+      !last ? true : (last.published === true && ageH < 48),
+      !last
+        ? "it has not run yet — first fire is 04:00"
+        : last.published !== true
+          ? `the review of ${last.day} was written but NOT published, so the brief has no Cleetus section`
+          : `last published ${last.day} (${ageH.toFixed(0)}h ago): ${String(last.headline || "").slice(0, 80)}`,
+      "node ~/cleetusd/bin/selfreview.mjs --look to see what it can read; the row lands in the code_reviews table");
+  } catch (e) {
+    check("jobs", "the overnight code review is reaching the morning brief", false, e.message);
+  }
+
   // ── the object tracker ─────────────────────────────────────────────────────
   //
   // Two halves that fail differently. The detector needs torch and a weights
