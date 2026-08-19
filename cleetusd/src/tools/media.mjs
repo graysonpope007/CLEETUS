@@ -15,7 +15,7 @@
 // The tools say which path ran and how long it took rather than hiding it.
 
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { CONFIG } from "../config.mjs";
 import { liftNegations } from "../literal.mjs";
 import { inferAspect } from "../aspect.mjs";
@@ -85,6 +85,35 @@ async function py(args, ms) {
         });
       });
   });
+}
+
+/* ── A path is not a picture ─────────────────────────────────────────────────
+   He opened his Desktop and found eight PNGs with no image in them, and two
+   more that were a flat white square and a flat red one named
+   "bearded-man-square-placeholder.png". Every layer above had reported
+   success: a path, a seed, a duration.
+
+   The empty ones came from a benchmark stub truncating whatever --out the
+   agent chose. The flat ones came from the agent DRAWING a placeholder when
+   generation did not give it what it expected — the same instinct as copying
+   an old file and renaming it, which this repo caught earlier the same day.
+
+   Both share one property: nothing between the sampler and the answer ever
+   looked at the file. So this does, at the boundary, on every path. If the
+   tool says it made a picture, there is a picture. */
+const MIN_PICTURE_BYTES = 2048;
+
+function realPicture(path) {
+  if (!path) return "the tool reported no path at all";
+  if (!existsSync(path)) return `the file it reported does not exist: ${path}`;
+  let size = 0;
+  try { size = statSync(path).size; } catch { return `the file it reported cannot be read: ${path}`; }
+  if (size === 0) return `the file it reported is EMPTY (0 bytes): ${path}`;
+  if (size < MIN_PICTURE_BYTES) {
+    return `the file it reported is only ${size} bytes, which is a flat colour or a stub rather ` +
+           `than a generated picture: ${path}`;
+  }
+  return null;
 }
 
 function ready() {
@@ -209,6 +238,12 @@ export const mediaTools = {
       // Generous: the first call to a model downloads gigabytes, then generates.
       const r = await py(args, 20 * 60_000);
       if (!r.ok) return `Could not generate the image: ${r.error}`;
+      const wrong = realPicture(r.path);
+      if (wrong) {
+        return `The generation did NOT produce a usable image: ${wrong}. Tell him it failed and why. ` +
+               `Do not present any other file as the picture he asked for, do not copy or rename an ` +
+               `older one, and do not draw a placeholder — offer to try again, or on another model.`;
+      }
       // The seed is reported back deliberately: it is how a picture he liked
       // gets tweaked instead of replaced. Without it every "warmer light" is a
       // different photograph of a different person.
@@ -312,6 +347,10 @@ export const mediaTools = {
       // svd can download 10GB and denoise for minutes; motion is seconds.
       const r = await py(args, (mode === "svd" ? 30 : 15) * 60_000);
       if (!r.ok) return `Could not generate the video: ${r.error}`;
+      const wrongClip = realPicture(r.path);
+      if (wrongClip) {
+        return `The video did NOT come out: ${wrongClip}. Say so rather than pointing him at the file.`;
+      }
       if (r.mode === "svd") {
         return `Made a ${r.frames}-frame video with Stable Video Diffusion in ${r.seconds}s. ` +
                `Saved to ${r.path} (keyframe ${r.keyframe}).`;

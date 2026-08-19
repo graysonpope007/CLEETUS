@@ -700,12 +700,19 @@ def _render(args, model_key, enrich=True):
     # So the pixels are looked at before the result is written. A real photograph
     # of a dark room still has variation in it; a NaN decode has none at all,
     # which is what makes this cheap to test and safe against false positives.
-    stats = image.convert("L").getextrema()
-    if stats[1] <= 2:
+    # A NaN decode is black; a half-written file or a fallback can be white or
+    # any flat colour. What they have in common is no variation, and a real
+    # generated picture never has that — even "a red cube on a white background"
+    # has edges and shading. So the check is the RANGE, not the colour.
+    lo, hi = image.convert("L").getextrema()
+    if hi - lo <= 4:
+        flat = "black" if hi <= 2 else ("white" if lo >= 253 else f"a flat colour (luminance {lo})")
         return {"ok": False,
-                "error": "the sampler produced an all-black frame, which means a numeric overflow "
-                         "in the denoise rather than a picture. Nothing was saved. If this used a "
-                         "reference image, try again without one, or with a different model.",
+                "error": f"the sampler produced {flat} with no variation in it, which is not a "
+                         "picture. Nothing was saved. If this used a reference image, try again "
+                         "without one, or with a different model. Do NOT hand him this as an image, "
+                         "and do NOT substitute a placeholder or an older file — say the generation "
+                         "failed.",
                 "model": model_key, "seed": seed}
 
     # ── A pipeline that has decoded once will not decode again ──────────────

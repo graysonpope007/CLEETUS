@@ -218,3 +218,42 @@ test("a token he is told to add actually reaches the sampler", async () => {
   assert.equal(calls.length - 1, awaited.length,
     "a py() call is missing its await now that it resolves a secret first");
 });
+
+test("an empty or flat file is never reported as a picture he can open", () => {
+  /* He opened his Desktop and found eight PNGs with no image in them, plus a
+     flat white square and a flat red one named
+     "bearded-man-square-placeholder.png". Every layer above had reported
+     success — a path, a seed, a duration.
+
+     Two different causes, one shared property. The empty ones came from a
+     benchmark stub truncating whatever --out the agent chose. The flat ones
+     came from the agent DRAWING a placeholder when generation did not give it
+     what it expected, which is the same instinct as copying an older file and
+     renaming it. What they share is that nothing between the sampler and the
+     answer ever looked at the file.
+
+     So two guards, at two levels, because the causes are at two levels:
+       · media_cli refuses a frame with NO VARIATION — black from a NaN decode,
+         white from a half-write, or any flat colour from a fallback. The range
+         is the test, not the colour, because a real picture always has one.
+       · the tool refuses to report success unless the path exists and is big
+         enough to be a picture, whatever the sampler claimed. */
+  const render = cli.slice(cli.indexOf("def _render"), cli.indexOf("def cmd_image"));
+  assert.match(render, /lo, hi = image\.convert\("L"\)\.getextrema\(\)/);
+  assert.match(render, /hi - lo <= 4/, "only pure black is caught, so a white or red frame ships");
+  assert.match(render, /do NOT substitute a placeholder or an older file/,
+    "the failure must forbid the two things it actually did instead");
+
+  assert.match(mediaSrc, /function realPicture\(path\)/,
+    "nothing checks the file the tool is about to call a picture");
+  assert.match(mediaSrc, /is EMPTY \(0 bytes\)/);
+  assert.match(mediaSrc, /flat colour or a stub rather/);
+  // Both tools, because a clip has the same failure.
+  assert.match(mediaSrc, /const wrongClip = realPicture\(r\.path\)/);
+  /* And the refusal must name the wrong ways out, or they stay available.
+     Asserted as two separate phrases: the first version of this matched them
+     as one span across a line break, which is exactly what test/README.md
+     forbids, written into the file minutes after the rule was. */
+  assert.match(mediaSrc, /do not copy or rename an/);
+  assert.match(mediaSrc, /do not draw a placeholder/);
+});
