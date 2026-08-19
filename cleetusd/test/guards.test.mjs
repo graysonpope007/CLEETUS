@@ -25,9 +25,50 @@ if (dirty.trim()) {
   process.exit(0);
 }
 
+/* ── Everything below this line is cleaned up whatever happens ───────────────
+   This suite works by putting the self-improve loop's own STOP conditions in
+   place one at a time and checking it stops. Which means that between each
+   write and its matching cleanup, THE REAL LOOP IS HALTED — the STOP file
+   exists, ~/cleetusv2 has an uncommitted file in it, improve-state says
+   ninety-nine improvements have already happened today, and the runs folder
+   holds a failed run dated 9999.
+
+   The cleanups were inline, and `t()` does not throw, so an assertion failure
+   was survivable. `improveOnce()` is not: it drives the model and reaches the
+   cloud, this file's own comments record it breaking when a third-party API
+   went down, and a throw anywhere in here left every one of those four
+   conditions in place. Permanently, and silently, because a halted loop
+   produces no error — it produces nothing at all, which is the exact failure
+   mode this codebase already keeps a note about.
+
+   So: one try, one finally, and the finally puts back everything including
+   improve-state's original contents. A test that disables the nightly job when
+   it crashes is worse than no test. */
+const STATE = join(CONFIG.memoryRoot, "improve-state.json");
+const savedState = existsSync(STATE)
+  ? await (await import("node:fs/promises")).readFile(STATE, "utf8")
+  : null;
+const junk = join(REPO, "__improve_guard_test.tmp");
+const runsDir = join(CONFIG.memoryRoot, CONFIG.runsDir);
+const fake = join(runsDir, "9999-01-01-0000-guard-test.md");
+
+async function putEverythingBack() {
+  await rm(STOP_FILE, { force: true }).catch(() => {});
+  await rm(junk, { force: true }).catch(() => {});
+  await rm(fake, { force: true }).catch(() => {});
+  if (savedState !== null) await writeFile(STATE, savedState, "utf8").catch(() => {});
+  else await rm(STATE, { force: true }).catch(() => {});
+}
+// Covers the ways a node process ends that a finally does not.
+process.on("uncaughtException", async (e) => { await putEverythingBack(); throw e; });
+process.on("SIGINT", async () => { await putEverythingBack(); process.exit(130); });
+
+let r;
+try {
+
 // 1. STOP file
 await writeFile(STOP_FILE, "test\n", "utf8");
-let r = await improveOnce({ dry: true });
+r = await improveOnce({ dry: true });
 // A guard's job is to stop the loop ACTING. In --dry it expresses that as a
 // blocker rather than a skip: dry was changed to report what it found instead
 // of refusing outright, because a dry pass that will not run on a dirty tree is
@@ -45,7 +86,6 @@ t("STOP file halts the loop", blocked(r, /STOP file/), JSON.stringify(r));
 await unlink(STOP_FILE);
 
 // 2. dirty tree
-const junk = join(REPO, "__improve_guard_test.tmp");
 await writeFile(junk, "scratch\n", "utf8");
 r = await improveOnce({ dry: true });
 t("dirty tree halts the loop", blocked(r, /dirty/), JSON.stringify(r));
@@ -54,17 +94,16 @@ const { stdout: clean } = await sh("git status --porcelain", REPO);
 t("test left the repo clean", clean.trim() === "", clean);
 
 // 3. daily cap
-const STATE = join(CONFIG.memoryRoot, "improve-state.json");
-const saved = existsSync(STATE) ? await (await import("node:fs/promises")).readFile(STATE, "utf8") : null;
 await writeFile(STATE, JSON.stringify({ day: new Date().toISOString().slice(0,10), count: 99, history: [] }), "utf8");
 r = await improveOnce({ dry: true });
 t("daily cap halts the loop", blocked(r, /cap/), JSON.stringify(r));
-if (saved) await writeFile(STATE, saved, "utf8"); else await rm(STATE, { force: true });
+// Restored in the finally as well, so a throw between here and there cannot
+// leave the loop believing it has already done its ninety-nine for the day.
+if (savedState !== null) await writeFile(STATE, savedState, "utf8");
+else await rm(STATE, { force: true });
 
 // 4. findWork surfaces a genuinely failed run
-const runsDir = join(CONFIG.memoryRoot, CONFIG.runsDir);
 await mkdir(runsDir, { recursive: true });
-const fake = join(runsDir, "9999-01-01-0000-guard-test.md");
 await writeFile(fake, "---\nagent: builder\nstatus: failed\n---\n\n# guard test\n\n- FAILED `read_file` {}\n", "utf8");
 r = await improveOnce({ dry: true });
 t("a failed run becomes work", !!r.wouldFix, JSON.stringify(r).slice(0,200));
@@ -88,6 +127,26 @@ t("no guard blocks it once cleaned up",
   !(r.blockers || []).some((b) => /STOP file|dirty|cap/.test(b)) &&
   !/STOP file|dirty|cap/.test(r.skipped || ""),
   JSON.stringify(r));
+
+} finally {
+  // Deliberately AFTER the try body and before the exit. `process.exit()` does
+  // not run a finally block, so reporting and exiting have to happen outside
+  // it — putting them inside would have made this whole structure decorative.
+  await putEverythingBack();
+}
+
+// The loop must be genuinely unblocked when this file is done, not merely
+// tidied. Checked rather than assumed, because every other guard in here is
+// about the difference between those two things.
+{
+  const stillBlocking = [
+    existsSync(STOP_FILE) ? "the STOP file" : null,
+    existsSync(junk) ? "a junk file in ~/cleetusv2" : null,
+    existsSync(fake) ? "a fake failed run" : null,
+  ].filter(Boolean);
+  t("the suite left nothing that would halt the real loop",
+    stillBlocking.length === 0, stillBlocking.join(", "));
+}
 
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
