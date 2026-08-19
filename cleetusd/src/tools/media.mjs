@@ -133,12 +133,13 @@ export const mediaTools = {
           seed: { type: "number", description: "Set for a reproducible image; omit for a new one each time. Pass the SAME seed to tweak an image he liked." },
           reference: { type: "string", description: "Path to an image to start FROM instead of noise. Use whenever he attached a picture and wants something like it, edited, or restyled — it carries what words cannot." },
           strength: { type: "number", description: "Only with reference. How far to move from the reference, and it is the difference between editing his picture and replacing it. Take it from HIS WORDS. 'this exact photo but…', 'same shot', 'keep it, just…', a colour or light change, a small fix: 0.25-0.35. 'same scene', 'like this but different angle/season/weather': 0.5-0.6. 'inspired by', 'in this style', 'something like this': 0.8-0.9. Above 0.6 the people and the composition in his picture do NOT survive, so never use it for anything he called the same. Default 0.55." },
+          literal: { type: "boolean", description: "Send his wording and NOTHING else. Set this when he quoted a prompt, said 'exactly this', or told you not to change his words — it suppresses the photographic style that is otherwise appended for you. Leave unset for an ordinary request, where that style is what makes it look photographed." },
           out: { type: "string", description: "Output path. Omit to save a timestamped PNG in the media folder." },
         },
         required: ["prompt"],
       },
     },
-    async run({ prompt, negative, model, aspect, steps, guidance, seed, out, reference, strength }) {
+    async run({ prompt, negative, model, aspect, steps, guidance, seed, out, reference, strength, literal }) {
       if (!ready()) return ABSENT;
       const dest = out || `${OUT_DIR}/img_${stamp()}.png`;
 
@@ -192,6 +193,19 @@ export const mediaTools = {
       if (Number.isFinite(seed)) args.push("--seed", String(seed));
       if (reference) args.push("--reference", String(reference));
       if (Number.isFinite(strength)) args.push("--strength", String(strength));
+      /* ── "Nothing added" has to mean nothing added ───────────────────────
+         media_cli has accepted --no-enrich the whole time and this tool never
+         offered it, so a verbatim turn said "used his wording exactly, with
+         nothing added" and sent:
+
+             a red cube on a white background, photograph, 85mm lens, natural
+             light, shallow depth of field, VISIBLE SKIN TEXTURE, sharp focus,
+             film grain
+
+         Seven terms he did not write, on a cube. The style is right for an
+         ordinary request and it is the whole complaint on an exact one, and
+         the answer claiming otherwise is worse than the style itself. */
+      if (literal) args.push("--no-enrich");
       // Generous: the first call to a model downloads gigabytes, then generates.
       const r = await py(args, 20 * 60_000);
       if (!r.ok) return `Could not generate the image: ${r.error}`;
@@ -210,6 +224,7 @@ export const mediaTools = {
         : "";
       // Said out loud, like the lifted negations. A silent crop is the most
       // visible unasked-for change there is.
+      const bare = literal ? " Sent your wording with nothing appended, not even the house photographic style." : "";
       const shaped = shape
         ? ` He set no shape, so it was rendered ${shape.aspect} (${shape.why}) rather than square — say so, and offer another shape if that is wrong.`
         : "";
@@ -218,7 +233,7 @@ export const mediaTools = {
         : "";
       return `Made a ${r.width}x${r.height} image with ${r.model} in ${r.seconds}s ` +
              `(${r.steps} steps, guidance ${r.guidance}` +
-             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}${from}${shaped}${long}${kept}`;
+             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}${from}${bare}${shaped}${long}${kept}`;
     },
   },
 

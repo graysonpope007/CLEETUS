@@ -309,3 +309,31 @@ test("an image request that ends without a picture reaches the forced path", () 
   // And the one line that is never overridden stays in front of it.
   assert.match(block, /!mentionsMinor\(question\)/);
 });
+
+test('"with nothing added" has to mean nothing added', () => {
+  /* media_cli has accepted --no-enrich since it was written and the tool never
+     offered it. So a verbatim turn returned "used his wording exactly, with
+     nothing added" and sent this to the sampler:
+
+         a red cube on a white background, photograph, 85mm lens, natural
+         light, shallow depth of field, VISIBLE SKIN TEXTURE, sharp focus,
+         film grain
+
+     Seven terms he did not write, on a cube. Measured on realvis, which is the
+     model that enriches; sdxl-turbo is not photoreal and never did, which is
+     why a first comparison on turbo showed no difference and proved nothing.
+
+     The style is right for an ordinary request and it is the whole complaint
+     on an exact one. The answer claiming otherwise is worse than the style. */
+  assert.match(mediaSrc, /literal: \{ type: "boolean"/, "the tool cannot be told to add nothing");
+  assert.match(mediaSrc, /if \(literal\) args\.push\("--no-enrich"\)/,
+    "the flag never reaches media_cli, so the style is appended anyway");
+  // Only the verbatim branch sets it. A literal-but-not-verbatim turn still
+  // gets the house style, because there he described a picture rather than
+  // dictating a prompt.
+  const wr = agentSrc.slice(agentSrc.indexOf("async function writeAndRender"),
+                            agentSrc.indexOf("async function renderPrompt"));
+  assert.match(wr, /literal: true/, "the verbatim branch no longer asks for a bare prompt");
+  // And the claim in the answer must be earned rather than asserted.
+  assert.match(mediaSrc, /Sent your wording with nothing appended/);
+});

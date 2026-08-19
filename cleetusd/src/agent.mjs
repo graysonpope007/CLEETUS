@@ -701,7 +701,7 @@ async function writeAndRender({ question, history = [], onStep, run }) {
   if (mode.level === "verbatim") {
     const exact = verbatimText(question, mode.quoted);
     if (!mentionsMinor(exact)) {
-      return renderPrompt({ prompt: exact, question, onStep, run,
+      return renderPrompt({ prompt: exact, question, onStep, run, literal: true,
                             note: "used his wording exactly, with nothing added" });
     }
     return null;
@@ -743,15 +743,19 @@ async function writeAndRender({ question, history = [], onStep, run }) {
  * A second copy of it is how the verbatim path would quietly drift into
  * choosing a different aspect ratio from the ordinary one.
  */
-async function renderPrompt({ prompt, question, onStep, run, note }) {
+async function renderPrompt({ prompt, question, onStep, run, note, literal = false }) {
   // A person is taller than they are wide. Nothing subtle here — it is the
   // single most common framing mistake and the model is no longer being asked.
   const PEOPLE = /\b(woman|man|girl|guy|person|people|portrait|model|her|him|body|figure|face)\b/i;
   const video = WANTS_VIDEO.test(question);
   const tool = video ? "generate_video" : "generate_image";
+  /* `literal` only ever comes from the verbatim branch, and it is what makes
+     the note below true: without it the sampler appends the house photographic
+     style and the answer still says "with nothing added". */
   const args = video
     ? { prompt }
-    : { prompt, aspect: PEOPLE.test(prompt) ? "portrait" : "landscape" };
+    : { prompt, aspect: PEOPLE.test(prompt) ? "portrait" : "landscape",
+        ...(literal ? { literal: true } : {}) };
 
   onStep?.({ tool, args });
   const result = await callTool(tool, args, { agentId: "image" });
