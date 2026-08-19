@@ -272,7 +272,22 @@ export function literalClause(mode) {
     "where they are usable, and ADD NOTHING he did not ask for — no invented objects, people, " +
     "settings, weather, clothing, props or backstory. You may still choose how it is lit and shot " +
     "if he did not say, because that is how it looks rather than what is in it. Anything he told " +
-    "you to leave out must actually be absent. If he is correcting you, the fix is to change the " +
+    "you to leave out must actually be absent. " +
+    /* ── The exclusions are a place to invent too ─────────────────────────
+       Caught by bin/image-behaviour-check.mjs rather than by reasoning about
+       it. Asked for "an empty beach at sunrise, no people", the model wrote a
+       negative prompt of "people, figures, boats, footprints, litter, clouds".
+       Only one of those is his. Clouds in particular is not a neutral
+       addition: a sunrise with no clouds is a different photograph, and he
+       would have had no idea why he kept getting a bare sky.
+
+       Adding things is the complaint whichever input they go in, and the
+       negative prompt is the one nobody thinks to look at. */
+    "The things you EXCLUDE are his to choose as well: put in the negative prompt only what he " +
+    "actually said to leave out, plus the model's own quality defaults. Do not add exclusions of " +
+    "your own — telling the sampler to avoid clouds on a sunrise he never mentioned is inventing, " +
+    "and it is harder for him to spot than an invented object because he never sees the reason. " +
+    "If he is correcting you, the fix is to change the " +
     "one thing he named and leave everything else exactly as it was — a correction is not a fresh " +
     "brief, and re-rolling the whole thing is how the same complaint arrives twice.";
 }

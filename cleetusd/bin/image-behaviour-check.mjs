@@ -1,0 +1,162 @@
+#!/usr/bin/env node
+// bin/image-behaviour-check.mjs — does the image agent actually DO it?
+//
+//   node bin/image-behaviour-check.mjs
+//
+// WHY THIS EXISTS SEPARATELY FROM test/
+// Everything the last several commits added is plumbing, and plumbing is not
+// behaviour. generate_image has taken a `reference` since it was written; the
+// question that matters is whether the model REACHES for it when Grayson hands
+// it a picture, and no amount of asserting on source text answers that. The
+// unit tests can prove the parameter exists and the brief mentions it. Only
+// running the real ask() against the real local model proves it gets used.
+//
+// It is not in `node --test` because it needs ollama and takes minutes — the
+// same reason routing-check.mjs lives here. Run it after touching the image
+// brief, literal.mjs, the media tool, or anything in agent.mjs's image path.
+//
+// WHAT IS STUBBED, AND WHAT IS NOT
+// The MODEL is real. The SAMPLER is not: CLEETUSD_MEDIA_PYTHON is pointed at a
+// shell script that records the arguments it was handed and prints the JSON
+// line media_cli.py would print. A minute of GPU per case would make this too
+// slow to run, and the picture is not what is being tested. The arguments are —
+// did it pass --reference, what went in --prompt, what went in --negative.
+//
+// A FAILURE HERE IS REAL. These three cases are the three complaints this
+// whole area of the codebase exists to answer: it described my picture instead
+// of using it, it put in the thing I said to leave out, and it embroidered
+// what I told it exactly.
+
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, chmodSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const dir = mkdtempSync(join(tmpdir(), "imgcheck-"));
+const LOG = join(dir, "calls.log");
+const STUB = join(dir, "fake-python.sh");
+
+writeFileSync(STUB, `#!/bin/sh
+printf '%s\\0' "$@" >> "${LOG}"
+printf '\\n---\\n' >> "${LOG}"
+for a in "$@"; do
+  case "$prev" in --out) OUT="$a" ;; esac
+  prev="$a"
+done
+[ -n "$OUT" ] && : > "$OUT"
+echo '{"ok": true, "kind": "image", "path": "'"\${OUT:-/tmp/stub.png}"'", "model": "realvis", "steps": 30, "width": 832, "height": 1216, "guidance": 4.5, "negative_applied": true, "prompt_used": "stubbed", "long_prompt": null, "seed": 424242, "seconds": 0.1, "reference": null, "strength": null}'
+`);
+chmodSync(STUB, 0o755);
+process.env.CLEETUSD_MEDIA_PYTHON = STUB;
+writeFileSync(LOG, "");
+
+// Imported AFTER the stub is in place: the media tool reads the interpreter
+// path at module load, so importing first would pin the real venv and every
+// case would spend a minute on the GPU.
+const { ask } = await import("../src/agent.mjs");
+
+const REFERENCE = process.env.IMAGE_CHECK_REFERENCE ||
+  join(ROOT, "media/out/woman-gym-workout.png");
+
+function calls() {
+  if (!existsSync(LOG)) return [];
+  return readFileSync(LOG, "utf8").split("\n---\n").filter((s) => s.trim())
+    .map((chunk) => chunk.split("\0").filter(Boolean));
+}
+const argOf = (argv, flag) => {
+  const i = argv.indexOf(flag);
+  return i === -1 ? null : argv[i + 1];
+};
+
+let failed = 0;
+const check = (label, ok, detail = "") => {
+  if (!ok) failed++;
+  console.log(`  ${ok ? "ok  " : "FAIL"} ${label}${detail ? `\n         ${detail}` : ""}`);
+};
+
+async function run(label, message) {
+  writeFileSync(LOG, "");
+  const t0 = Date.now();
+  // probe:true so a benchmark run is never read back later as something
+  // Grayson actually asked for.
+  const out = await ask({ history: [{ role: "user", content: message }], agent: "image",
+                          probe: true, maxSteps: 8 });
+  const argv = calls();
+  console.log(`\n### ${label}  (${Math.round((Date.now() - t0) / 1000)}s, ${argv.length} tool call(s))`);
+  console.log(`    ${String(out.answer || "(nothing)").replace(/\s+/g, " ").slice(0, 160)}`);
+  for (const a of argv) {
+    console.log("    ->", JSON.stringify({
+      prompt: (argOf(a, "--prompt") || "").slice(0, 150),
+      reference: argOf(a, "--reference"), strength: argOf(a, "--strength"),
+      aspect: argOf(a, "--aspect"), negative: (argOf(a, "--negative") || "").slice(0, 60),
+    }));
+  }
+  return argv;
+}
+
+// ── 1. "It described my picture instead of using it" ─────────────────────────
+{
+  const argv = await run("a picture in hand, asked for a variation",
+    `make this same shot but at golden hour\n\n[Grayson attached gym.png (image, 1.2 MB). ` +
+    `It is on disk at ${REFERENCE} — use that path with read_file, the shell, ffmpeg or the editor.] ` +
+    `[If he is asking for a picture LIKE this one, edited, restyled or in a different light, pass this ` +
+    `path to generate_image as its 'reference' rather than describing it back in words. A description ` +
+    `loses the exact colour, grain and composition; the file does not.]`);
+  const used = argv.find((a) => argOf(a, "--reference"));
+  check("passed the attached picture as a reference", !!used,
+    used ? `reference=${argOf(used, "--reference")} strength=${argOf(used, "--strength")}`
+         : "no --reference in any call, so it described the picture instead of using it");
+}
+
+// ── 2. "It put in the thing I said to leave out" ─────────────────────────────
+{
+  const argv = await run("a negation in the request",
+    "make me a photo of an empty beach at sunrise, no people");
+  const call = argv[0];
+  if (!call) check("generated at all", false, "no tool call");
+  else {
+    check("the excluded thing is not in the positive prompt",
+      !/\bpeople\b/i.test(argOf(call, "--prompt") || ""), `prompt: ${(argOf(call, "--prompt") || "").slice(0, 120)}`);
+    check("the exclusion reached the negative prompt",
+      /people/i.test(argOf(call, "--negative") || ""), `negative: ${(argOf(call, "--negative") || "(empty)").slice(0, 80)}`);
+
+    /* The negative prompt is a place to invent, and it is the one nobody looks
+       at. Asked for "an empty beach at sunrise, no people", this wrote
+       "people, figures, boats, footprints, litter, CLOUDS" — and a sunrise
+       with no clouds is a different photograph that he would never have found
+       the reason for.
+
+       Only the harmful class is asserted. Synonyms of what he DID exclude
+       ("figures", "crowds") are the model doing its job, and boats on an
+       "empty" beach are defensible. Weather and light are not: he said nothing
+       about them, and excluding them silently changes the picture. */
+    const negative = (argOf(call, "--negative") || "").toLowerCase();
+    const weather = ["cloud", "fog", "mist", "rain", "haze", "overcast", "sun ", "sunlight", "shadow"]
+      .filter((w) => negative.includes(w));
+    check("it invented no weather or light exclusions of its own", weather.length === 0,
+      weather.length ? `excluded without being asked: ${weather.join(", ")} — in "${negative}"` : "clean");
+  }
+}
+
+// ── 3. "It embroidered what I told it exactly" ───────────────────────────────
+{
+  const argv = await run("an exact instruction",
+    'use this exact prompt, nothing added: "a single red cube on a white background"');
+  const call = argv[0];
+  if (!call) check("generated at all", false, "no tool call");
+  else {
+    const prompt = (argOf(call, "--prompt") || "").toLowerCase();
+    check("used his words", /red cube/.test(prompt) && /white background/.test(prompt), prompt.slice(0, 140));
+    // The tell for embroidery is vocabulary nobody asked for. Kept to words
+    // that could not plausibly be his, so a fail here is a real fail.
+    const invented = ["studio", "lighting", "shadow", "reflect", "dramatic", "cinematic", "8k",
+                      "hyperdetailed", "professional", "minimalist", "depth of field", "bokeh"]
+      .filter((w) => prompt.includes(w));
+    check("added nothing of its own", invented.length === 0,
+      invented.length ? `invented: ${invented.join(", ")}` : "clean");
+  }
+}
+
+console.log(failed ? `\n${failed} check(s) FAILED` : "\nall checks passed");
+process.exit(failed ? 1 : 0);
