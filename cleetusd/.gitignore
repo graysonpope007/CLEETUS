@@ -5,3 +5,10 @@ vendor/
 # Media generation: isolated venv (reproducible via media/requirements.txt) and outputs
 media/.venv/
 media/out/
+
+# Files Grayson drops on a chat window. Ignored for a stronger reason than the
+# generated output above is: this folder is whatever he happened to send —
+# a contract, a bank statement, a photograph of his family, a screenshot of
+# something he was in the middle of. None of it is source, all of it is
+# private, and a repo is the last place any of it should end up.
+media/drops/
