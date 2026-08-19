@@ -1140,7 +1140,33 @@ export async function ask({ history, agent, onStep, probe = false, maxSteps = CO
   // The budget grows rather than being surrendered. `maxSteps` is reassigned in
   // place, so the loop condition stays exactly what it was — and so does the
   // caller's ability to pass a smaller budget deliberately.
-  const ceiling = Math.max(maxSteps, CONFIG.maxStepsCeiling);
+  /* ── A picture is not a repair, and 120 steps is a repair's budget ────────
+     The ceiling grows to 120 because "build me this" used to come back as a
+     description of the code that already existed: the builder genuinely needs
+     room. Making a picture does not, and the extra room actively hurt.
+
+     Measured on "make a cover for the next GLM single", four runs of the same
+     request:
+
+         1 generate call,  fast,  used his reference
+         2 generate calls, fast,  used his reference
+         6 generate calls, slow,  no reference
+         7 generate calls, 539s,  no reference, one call with an EMPTY prompt,
+                                  and three attempts to render title text
+                                  inside the image, which the brief forbids
+
+     The long runs were not more thorough. They were the same request looping,
+     and the extra steps bought worse answers — dozens of shell calls hunting
+     for assets that list_references had already handed it.
+
+     So the agents whose deliverable is ONE artifact keep a tight ceiling.
+     Twenty-four is still generous: list the references, search the vault, read
+     a file, generate, and generate again if the first one failed. An image
+     agent on its twenty-fifth step is looping, not working. */
+  const ONE_ARTIFACT = new Set(["image", "writing"]);
+  const ceiling = ONE_ARTIFACT.has(agentId)
+    ? Math.max(maxSteps, 24)
+    : Math.max(maxSteps, CONFIG.maxStepsCeiling);
   let extensions = 0;
 
   /* ── A bound in the unit the person waiting is actually counting in ────────

@@ -29,8 +29,33 @@ test("the budget can grow while the model is still using tools", () => {
 });
 
 test("extension is bounded, not unlimited", () => {
-  assert.match(agent, /const ceiling = Math\.max\(maxSteps, CONFIG\.maxStepsCeiling\)/,
-    "a run must not be able to extend forever");
+  /* The property is that a run cannot extend forever. This used to assert one
+     exact expression — `Math.max(maxSteps, CONFIG.maxStepsCeiling)` — which is
+     a paraphrase of the property rather than the property, and it broke the
+     moment the ceiling became agent-aware even though every branch stayed
+     bounded.
+
+     Same brittleness as the proximity match in imagerefusal earlier: a test
+     that fails when a correct change is made teaches people to edit tests
+     rather than read them. So the assertions are now about the shape of the
+     bound. */
+  const decl = agent.slice(agent.indexOf("const ceiling ="), agent.indexOf("let extensions"));
+  assert.ok(decl, "the ceiling declaration is gone entirely");
+
+  // Every branch must resolve to a finite number, and none may be Infinity or
+  // absent — those are the two ways "bounded" actually stops being true.
+  const bounds = [...decl.matchAll(/Math\.max\(maxSteps,\s*([^)]+)\)/g)].map((m) => m[1].trim());
+  assert.ok(bounds.length >= 1, "no Math.max(maxSteps, …) bound found");
+  for (const b of bounds) {
+    assert.ok(!/Infinity/.test(b), `a ceiling branch is unbounded: ${b}`);
+    assert.ok(/^\d+$/.test(b) || /CONFIG\.maxStepsCeiling/.test(b),
+      `a ceiling branch is neither a literal nor the configured ceiling: ${b}`);
+  }
+  // The repair path must keep the configured ceiling; capping everything would
+  // bring back the failure the extension was written for.
+  assert.ok(bounds.some((b) => /CONFIG\.maxStepsCeiling/.test(b)),
+    "no branch uses the configured ceiling, so a builder can no longer finish a repair");
+
   assert.match(agent, /Math\.min\(ceiling - maxSteps/, "each grant must be clamped to the ceiling");
 });
 

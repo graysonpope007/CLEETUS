@@ -220,3 +220,38 @@ test("the clause is per-turn, never a standing instruction", () => {
   assert.match(agentSrc, /const literal = literalMode\(question, history\);\s*\n\s*system \+= literalClause\(literal\);/);
   assert.equal(literalClause({ level: "open", reasons: [] }), "");
 });
+
+test("a picture agent gets a picture agent's budget, not a repair's", () => {
+  /* The ceiling grows to 120 because "build me this" used to come back as a
+     description of the code that already existed — the builder needs the room.
+     Making a picture does not, and the extra room actively hurt.
+
+     Four runs of "make a cover for the next GLM single":
+
+         1 generate call,  used his reference
+         2 generate calls, used his reference
+         6 generate calls, no reference
+         7 generate calls, 539 seconds, no reference, one call with an EMPTY
+                           prompt, and three attempts to render title text
+                           inside the image, which the brief forbids outright
+
+     The long runs were not more thorough. They were the same request looping,
+     and the extra steps bought worse answers. */
+  assert.match(agentSrc, /const ONE_ARTIFACT = new Set\(\["image", "writing"\]\)/);
+  assert.match(agentSrc, /ONE_ARTIFACT\.has\(agentId\)\s*\n\s*\? Math\.max\(maxSteps, 24\)/);
+  // The builder must keep the room it was given for a documented reason.
+  assert.match(agentSrc, /: Math\.max\(maxSteps, CONFIG\.maxStepsCeiling\)/,
+    "every agent now shares the tight ceiling, which breaks the repair path");
+});
+
+test("the reference listing tells it what to do NEXT, not only what exists", () => {
+  // list_references was called 4 times out of 4 and the reference was actually
+  // used twice. It looked, then styled from scratch anyway. The instruction
+  // lived in the tool DESCRIPTION, read before the call; the result is the last
+  // thing in context before the next action, and that is the one that acts.
+  const refs = readFileSync(new URL("../src/refs.mjs", import.meta.url), "utf8");
+  assert.match(refs, /NEXT: if one of these sets is what he is asking for/);
+  assert.match(refs, /copy it from the list above rather than retyping it/);
+  // And the honest branch: a set with no usable picture must not be offered.
+  assert.match(refs, /None of these has a picture a sampler can start from/);
+});

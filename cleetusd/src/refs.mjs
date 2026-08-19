@@ -86,10 +86,29 @@ export function referencesText(sets) {
       "for in that style starts from his own artwork instead of from a description of it. " +
       "Ask him for two or three when the look matters and there is nothing here.";
   }
-  return sets.map((s) => {
+  /* The operative sentence goes at the END of the RESULT, not only in the tool
+     description. Measured across four runs of "make a cover for the next GLM
+     single": list_references was called 4 times out of 4 — the habit forms —
+     and the reference was actually passed to generate_image only twice. It
+     looked, and then half the time it styled from scratch anyway.
+
+     The description is read before the call. The result is the last thing in
+     context before the next action, which is the one that matters. */
+  const body = sets.map((s) => {
     const shown = s.pictures.slice(0, 4).map((p) => `    ${p.path}`).join("\n");
     const more = s.pictures.length > 4 ? `\n    …and ${s.pictures.length - 4} more` : "";
     const note = s.others ? `  (${s.others} non-image file(s) in here, which cannot be a reference)` : "";
     return `  ${s.set} — ${s.pictures.length} picture(s)${note}\n${shown}${more}`;
   }).join("\n");
+
+  const usable = sets.filter((s) => s.pictures.length);
+  if (!usable.length) {
+    return `${body}\n\nNone of these has a picture a sampler can start from. Ask him for two or ` +
+      `three, and say which set they are for.`;
+  }
+  return `${body}\n\nNEXT: if one of these sets is what he is asking for, pass that exact path to ` +
+    `generate_image as \`reference\` — copy it from the list above rather than retyping it — and say ` +
+    `which picture you started from. Starting from his own artwork is the whole point of the folder; ` +
+    `listing it and then styling from scratch produces a competent picture that looks like nobody. ` +
+    `If none of them fits, say so plainly and generate without one.`;
 }
