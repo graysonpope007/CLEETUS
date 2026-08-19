@@ -103,7 +103,8 @@ export const mediaTools = {
         "wants, and say it is a draft. 'sdxl' is the general-purpose base. 'flux' is the best of them but " +
         "is the best of them but needs a Hugging Face token: it is Apache-2.0 but auto-gated, so an " +
         "account has to accept the terms once. If no token is present it says so rather than running. " +
-        "Add it as HF_TOKEN on the deck's Keys form, or in cleetus.env; either is picked up. " +
+        "Add it as HF_TOKEN on the Reach page (127.0.0.1:8767/reach) under Keys and secrets, or put it " +
+        "in cleetus.env; both are read and both reach the sampler. " +
         "ASPECT matters: use 'portrait' or 'tall' for a person, 'landscape' or 'wide' for a scene. Square " +
         "is the default and is wrong for most photographs of people. " +
         "The FIRST use of a model downloads it (multi-GB) — if that is a concern, call list_media_models " +

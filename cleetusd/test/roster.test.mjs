@@ -101,3 +101,26 @@ test("the agents that DO touch code still declare they need it", () => {
   // And the picture agent must not acquire it by accident.
   assert.ok(!(AGENTS.image.needs || []).includes("codebase"));
 });
+
+test("every instruction to add a key points at the page that has the form", () => {
+  /* The dashboard at / has no Keys form. Only /reach does — six references
+     there, zero in ui.mjs. Three messages told him to use "the deck's Keys
+     form", including one written an hour earlier in this same repo while
+     fixing a DIFFERENT wrong instruction about the same key.
+
+     It is the cheap end of the same fault as the HF_TOKEN plumbing: that one
+     sent him somewhere real to do something that could not work, this one
+     sends him somewhere that does not exist. Both cost him the same evening.
+
+     Asserted as an absence, because the failure is a phrase reappearing rather
+     than a behaviour changing. */
+  const dirs = ["src/tools/media.mjs", "src/tools/pi.mjs", "src/agents.mjs"];
+  for (const rel of dirs) {
+    const s = readFileSync(new URL(`../${rel}`, import.meta.url), "utf8");
+    assert.ok(!/deck'?s Keys|deck'?s secrets|deck'?s Keys-and-secrets/i.test(s),
+      `${rel} still sends him to a Keys form on the deck, which has none`);
+  }
+  // And the one that does exist is named with an address he can actually open.
+  const media = readFileSync(new URL("../src/tools/media.mjs", import.meta.url), "utf8");
+  assert.match(media, /Reach page \(127\.0\.0\.1:8767\/reach\)/);
+});

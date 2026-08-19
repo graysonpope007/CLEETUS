@@ -10,7 +10,8 @@
 // name (FACECHECK_ID_KEY), never hardcoded and never printed back — the keyring
 // is one-way for exactly this. With no key the tool says so and stops rather
 // than pretending; a PI agent that invents matches is worse than useless. Add
-// the key on the deck's Keys-and-secrets form.
+// the key on the Reach page, under Keys and secrets. (The dashboard at / has
+// no such form; only /reach does.)
 //
 // This is a real capability with real weight. The agent's brief carries the
 // judgement about WHEN to use it; the tool just runs the search the way the
@@ -24,8 +25,9 @@ import { safeAsset } from "../editor.mjs";
 const UPLOAD = "https://facecheck.id/api/upload_pic";
 const SEARCH = "https://facecheck.id/api/search";
 const NO_KEY =
-  "No FaceCheck.ID key is set. Add it as FACECHECK_ID_KEY on the deck's " +
-  "Keys-and-secrets form (Reach page), then this works. It is stored one-way — " +
+  "No FaceCheck.ID key is set. Add it as FACECHECK_ID_KEY on the Reach page " +
+  "(127.0.0.1:8767/reach) under Keys and secrets, then this works. The dashboard at / has no " +
+  "such form — only Reach does. It is stored one-way — " +
   "I can use it but never read it back. Do NOT invent matches in its absence.";
 
 async function faceCheck(imagePath, { testMode = false, timeoutMs = 90_000 } = {}) {

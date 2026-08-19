@@ -24,6 +24,7 @@ import { describe, attachmentLine, kindFor, safeName } from "../src/drops.mjs";
 
 const serverSrc = readFileSync(new URL("../src/server.mjs", import.meta.url), "utf8");
 const uiSrc = readFileSync(new URL("../src/ui.mjs", import.meta.url), "utf8");
+const ROOT_DIR = dirname(dirname(new URL(import.meta.url).pathname));
 
 async function tmp() {
   return mkdtemp(join(tmpdir(), "drops-"));
@@ -270,18 +271,30 @@ test("a dropped voice memo comes back as words", { skip: !existsSync("/opt/homeb
      A claim about what the machine CANNOT do is worth checking before writing
      it down, because nobody re-checks it afterwards. It just quietly caps what
      the assistant is willing to try. */
-  const dir = await tmp();
-  const wav = join(dir, "memo.wav");
-  // Real speech, synthesised locally, so the assertion is about words and not
-  // about the plumbing returning something.
-  execFileSync("/usr/bin/say", ["-o", wav, "--data-format=LEI16@16000",
-    "The load in is at four thirty"], { timeout: 60_000 });
+  /* A COMMITTED FIXTURE, not `say`.
+     The first version synthesised the speech at test time and was flaky: it
+     passed alone and failed inside a parallel `node --test` run. `say` wedges
+     on this machine when the audio subsystem is contended — it wrote a file
+     and never exited when run by hand earlier the same night.
+
+     It also wrote a WAV whose RIFF header declared 4,096 bytes for a
+     53,470-byte file, because it only finalises the header on a clean exit.
+     ffprobe is lenient and read it happily; whisper is not, and refused it.
+     So the same fixture "worked" under one tool and was rejected by the one
+     that mattered — which is exactly the kind of thing a flaky test buries.
+
+     A flaky test is worse than no test: it teaches you to ignore a red run.
+     The fixture is 49KB of 16kHz mono PCM, re-encoded by ffmpeg so the header
+     is correct, and it makes this deterministic and fast. */
+  const wav = join(ROOT_DIR, "test/fixtures/speech.wav");
+  assert.ok(existsSync(wav), "the speech fixture is missing");
 
   const d = await describe(wav);
   assert.equal(d.kind, "audio");
   assert.ok(d.text, `no transcript: ${d.note}`);
   assert.match(d.text, /load.?in/i);
   assert.match(d.text, /four thirty|4.?30/i);
+  assert.ok(d.text.length < 200, "a 1.5 second clip produced a suspiciously long transcript");
   assert.ok(d.transcribed_by, "nothing recorded which model heard it");
 });
 
