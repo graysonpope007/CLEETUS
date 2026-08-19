@@ -166,12 +166,19 @@ test("a video's frame is never described as the video", async function (t) {
 
 // ── the wiring, which is where a working module goes unused ───────────────────
 
-test("the upload route is admitted on the local-browser gate and not the bearer", () => {
-  // A bearer token is what the tunnel carries. An upload route is a write to
-  // this disk, so the gate has to be the one a stolen token cannot satisfy.
+test("the upload route is reachable the same two ways the chat is", () => {
+  // The deck is a browser on this Mac and cannot attach an Authorization
+  // header to anything, so /upload has to be on the local-browser list or
+  // every drop comes back 401. Being on that list adds a door rather than
+  // closing one: a phone over the tunnel still gets in with a token, which is
+  // the only way a photo ever leaves a phone.
   const routes = serverSrc.slice(serverSrc.indexOf("const BROWSER_ROUTES"),
                                 serverSrc.indexOf("const localBrowser"));
   assert.match(routes, /"\/upload"/, "/upload is not on the local-browser list, so the deck gets a 401");
+  assert.match(routes, /"\/chat\/stream"/, "the comparison this rests on no longer holds");
+
+  // The cursor routes are the ones that genuinely refuse a valid token, and
+  // an upload must never quietly join them — that would break the phone.
   assert.ok(!/CURSOR_ROUTES = \[[^\]]*upload/s.test(serverSrc));
   assert.match(serverSrc, /url\.pathname === "\/upload" && req\.method === "POST"/);
 });

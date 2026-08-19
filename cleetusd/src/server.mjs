@@ -177,13 +177,19 @@ async function handle(req, res) {
                           "/light", "/doctor", "/repos", "/secrets", "/conversations",
                           "/editor", "/editor/media", "/editor/asset", "/editor/probe",
                           "/editor/export",
-                          // Dropping a file on the chat window is part of asking a
-                          // question, so it is admitted exactly as /chat/stream is:
-                          // this machine's own browser, no forwarding headers. It
-                          // is deliberately NOT reachable through the tunnel — an
-                          // upload route writes to the disk, and the one gate a
-                          // stolen bearer token cannot satisfy is the one that asks
-                          // where the request physically came from.
+                          // Dropping a file on a chat window is part of asking a
+                          // question, so it is admitted exactly as /chat/stream is
+                          // and for the same reason: this machine's own browser
+                          // cannot attach an Authorization header, and being on
+                          // this list is what lets it through without one.
+                          //
+                          // Being here ADDS the local-browser door; it does not
+                          // close the bearer one. So a phone over the tunnel can
+                          // send a photo, with a token, exactly as it can send a
+                          // message. That is the right level: /chat already hands
+                          // a token-holder this daemon's shell, so refusing them a
+                          // write into one drops folder would guard nothing while
+                          // costing the only way to get a picture off a phone.
                           "/upload", "/drops",
                           // /reach is the deck's own page served from here, so a
                           // browser ON this Mac never has to cross an origin to
