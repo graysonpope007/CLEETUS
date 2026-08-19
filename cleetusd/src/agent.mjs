@@ -952,6 +952,30 @@ const DESCRIBE_ATTACHED =
  * Exported so the rules can be tested against real transcript lines rather than
  * inferred from what turns up in the files weeks later.
  */
+/* A sentence that is asking for something NOW, however it opens.
+   Deliberately about the SHAPE of the sentence rather than its subject: "make
+   me a website" and "I want a picture of a beach" and "I need you to try
+   again" are all the same kind of thing, and none of them is a fact about him.
+
+   The cost of the two mistakes is not symmetric. Failing to remember a
+   preference means he says it again. Remembering a request means it is read
+   back into every future message to that agent, forever, steering answers
+   towards something he wanted once. */
+const ASKING_FOR_SOMETHING = new RegExp([
+  // "i want you to…", "i need him to…"
+  "\\bi (?:want|need|would like|'?d like)\\s+(?:you|him|it|cleetus)\\s+to\\b",
+  // "i want a picture of…", "i need another draft of…"
+  "\\bi (?:want|need|would like|'?d like)\\s+(?:a|an|the|some|another|more|\\d+)\\b[^.]{0,48}" +
+    "\\b(?:image|picture|photo|photograph|video|clip|render|drawing|art|artwork|mockup|thumbnail|" +
+    "poster|cover|logo|graphic|site|website|page|draft|email|reply|message|list|summary|report)\\b",
+  // "i want to see…", "i need to know…" — a request for output, not a disclosure.
+  "\\bi (?:want|need)\\s+to\\s+(?:see|know|hear|get|have|be able to)\\b",
+  // Bare imperatives aimed at the assistant.
+  "\\b(?:make|give|show|send|draw|generate|create|render|build|write|find|get)\\s+me\\b",
+  // "you are supposed to…", "remember that" attached to an instruction ABOUT a task.
+  "\\byou (?:are|'?re) supposed to\\b",
+].join("|"), "i");
+
 export function statedFact(question) {
   const q = String(question || "").trim();
   if (!q || q.length > 400) return false;
@@ -960,6 +984,31 @@ export function statedFact(question) {
   // matter: the mark, and the opening word for when he leaves it off.
   if (/[?]\s*$/.test(q)) return false;
   if (/^\s*(?:can|could|would|will|do|does|did|is|are|was|were|what|when|where|who|whom|why|how|should|shall|which)\b/i.test(q)) return false;
+
+  /* ── "I want a picture of X" is the request, not a fact about him ─────────
+     The pattern below matches `i want` and `i need`, which is right for "I
+     want to put on ten pounds" and catastrophic for "I want a picture of a
+     beach": the request itself gets filed as something durable about him and
+     read back into EVERY later message to that agent.
+
+     Measured, and it is not hypothetical. The image agent's memory file had
+     five lines in it, and all five were his own past requests. Asked "that's
+     the one, but warmer light" about a photograph of a bassist, the agent
+     produced a woman on a tropical beach — because the beach was in its
+     memory and the bassist was only in the conversation. It also wrote
+     defensive exclusions into the negative prompt, which is what a model does
+     when its own context is pulling somewhere it thinks it should not go.
+
+     This is the same fault this file already carries a note about one screen
+     up: the first version of this triggered on a bare `my`, and seven of eight
+     remembered lines turned out to be questions. The lesson did not generalise
+     far enough. A memory that fills with what he ASKED FOR makes the assistant
+     worse the more it is used, and worse in a way that looks like the model
+     being bad at its job.
+
+     So a sentence that is asking for something NOW is never a fact, whatever
+     first-person verb it opens with. */
+  if (ASKING_FOR_SOMETHING.test(q)) return false;
 
   // An explicit first-person statement, or an instruction to remember.
   if (/\bremember that\b/i.test(q)) return true;

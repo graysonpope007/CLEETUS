@@ -74,3 +74,53 @@ test("nothing absurd gets stored", () => {
   // A 400-character wall is a conversation, not a fact worth pinning forever.
   assert.strictEqual(statedFact("I am " + "x".repeat(500)), false);
 });
+
+test("a request is never a fact, whatever first-person verb it opens with", () => {
+  /* THE MEASURED FAILURE. `i want` and `i need` were in the accept pattern,
+     which is right for "I want to put on ten pounds" and catastrophic for "I
+     want a picture of a beach": the request itself gets filed as something
+     durable about him and read back into every later message to that agent.
+
+     The image agent's memory file had five lines in it and ALL FIVE were his
+     own past requests. Asked "that's the one, but warmer light" about a
+     photograph of a bassist, it produced a woman on a tropical beach — the
+     beach was in its memory and the bassist was only in the conversation. With
+     the file emptied and this fix in, the same request came back as the
+     bassist, with the previous image reused as a reference.
+
+     This is the second time this function has learned this lesson. The first
+     was a bare `my`, and seven of eight remembered lines turned out to be
+     questions. */
+  for (const q of [
+    "no i need you to make me a real image right here and give it to me now",
+    "no you are supposed to make the image and put it in the chat. remember that.",
+    "i want a picture of a curvy woman in a bikini",
+    "i want a video of the show on friday",
+    "i need another draft of the email",
+    "i want to see the numbers",
+    "i need to know what the venue said",
+    "make me a website for the farmers market",
+    "show me the flights",
+    "i want you to try that again",
+  ]) {
+    assert.strictEqual(statedFact(q), false, `remembered a request: "${q}"`);
+  }
+});
+
+test("and the preferences it exists for still get through", () => {
+  // The veto is about the SHAPE of a request, not about the words "want" and
+  // "need". Losing these would be the worse failure: he would have to say them
+  // again, every time, forever.
+  for (const q of [
+    "i want to put on ten pounds before the tour",
+    "i need eight hours or i am useless the next day",
+    "i prefer dark roast",
+    "i train five days a week",
+    "i am allergic to shellfish",
+    "i decided to stop drinking",
+    "my bass is a Fender P-Bass",
+    "remember that finleys birthday is december 20",
+  ]) {
+    assert.strictEqual(statedFact(q), true, `lost a real fact: "${q}"`);
+  }
+});

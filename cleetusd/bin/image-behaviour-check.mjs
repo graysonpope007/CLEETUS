@@ -190,5 +190,29 @@ async function run(label, message) {
   }
 }
 
+// ── 4. "It gave me a different picture instead of changing that one" ─────────
+{
+  /* The reason the seed is reported back at all. A tweak is supposed to be a
+     tweak: same seed, one thing changed. Re-roll it and "warmer light" comes
+     back as a different photograph of a different person, which is the most
+     infuriating version of not-what-I-asked-for because the first one was
+     right.
+
+     The seed is sitting in the conversation — the previous tool result said
+     it in words. The question is whether the model reaches back for it. */
+  const argv = await run("a tweak to a picture he already has",
+    "that's the one, but warmer light\n\n[Earlier this turn you made: Made a 832x1216 image with " +
+    "realvis in 41.2s (30 steps, guidance 4.5, seed 771144). Saved to " +
+    "/Users/grayson/cleetusd/media/out/img_20260819_bassist.png]");
+  const call = argv[0];
+  if (!call) check("generated at all", false, "no tool call");
+  else {
+    const seed = argOf(call, "--seed");
+    check("reused the seed instead of rolling a new picture", seed === "771144",
+      seed ? `--seed ${seed}, and his was 771144` :
+             "no --seed at all, so 'warmer light' returns a different person entirely");
+  }
+}
+
 console.log(failed ? `\n${failed} check(s) FAILED` : "\nall checks passed");
 process.exit(failed ? 1 : 0);
