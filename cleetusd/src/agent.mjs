@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
 import { chat, quick, see, visionReady } from "./ollama.mjs";
 import { AGENTS, isAgent, agentMenu, agentList } from "./agents.mjs";
+import { literalMode, literalClause, verbatimText } from "./literal.mjs";
 import { TOOLS, toolSchemas, callTool } from "./tools/index.mjs";
 import { startRun, logStep, finishRun, loadMemory, relevantSkills, remember,
          rememberForAgent, loadAgentMemory, loadAllAgentMemory } from "./memory.mjs";
@@ -426,8 +427,17 @@ async function forceGeneration({ question, system, history = [], onStep, run }) 
         `${system}\n\n` +
         "This turn is generation only. The tools listed are the only actions available to you and " +
         "declining is not one of them: there is no prose branch here, so the next thing you produce is a " +
-        "tool call. Read what he asked for, write it out as a concrete visual prompt — subject, setting, " +
-        "light, framing, lens — and call generate_image (or generate_video if he asked for motion). " +
+        "tool call. " +
+        // `system` already carries this turn's literal clause, so the instruction
+        // here has to agree with it rather than contradict it. It used to say
+        // "write it out as a concrete visual prompt" unconditionally, which on a
+        // turn where he had quoted his prompt was a direct instruction to change
+        // the thing he had just said not to change.
+        (literalMode(question, history).level === "open"
+          ? "Read what he asked for, write it out as a concrete visual prompt — subject, setting, " +
+            "light, framing, lens — and call generate_image (or generate_video if he asked for motion). "
+          : "He has already said what he wants. Use his own wording as the prompt, adding nothing he " +
+            "did not name, and call generate_image (or generate_video if he asked for motion). ") +
         "Do not soften the subject into something else and do not substitute a safer one; he will see the " +
         "picture and know. Choose the aspect from the subject: portrait or tall for a person, landscape " +
         "or wide for a scene.",
@@ -619,14 +629,41 @@ async function writeAndRender({ question, history = [], onStep, run }) {
 
   if (mentionsMinor(question)) return null;
 
+  /* ── The expansion is the bug when he has already been specific ───────────
+     This rung asks the model to turn his sentence into "subject, pose,
+     clothing, setting, time of day, light, lens, framing". On "make me
+     something cool" that is the entire value of the feature. On "a red cube on
+     a white background, nothing else" every one of those words is an object
+     arriving in his picture that he did not ask for, and the reply he sends
+     back is that it did not make what he said.
+
+     So the rewrite is SKIPPED when he has already told us. Verbatim uses his
+     text as the prompt; literal uses his own words through promptForRender,
+     which strips the request grammar and nothing else. See literal.mjs. */
+  const mode = literalMode(question, history);
+  if (mode.level === "verbatim") {
+    const exact = verbatimText(question, mode.quoted);
+    if (!mentionsMinor(exact)) {
+      return renderPrompt({ prompt: exact, question, onStep, run,
+                            note: "used his wording exactly, with nothing added" });
+    }
+    return null;
+  }
+
   let prompt = "";
+  if (mode.level === "literal") {
+    // His words, unexpanded. Not a fallback here — the chosen path.
+    prompt = promptForRender(question, history);
+  }
   try {
-    const res = await chat({ messages: REWRITE, temperature: 0.6 });
-    const t = (res.text || "").trim().replace(/^["'`]|["'`]$/g, "");
-    // The expansion is checked too. It invents detail that was not in the
-    // request — age among it — and this path renders whatever comes back
-    // without anything else looking at it.
-    if (t && !isRefusal(t) && !mentionsMinor(t) && t.length > 12) prompt = t;
+    if (!prompt) {
+      const res = await chat({ messages: REWRITE, temperature: 0.6 });
+      const t = (res.text || "").trim().replace(/^["'`]|["'`]$/g, "");
+      // The expansion is checked too. It invents detail that was not in the
+      // request — age among it — and this path renders whatever comes back
+      // without anything else looking at it.
+      if (t && !isRefusal(t) && !mentionsMinor(t) && t.length > 12) prompt = t;
+    }
   } catch { /* the rung below needs nothing from the model */ }
 
   // Rung two. His own words are a perfectly serviceable prompt; the enricher in
@@ -638,6 +675,18 @@ async function writeAndRender({ question, history = [], onStep, run }) {
   // sampler closes that off for any origin added later.
   if (mentionsMinor(prompt)) return null;
 
+  return renderPrompt({ prompt, question, onStep, run });
+}
+
+/**
+ * Call the sampler with a prompt this file has already decided on.
+ *
+ * Split out because there are two ways to arrive here now — his exact words,
+ * or an expansion of them — and the part that follows is identical either way.
+ * A second copy of it is how the verbatim path would quietly drift into
+ * choosing a different aspect ratio from the ordinary one.
+ */
+async function renderPrompt({ prompt, question, onStep, run, note }) {
   // A person is taller than they are wide. Nothing subtle here — it is the
   // single most common framing mistake and the model is no longer being asked.
   const PEOPLE = /\b(woman|man|girl|guy|person|people|portrait|model|her|him|body|figure|face)\b/i;
@@ -653,7 +702,8 @@ async function writeAndRender({ question, history = [], onStep, run }) {
   const text = typeof result === "string" ? result : JSON.stringify(result);
   // If the TOOL failed that is a real failure and must read as one — this path
   // exists to defeat a refusal, not to dress a broken renderer up as a picture.
-  return { answer: String(text).trim(), used: [tool] };
+  return { answer: [String(text).trim(), note ? `(${note})` : ""].filter(Boolean).join(" "),
+           used: [tool] };
 }
 
 /**
@@ -931,6 +981,19 @@ export async function ask({ history, agent, onStep, probe = false, maxSteps = CO
 
   const run = await startRun({ agent: agentId, request: question, probe });
   let system = await buildSystem(agentId, question);
+
+  /* ── Has he already told us what he wants? ────────────────────────────────
+     Everything else here is built to improve what he said, and improvement is
+     variation. That is right for a rough ask and it is the whole complaint on
+     a precise one: past the point where he has been specific, every added word
+     is something he did not ask for turning up in the answer.
+
+     So the clause is per-turn, not standing. A permanent "always be literal"
+     flattens the rough asks where the expansion IS the value; this fires only
+     when he quoted a prompt, constrained it, said exactly, or is correcting
+     something for having been changed. See literal.mjs. */
+  const literal = literalMode(question, history);
+  system += literalClause(literal);
   if (carriedImage) {
     // The system prompt never mentioned attachments, so the model filled the
     // gap with the safest-sounding thing it knows about itself: that it is a

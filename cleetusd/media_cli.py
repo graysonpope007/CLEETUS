@@ -412,6 +412,23 @@ def _dimensions(args, spec):
     return n, n
 
 
+def _merge_negative(asked: str, default: str) -> str:
+    """His negative prompt AND the model's, in that order, without repeats.
+
+    His first because the leading terms of a negative prompt carry the most
+    weight, and the thing he actually said to keep out should not be sitting
+    behind twelve words about skin texture.
+    """
+    parts, seen = [], set()
+    for chunk in (asked or "", default or ""):
+        for term in (t.strip() for t in chunk.split(",")):
+            key = term.lower()
+            if term and key not in seen:
+                seen.add(key)
+                parts.append(term)
+    return ", ".join(parts)
+
+
 def _render(args, model_key, enrich=True):
     """One image, returned rather than printed, so video can reuse it."""
     import torch
@@ -428,7 +445,19 @@ def _render(args, model_key, enrich=True):
     # CFG they are half of what makes an image look photographed; at guidance 0
     # they are ignored by the sampler entirely. Say so rather than accepting the
     # argument and quietly dropping it, which is what used to happen.
-    negative = args.negative or spec.get("negative") or ""
+    # COMBINED, not replaced.
+    #
+    # This was `args.negative or spec.get("negative")`, so the moment anything
+    # passed a negative prompt of its own the model's tuned one vanished — and
+    # that tuned one is the whole anti-plastic-skin, anti-mangled-hands list
+    # that keeps realvis from looking generated. Asking for "no people on the
+    # beach" therefore also asked, silently, for waxy skin and bad anatomy back.
+    #
+    # It was written that way for a real reason: two lists concatenated blow
+    # past CLIP's 77 tokens and the tail is dropped. That is no longer true —
+    # long prompts are encoded in windows now, negative included — so the
+    # correct behaviour is finally affordable.
+    negative = _merge_negative(args.negative, spec.get("negative"))
     negative_used = bool(negative) and guidance > 1.0
     if negative and not negative_used:
         log(f"[media] note: {model_key} runs at guidance {guidance}, so the negative prompt is ignored "

@@ -17,6 +17,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { CONFIG } from "../config.mjs";
+import { liftNegations } from "../literal.mjs";
 
 // media_cli.py lives beside the daemon; its interpreter is the isolated media
 // venv, overridable for a machine that keeps it elsewhere.
@@ -98,8 +99,30 @@ export const mediaTools = {
     async run({ prompt, negative, model, aspect, steps, guidance, seed, out }) {
       if (!ready()) return ABSENT;
       const dest = out || `${OUT_DIR}/img_${stamp()}.png`;
-      const args = ["image", "--prompt", String(prompt), "--out", dest];
-      if (negative) args.push("--negative", String(negative));
+
+      /* ── "no people" is a request for people ─────────────────────────────
+         Cross-attention has no operator for "not". It has a vector for
+         `people`, and "a quiet beach at sunrise, no people" reliably comes
+         back with people on the beach — the prompt contradicted by its own
+         picture. From outside that is indistinguishable from the model
+         ignoring an instruction, which is a fair share of "it doesn't make
+         what I ask for".
+
+         Diffusion models have the other input for exactly this, so the
+         negation is moved to where the sampler can act on it: out of the
+         positive prompt, into the negative one. Done HERE rather than in the
+         agent because every path ends at this function — the agent writing
+         its own prompt, the forced generation pass, and the last-resort
+         renderer all arrive through this one door, and a fix at the door
+         cannot be routed around by adding a fourth. */
+      const lifted = liftNegations(String(prompt));
+      const promptUsed = lifted.terms.length ? lifted.cleaned : String(prompt);
+      const negativeUsed = lifted.terms.length
+        ? [String(negative || ""), ...lifted.terms].filter(Boolean).join(", ")
+        : negative;
+
+      const args = ["image", "--prompt", promptUsed, "--out", dest];
+      if (negativeUsed) args.push("--negative", String(negativeUsed));
       if (model) args.push("--model", String(model));
       if (aspect) args.push("--aspect", String(aspect));
       if (Number.isFinite(steps)) args.push("--steps", String(steps));
@@ -116,9 +139,14 @@ export const mediaTools = {
       // 832x1216 image" — so a prompt whose last third never reached the
       // sampler was indistinguishable from one that did.
       const long = r.long_prompt ? ` Note: ${r.long_prompt}.` : "";
+      // Said out loud, because it is a change to what he typed. Silent
+      // helpfulness is the thing this whole area of the code is apologising for.
+      const kept = lifted.terms.length
+        ? ` Kept out via the negative prompt rather than the positive one, which a sampler reads backwards: ${lifted.terms.join(", ")}.`
+        : "";
       return `Made a ${r.width}x${r.height} image with ${r.model} in ${r.seconds}s ` +
              `(${r.steps} steps, guidance ${r.guidance}` +
-             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}${long}`;
+             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}${long}${kept}`;
     },
   },
 

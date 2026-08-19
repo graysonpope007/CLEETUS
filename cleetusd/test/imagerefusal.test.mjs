@@ -72,25 +72,47 @@ test("the override never runs when the request mentions a minor", () => {
 });
 
 test("the guard is checked at every door into the override, not just one", () => {
-  // Five doors now: the call site, forceGeneration, writeAndRender, the model's
-  // own rewrite, and — since the prompt may be recovered from an earlier turn —
-  // that turn plus the assembled prompt itself. Counted rather than eyeballed,
-  // because every one of them was added after finding the door it stood in
-  // front of was the only one being watched.
-  assert.strictEqual((agent.match(/mentionsMinor\(/g) || []).length, 7,
-    "expected the guard definition plus a check at every entry, the rewrite, the recovered turn and the final prompt");
+  // Six doors now: the call site, forceGeneration, writeAndRender, the model's
+  // own rewrite, the turn a prompt may be recovered from, the assembled prompt
+  // itself, and — since literal.mjs — the VERBATIM branch, which returns before
+  // the assembled-prompt check and so cannot borrow it. Counted rather than
+  // eyeballed, because every one of them was added after finding the door it
+  // stood in front of was the only one being watched.
+  //
+  // If this number moves, the question is never "update the count". It is
+  // "which door did that add, and is it guarded" — the verbatim branch raised
+  // it from 7 to 8 and had to prove it stood in front of its own.
+  assert.strictEqual((agent.match(/mentionsMinor\(/g) || []).length, 8,
+    "expected the guard definition plus a check at every entry, the rewrite, the recovered turn, the verbatim branch and the final prompt");
   // Deliberately NOT pinned to the exact parameter list. The previous version
   // was, and adding `history` — which is what made the recovered-turn check
   // necessary in the first place — turned a real guard assertion into a
   // signature assertion that failed for the wrong reason.
   assert.match(agent, /async function forceGeneration\(\{[^}]*\}\) \{\s*(?:\/\/[^\n]*\n\s*)*if \(mentionsMinor\(question\)\) return null;/,
     "forceGeneration must refuse at the door");
-  assert.match(agent, /if \(mentionsMinor\(question\)\) return null;[\s\S]{0,400}?let prompt = ""/,
+  // Ordering, asserted as ordering. This was a proximity match with a 400
+  // character window, which is a proxy for "before" that fails the moment
+  // anybody writes a paragraph of comment between the two lines — and then
+  // reads as the guard having been removed, which is the most alarming
+  // possible false alarm on this particular rule.
+  const wr = agent.slice(agent.indexOf("async function writeAndRender"),
+                         agent.indexOf("async function renderPrompt"));
+  const guardAt = wr.indexOf("if (mentionsMinor(question)) return null;");
+  const buildsAt = wr.indexOf('let prompt = ""');
+  assert.ok(guardAt !== -1, "writeAndRender lost its door check entirely");
+  assert.ok(buildsAt !== -1 && guardAt < buildsAt,
     "writeAndRender must refuse before it builds a prompt");
   // The rewritten prompt invents detail the request did not contain, and this
   // path renders it with nothing else looking at it.
   assert.match(agent, /!isRefusal\(t\) && !mentionsMinor\(t\)/,
     "the model's expansion must be checked too, not only the original request");
+
+  // The verbatim path renders his text directly and returns, so it never
+  // reaches the `if (mentionsMinor(prompt))` that guards every other route out
+  // of this function. It has to carry its own, immediately before the call.
+  assert.match(agent,
+    /const exact = verbatimText\(question, mode\.quoted\);\s*\n\s*if \(!mentionsMinor\(exact\)\) \{/,
+    "the verbatim branch renders without checking the one guard that is never overridden");
 });
 
 test("the last rung cannot be declined, because the model is not asked", () => {
