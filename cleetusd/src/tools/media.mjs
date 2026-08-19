@@ -68,36 +68,51 @@ export const mediaTools = {
       description:
         "Generate an image from a text prompt, entirely on this Mac's GPU (nothing leaves the machine). " +
         "Use when Grayson wants a picture, art, a mockup, a concept, a thumbnail, album art, a reference. " +
-        "Returns the saved file path. Default model 'sdxl-turbo' makes a 1024px image in seconds; " +
-        "'sd-turbo' is faster and smaller (512px); 'sdxl' is best quality but minutes on this GPU. The " +
-        "FIRST use of a model downloads it (multi-GB) — if that is a concern, call list_media_models first. " +
-        "Write a vivid, concrete prompt: subject, setting, lighting, style, lens. Do not claim an image " +
-        "exists until this returns a path.",
+        "Returns the saved file path. " +
+        "DEFAULT MODEL 'realvis' (RealVisXL) is a photorealistic model: about a minute an image, real skin " +
+        "texture and lens character. Use it for anything meant to look like a photograph, which is most " +
+        "requests. 'sdxl-turbo' is a three-second DRAFT — use it only when he is still deciding what he " +
+        "wants, and say it is a draft. 'sdxl' is the general-purpose base. 'flux' is the best of them but " +
+        "needs a Hugging Face token this Mac does not have, so it will tell you so rather than run. " +
+        "ASPECT matters: use 'portrait' or 'tall' for a person, 'landscape' or 'wide' for a scene. Square " +
+        "is the default and is wrong for most photographs of people. " +
+        "The FIRST use of a model downloads it (multi-GB) — if that is a concern, call list_media_models " +
+        "first. Write a vivid, concrete prompt: subject, setting, lighting, style, lens. On the photoreal " +
+        "models a photographic style is appended for you unless the prompt already names a style, so do not " +
+        "pad it with 'photorealistic, 8k, masterpiece'. Do not claim an image exists until this returns a path.",
       parameters: {
         type: "object",
         properties: {
           prompt: { type: "string", description: "What to draw — concrete and visual." },
-          negative: { type: "string", description: "What to avoid (optional)." },
-          model: { type: "string", enum: ["sdxl-turbo", "sd-turbo", "sdxl"], description: "Default sdxl-turbo." },
+          negative: { type: "string", description: "What to avoid. Ignored by the turbo models, which run without guidance; a sensible default is already applied on the others." },
+          model: { type: "string", enum: ["realvis", "sdxl", "sdxl-turbo", "sd-turbo", "flux"], description: "Default realvis (photoreal). sdxl-turbo only for quick drafts." },
+          aspect: { type: "string", enum: ["square", "portrait", "tall", "landscape", "wide"], description: "Shape of the image. Portrait/tall for a person, landscape/wide for a scene." },
           steps: { type: "number", description: "Denoising steps. Leave unset to use the model's tuned default." },
-          seed: { type: "number", description: "Set for a reproducible image; omit for a new one each time." },
+          guidance: { type: "number", description: "How hard to follow the prompt. Leave unset unless he asks for looser or tighter." },
+          seed: { type: "number", description: "Set for a reproducible image; omit for a new one each time. Pass the SAME seed to tweak an image he liked." },
           out: { type: "string", description: "Output path. Omit to save a timestamped PNG in the media folder." },
         },
         required: ["prompt"],
       },
     },
-    async run({ prompt, negative, model, steps, seed, out }) {
+    async run({ prompt, negative, model, aspect, steps, guidance, seed, out }) {
       if (!ready()) return ABSENT;
       const dest = out || `${OUT_DIR}/img_${stamp()}.png`;
       const args = ["image", "--prompt", String(prompt), "--out", dest];
       if (negative) args.push("--negative", String(negative));
       if (model) args.push("--model", String(model));
+      if (aspect) args.push("--aspect", String(aspect));
       if (Number.isFinite(steps)) args.push("--steps", String(steps));
+      if (Number.isFinite(guidance)) args.push("--guidance", String(guidance));
       if (Number.isFinite(seed)) args.push("--seed", String(seed));
       // Generous: the first call to a model downloads gigabytes, then generates.
       const r = await py(args, 20 * 60_000);
       if (!r.ok) return `Could not generate the image: ${r.error}`;
-      return `Made a ${r.size}px image with ${r.model} in ${r.seconds}s (${r.steps} steps` +
+      // The seed is reported back deliberately: it is how a picture he liked
+      // gets tweaked instead of replaced. Without it every "warmer light" is a
+      // different photograph of a different person.
+      return `Made a ${r.width}x${r.height} image with ${r.model} in ${r.seconds}s ` +
+             `(${r.steps} steps, guidance ${r.guidance}` +
              `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}`;
     },
   },

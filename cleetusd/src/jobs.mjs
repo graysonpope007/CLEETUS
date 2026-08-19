@@ -262,7 +262,10 @@ const ONE_WAY =
 
 async function askModel(question, agent) {
   const { ask } = await import("./agent.mjs");
-  const out = await ask({ history: [{ role: "user", content: question }], agent, probe: true });
+  // Scheduled work, with nobody watching a chat box for it. The interactive
+  // eight-minute deadline is the wrong bound here — see CONFIG.turnDeadlineMs —
+  // so these run to the step budget like they always have.
+  const out = await ask({ history: [{ role: "user", content: question }], agent, probe: true, deadlineMs: 0 });
   return out.answer || "";
 }
 

@@ -175,7 +175,13 @@ async function handle(req, res) {
                           "/airpad/state", "/airpad/stream.mjpg",
                           "/light", "/doctor", "/repos", "/secrets", "/conversations",
                           "/editor", "/editor/media", "/editor/asset", "/editor/probe",
-                          "/editor/export"];
+                          "/editor/export",
+                          // /reach is the deck's own page served from here, so a
+                          // browser ON this Mac never has to cross an origin to
+                          // talk to the daemon. Same gate as the dashboard:
+                          // this machine only, no forwarding headers, so the
+                          // tunnel cannot reach it whatever token it carries.
+                          "/reach", "/favicon.svg"];
   const localBrowser = isLocalBrowser(req) &&
     (BROWSER_ROUTES.includes(url.pathname) || url.pathname.startsWith("/conversations/"));
 
@@ -236,6 +242,53 @@ async function handle(req, res) {
     const file = join(CONFIG.home, "cleetusd", "editor.html");
     if (!existsSync(file)) return json(res, { ok: false, error: "editor.html missing" }, 404);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    return res.end(await readFile(file, "utf8"));
+  }
+
+  /* ── /reach, served from HERE ───────────────────────────────────────────────
+     The same file cleetusai.com serves, handed out by the daemon it talks to.
+
+     Not because the cross-origin path was broken — it works, /reach carries a
+     CSP naming http://127.0.0.1:8767 and the loopback probe succeeds. Because
+     the cross-origin path is FRAGILE in a way this one is not. It depends on a
+     CSP carve-out in a middleware file in another repo, on a 1.5s probe
+     succeeding, and on the browser continuing to allow a public page to reach a
+     loopback address, which is exactly the kind of permission browsers keep
+     tightening. When any of those goes, the page does not break loudly: it
+     falls through to the tunnel while sitting on the machine it wanted, and the
+     tunnel has a measured ceiling —
+
+         POST https://me.cleetusai.com/chat  ->  524 after 125.2s
+
+     — so it turns every slow answer into a failure. Served from here there is
+     no origin to cross, nothing to probe, no Cloudflare in the path and no
+     ceiling. The marker injected below is how the page knows.
+
+     Read from disk per request rather than baked in, like /editor, so editing
+     reach.html in cleetusv2 and reloading is the whole edit cycle. */
+  if (url.pathname === "/reach") {
+    const file = join(CONFIG.home, "cleetusv2", "reach.html");
+    if (!existsSync(file)) {
+      return json(res, { ok: false, error: "reach.html missing",
+        detail: `Expected it at ${file} — that is the copy cleetusai.com serves.` }, 404);
+    }
+    let html = await readFile(file, "utf8");
+    // lock.js is the site's Touch ID gate and lives on cleetusai.com. It cannot
+    // load from here, and left in place it 404s on every request; the gate that
+    // matters for this origin is isLocalBrowser, which already ran above.
+    html = html.replace('<script src="/lock.js"></script>',
+      "<script>window.__CLEETUSD_ORIGIN__ = true;</script>");
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+    return res.end(html);
+  }
+
+  // The one asset /reach asks for by absolute path. Without it the tab shows a
+  // 401 in the console and a blank favicon, which reads as something being
+  // wrong with the page when nothing is.
+  if (url.pathname === "/favicon.svg") {
+    const file = join(CONFIG.home, "cleetusv2", "favicon.svg");
+    if (!existsSync(file)) return json(res, { ok: false, error: "not found" }, 404);
+    res.writeHead(200, { "Content-Type": "image/svg+xml", "Cache-Control": "max-age=3600" });
     return res.end(await readFile(file, "utf8"));
   }
   if (url.pathname === "/editor/media") {
@@ -460,6 +513,15 @@ async function handle(req, res) {
     const b = await readBody(req);
     return json(res, await convos.create({ agent: b.agent || "cleetus" }));
   }
+  // Clear = off the rail, still on disk, still searchable. Grayson wanted the
+  // box emptied AND the conversation remembered, which is one flag rather than
+  // a contradiction — see conversations.clear.
+  if (url.pathname.endsWith("/clear") && req.method === "POST") {
+    const id = decodeURIComponent(url.pathname.slice("/conversations/".length, -"/clear".length));
+    const c = await convos.clear(id, true);
+    if (!c) return json(res, { ok: false, error: "no_such_conversation" }, 404);
+    return json(res, { ok: true, id: c.id, cleared: true });
+  }
   if (url.pathname.startsWith("/conversations/")) {
     const id = decodeURIComponent(url.pathname.slice("/conversations/".length));
     if (req.method === "DELETE") return json(res, { ok: await convos.remove(id) });
@@ -633,6 +695,13 @@ async function handle(req, res) {
       }
       return json(res, { ok: true, ...out, conversation: convo?.id || null });
     } catch (e) {
+      // Logged, like /chat/stream already does. This route is the one the
+      // tunnel uses — every message from the phone comes through here — and it
+      // was the only failure path in the daemon that wrote nothing anywhere. So
+      // a request that died here left a thread holding a question with no
+      // answer under it and not one line in cleetusd.err.log to say why, which
+      // is a bad way to find out anything.
+      console.error("[cleetusd] chat failed:", e?.stack || e);
       return json(res, { ok: false, error: e.message }, 500);
     }
   }

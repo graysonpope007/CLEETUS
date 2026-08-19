@@ -174,7 +174,7 @@ export function replay(convo) {
 }
 
 /** Newest first, for the rail on the Reach page. */
-export async function list({ agent = null, limit = 40, includeProbes = false } = {}) {
+export async function list({ agent = null, limit = 40, includeProbes = false, includeCleared = false } = {}) {
   await ensure();
   const files = (await readdir(DIR).catch(() => [])).filter((f) => f.endsWith(".json"));
   const rows = [];
@@ -184,6 +184,9 @@ export async function list({ agent = null, limit = 40, includeProbes = false } =
       if (agent && c.agent !== agent) continue;
       if (!c.messages?.length) continue;   // opened and abandoned; not a conversation
       if (c.probe && !includeProbes) continue;   // the system testing itself
+      // Cleared by Grayson: off the rail, still on disk, still searchable. This
+      // is the ONLY place the flag is honoured — see clear().
+      if (c.cleared && !includeCleared) continue;
       rows.push({
         id: c.id,
         title: c.title || "Untitled",
@@ -203,6 +206,31 @@ export async function list({ agent = null, limit = 40, includeProbes = false } =
 export async function remove(id) {
   await unlink(file(id)).catch(() => {});
   return true;
+}
+
+/**
+ * Take a thread off the screen without taking it out of his memory.
+ *
+ * Grayson asked for a Clear chat button and then, in the same breath, for
+ * Cleetus to still remember what was cleared. Those sound like opposites and
+ * are not: what he wants gone is the transcript sitting in front of him, and
+ * what he wants kept is the ability to ask about it later. A delete gives him
+ * the first by destroying the second, which is the wrong half.
+ *
+ * So clearing sets a flag. `list` — the Chats rail, and only the rail — skips
+ * cleared threads. `search` and `load` do not, so recall_chat still finds the
+ * conversation, read_chat still opens it, and every fact and decision in it is
+ * still reachable. The file on disk is untouched apart from two fields.
+ *
+ * Reversible on purpose, and cheap: unclearing is the same call.
+ */
+export async function clear(id, cleared = true) {
+  const convo = await load(id);
+  if (!convo) return null;
+  convo.cleared = !!cleared;
+  convo.clearedAt = cleared ? new Date().toISOString() : null;
+  await writeFile(file(convo.id), JSON.stringify(convo, null, 2), "utf8");
+  return convo;
 }
 
 /**

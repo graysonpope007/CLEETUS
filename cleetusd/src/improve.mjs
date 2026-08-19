@@ -556,6 +556,11 @@ export async function improveOnce({ dry = false } = {}) {
     history: [{ role: "user", content: brief }],
     agent: "builder",
     maxSteps: Number(process.env.CLEETUSD_IMPROVE_STEPS || 40),
+    // No wall-clock deadline. The eight-minute one exists for a person sitting
+    // in front of a chat box waiting; nobody is waiting on this, and cutting a
+    // half-finished self-repair off at eight minutes would leave the machine in
+    // a worse state than not having tried. The step budget still bounds it.
+    deadlineMs: 0,
     // The loop repairing itself is not a request Grayson made.
     //
     // askModel() in jobs.mjs was marked, but this call goes straight to ask()

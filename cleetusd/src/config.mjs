@@ -158,6 +158,20 @@ export const CONFIG = {
   // loop that has genuinely lost the plot still stops.
   maxStepsCeiling: Number(env.CLEETUSD_MAX_STEPS_CEILING || 120),
 
+  // How long ONE conversational turn may run before it has to stop and say
+  // what it got done. A wall-clock bound, because the step budget above is not
+  // one in any unit a person waiting experiences: a hundred and twenty steps at
+  // thirty to sixty seconds a turn is an hour and a half.
+  //
+  // Eight minutes is picked from the two ends. Generously above real work — the
+  // longest honest run in the logs, a repo read plus a build, is under four —
+  // and far below the thirty-five-minute pkill/npm-run-dev/curl loop that made
+  // "I can't send him messages" a bug report. See the note in ask().
+  //
+  // Callers that legitimately run long (improve, the nightly jobs, anything
+  // with nobody waiting on it) pass deadlineMs: 0 and are unbounded as before.
+  turnDeadlineMs: Number(env.CLEETUSD_TURN_DEADLINE_MS || 8 * 60_000),
+
   // Kill switch for the shell tool specifically. Everything else stays usable.
   // Set CLEETUSD_NO_SHELL=1 to take the machine out of his hands without
   // stopping him answering questions.
