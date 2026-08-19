@@ -83,6 +83,23 @@ test("the headline is taken from the line the model was told to write", () => {
   assert.doesNotMatch(body, /HEADLINE:/, "the marker must not survive into the report");
   assert.match(body, /src\/foo\.mjs/);
 
+  // MEASURED on the second live run. The model wrote the headline exactly as
+  // instructed and then bolded it, and an anchor of ^\s*HEADLINE: does not match
+  // that — so the row published the fallback, "0 fixes shipped overnight", and
+  // threw away the one sentence the whole job exists to produce. A model asked
+  // for prose decorates the prose.
+  const bolded = splitHeadline(
+    "**PROPOSALS:**\n1. `plist:19` — double hyphens in an XML comment\n\n" +
+    "**HEADLINE: Invalid plist XML, stale handoff tool list, and a port conflict.**",
+    "FALLBACK",
+  );
+  assert.strictEqual(bolded.headline, "Invalid plist XML, stale handoff tool list, and a port conflict.");
+  assert.doesNotMatch(bolded.body, /HEADLINE:/);
+  assert.match(bolded.body, /plist:19/, "the proposals must survive the strip");
+  for (const decorated of ["## HEADLINE: hi there", "_HEADLINE: hi there_", "> HEADLINE: hi there"]) {
+    assert.strictEqual(splitHeadline(`some body\n\n${decorated}`, "FB").headline, "hi there", decorated);
+  }
+
   // A model that ignored the instruction must not produce an empty headline —
   // that is the field the brief and the notification are composed from.
   assert.strictEqual(splitHeadline("just some prose", "2 fixes shipped").headline, "2 fixes shipped");
@@ -204,4 +221,16 @@ test("the review is bounded by the clock, not only by the step budget", async ()
     assert.ok(reviewDeadlineMs(at(h, 45)) > 0, `${h}:45 produced a zero deadline`);
     assert.ok(mins(at(h, 45)) >= 15, `${h}:45 left no time to say anything at all`);
   }
+});
+
+test("the review does not read its own previous report", () => {
+  // Second live run: it re-reported a plist defect it had found hours earlier
+  // and that had been fixed in between. It had read selfreview-2026-08-19.md —
+  // its own output from the same day — and carried the finding forward as
+  // current. A loop that reads its own reports back has stopped reviewing the
+  // code and started reviewing itself, and every stale proposal it repeats costs
+  // Grayson a file he opens to find nothing wrong with.
+  assert.match(src, /YESTERDAY'S REVIEW IS NOT EVIDENCE/);
+  assert.match(src, /selfreview-<date>\.md/,
+    "the instruction has to name the files, or it names nothing");
 });

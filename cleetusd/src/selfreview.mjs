@@ -333,6 +333,13 @@ const PROPOSAL_BRIEF = (evidence, diffs) => [
   "Use your tools to READ the files these touch before saying anything about them. A proposal about a",
   "file you did not open is a guess, and a confident guess is worse here than silence.",
   "",
+  "YESTERDAY'S REVIEW IS NOT EVIDENCE. There are files named selfreview-<date>.md in",
+  "~/cleetus-memory/jobs. Do not read them, and do not repeat what they said. Every one of their",
+  "proposals is either already fixed or still broken, and the only way to tell is to open the file as",
+  "it is NOW. On the second live run this job re-reported a plist defect it had found hours earlier and",
+  "that had been fixed in between — a loop that reads its own output back has stopped reviewing the",
+  "code and started reviewing itself.",
+  "",
   "Write at most five proposals, best first. For each one, on its own line:",
   "  <file>:<line or function> — <what is wrong> — <what to do about it>",
   "",
@@ -357,9 +364,25 @@ const PROPOSAL_BRIEF = (evidence, diffs) => [
  */
 export function splitHeadline(answer, fallback) {
   const text = String(answer || "").trim();
-  const m = text.match(/^\s*HEADLINE:\s*(.+)$/im);
-  const headline = (m ? m[1] : "").trim().replace(/\s+/g, " ").slice(0, 150);
-  const body = text.replace(/^\s*HEADLINE:.*$/im, "").trim();
+  // The leading `[*_#>\s]*` is not defensive programming, it is the second live
+  // run. The model wrote its headline exactly as instructed and then bolded it:
+  //
+  //     **HEADLINE: Invalid plist XML, stale handoff tool list, ...**
+  //
+  // An anchor of `^\s*HEADLINE:` does not match that, so the whole thing fell
+  // through to the fallback and the row published "0 fixes shipped overnight" —
+  // technically true, and it threw away the one sentence the job exists to
+  // produce. A model asked for prose will decorate the prose.
+  const MARK = /^[*_#>\s]*HEADLINE:\s*(.+)$/im;
+  const m = text.match(MARK);
+  const headline = (m ? m[1] : "")
+    .trim()
+    // And the closing emphasis on the same line.
+    .replace(/[*_`]+\s*$/, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 150);
+  const body = text.replace(/^[*_#>\s]*HEADLINE:.*$/im, "").trim();
   return { headline: headline || fallback, body: body || text };
 }
 
