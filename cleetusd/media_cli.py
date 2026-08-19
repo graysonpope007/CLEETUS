@@ -10,17 +10,22 @@ anyone. So this runs the diffusion on the M4 Max's GPU (MPS) and nothing — not
 the prompt, not the picture — leaves the machine.
 
 The cost is honest and worth stating: local means slower than a hosted H100 and
-capped by 128 GB of unified memory, not a datacentre. SDXL is minutes on MPS;
-the turbo models are seconds. Video is the hard part — true generative video
-diffusion (Stable Video Diffusion) runs here but is heavy, so there are two
-paths and the command says which it used.
+capped by this machine's 64 GB of unified memory, not a datacentre. Video is the
+hard part — true generative video diffusion (Stable Video Diffusion) runs here
+but is heavy, so there are two paths and the command says which it used.
 
 THE MODELS, chosen for this machine
-  sdxl-turbo   default. ~1-4 steps, guidance off, seconds per image on MPS,
-               1024-ish quality. The right default for "make me an image".
-  sd-turbo     smaller and faster still, 512px. The fallback when sdxl-turbo is
-               not yet downloaded and speed matters more than resolution.
-  sdxl         full SDXL base. Minutes on MPS, best quality. Opt-in, not default.
+  realvis      DEFAULT. RealVisXL V5.0, a photoreal SDXL fine-tune. 30 steps,
+               guidance 4.5, ~40s an image on this GPU. Slower than turbo by an
+               order of magnitude, and that is the entire point — see the long
+               note above MODELS for why the turbo default looked like AI.
+  sdxl         full SDXL base. A strong generalist, not a photoreal specialist.
+  sdxl-turbo   the DRAFT model. ~4 steps, guidance off, seconds per image.
+               Right when he is still deciding what he wants, wrong as a
+               default. Negative prompts do nothing here.
+  sd-turbo     smaller and faster still, 512px. Same caveat.
+  flux         FLUX.1-schnell. The best of them, gated on Hugging Face, and this
+               Mac has no token — it says so rather than failing obscurely.
 Nothing is bundled. Each model downloads from Hugging Face on first use into the
 usual HF cache and is reused forever after; `models` reports what is already here
 so a request can avoid a multi-GB wait it did not ask for.
@@ -39,6 +44,7 @@ rather than scraping text. Progress and model chatter go to stderr.
 import argparse
 import json
 import os
+import secrets
 import subprocess
 import sys
 import time
@@ -325,11 +331,21 @@ def _render(args, model_key, enrich=True):
         if negative_used:
             _warn_if_truncated(pipe, "negative prompt", negative)
 
-    gen = None
-    if args.seed is not None:
-        # MPS generators exist but the reproducible path everyone relies on is a
-        # CPU generator; the small transfer is free next to the denoise.
-        gen = torch.Generator(device="cpu").manual_seed(int(args.seed))
+    # ALWAYS a real seed, even when none was asked for.
+    #
+    # Omitting it used to mean the sampler got no generator and the result was
+    # unreproducible, with `seed: null` in the output. The agent is told to
+    # report the seed back — because reusing it is how a picture he liked gets
+    # adjusted rather than replaced — and faced with a null it invented one:
+    # it read the timestamp out of the filename and presented that as the seed.
+    # Confidently wrong, and useless the moment he tried to reuse it.
+    #
+    # So one is drawn here when absent. Every image is reproducible, and the
+    # number handed back is the number that made it.
+    seed = int(args.seed) if args.seed is not None else secrets.randbelow(2**31 - 1)
+    # MPS generators exist but the reproducible path everyone relies on is a
+    # CPU generator; the small transfer is free next to the denoise.
+    gen = torch.Generator(device="cpu").manual_seed(seed)
 
     log(f"[media] generating {width}x{height}, {steps} steps, guidance {guidance}, model {model_key}")
     t0 = time.time()
@@ -351,7 +367,7 @@ def _render(args, model_key, enrich=True):
     return {"ok": True, "kind": "image", "path": str(dest), "model": model_key,
             "steps": steps, "width": width, "height": height, "guidance": guidance,
             "negative_applied": negative_used, "prompt_used": prompt,
-            "seed": args.seed, "seconds": round(dt, 1)}
+            "seed": seed, "seconds": round(dt, 1)}
 
 
 def cmd_image(args):
