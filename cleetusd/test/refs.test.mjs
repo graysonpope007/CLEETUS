@@ -12,7 +12,7 @@ import assert from "node:assert";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 
 const mediaSrc = readFileSync(new URL("../src/tools/media.mjs", import.meta.url), "utf8");
 
@@ -109,4 +109,64 @@ test("it is told never to pass off an existing file as one it just made", async 
   // And the honest alternative has to be named, or the rule is just a
   // prohibition with no branch to take.
   assert.match(brief, /say that plainly/);
+});
+
+test("a set name cannot become a path", async () => {
+  /* The set name comes from HIS words — "save this for GLM" — and becomes a
+     folder. That makes it a capability, the same as a dropped filename, and it
+     gets the same treatment: reduce it to plain name characters rather than
+     try to detect traversal cleverly. A clever sanitiser is a thing that gets
+     outsmarted; a whitelist is not. */
+  const { safeSetName } = await import("../src/refs.mjs");
+  for (const evil of ["../../.ssh", "/etc", "a/../../b", "glm/../../../tmp", "....//....//x"]) {
+    const n = safeSetName(evil);
+    assert.ok(!n.includes("/"), `${evil} kept a separator: ${n}`);
+    assert.ok(!n.includes(".."), `${evil} kept a dot segment: ${n}`);
+    assert.ok(!n.startsWith("-") && !n.endsWith("-"), `${evil} produced ${n}`);
+  }
+  // And a name that reduces to nothing is refused rather than silently made up.
+  assert.equal(safeSetName(".."), "");
+  assert.equal(safeSetName("!!!"), "");
+});
+
+test("filing a picture COPIES it, and never overwrites one already there", async () => {
+  /* Copy, because the drops folder is the record of what he sent: moving would
+     mean filing a picture silently removes it from the conversation it arrived
+     in, while the answer he already read still names the old path.
+
+     And never overwrite, because the picture already in a set is one he chose
+     and the new one is only the newest. */
+  const { mkdtemp, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const root = await mkdtemp(join(tmpdir(), "refsave-"));
+  process.env.CLEETUSD_REFS_DIR = join(root, "refs");
+  const { saveReference } = await import(`../src/refs.mjs?${Math.random()}`);
+
+  const src = join(root, "cover.png");
+  await writeFile(src, "x");
+
+  const a = await saveReference(src, "GLM");
+  assert.ok(a.ok, a.error);
+  assert.equal(a.set, "glm");
+  assert.ok(existsSync(src), "the source was moved rather than copied");
+
+  const b = await saveReference(src, "glm");
+  assert.ok(b.ok);
+  assert.notEqual(b.path, a.path, "the second save overwrote the first");
+  assert.ok(existsSync(a.path), "the picture he already had was replaced");
+});
+
+test("a file a sampler cannot open is refused with the reason", async () => {
+  const { saveReference } = await import("../src/refs.mjs");
+  const r = await saveReference("/etc/hosts", "glm");
+  assert.equal(r.ok, false);
+  assert.match(r.error, /png, jpg, jpeg or webp/);
+});
+
+test("the tool tells it to ASK when he has not said to keep something", () => {
+  // A reference he has to re-send every time is one he stops sending, and the
+  // moment he has shown a good picture is the moment to offer.
+  assert.match(mediaSrc, /save_reference: \{/);
+  assert.match(mediaSrc, /ASK whether he wants it saved/);
+  assert.match(mediaSrc, /It COPIES/);
 });

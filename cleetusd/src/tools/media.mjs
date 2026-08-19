@@ -20,7 +20,7 @@ import { CONFIG } from "../config.mjs";
 import { liftNegations } from "../literal.mjs";
 import { inferAspect } from "../aspect.mjs";
 import { get as getSecret } from "../keyring.mjs";
-import { listReferences, referencesText, REFS_DIR } from "../refs.mjs";
+import { listReferences, referencesText, saveReference, REFS_DIR } from "../refs.mjs";
 
 // media_cli.py lives beside the daemon; its interpreter is the isolated media
 // venv, overridable for a machine that keeps it elsewhere.
@@ -348,6 +348,34 @@ export const mediaTools = {
     async run() {
       const sets = await listReferences();
       return `Reference sets (${REFS_DIR}):\n${referencesText(sets)}`;
+    },
+  },
+
+  save_reference: {
+    schema: {
+      description:
+        "File a picture into one of his reference sets, so future work for that brand, artist or look " +
+        "STARTS FROM it. Use when he drops a picture and says to keep it, or says 'this is our style', " +
+        "'save this for GLM', 'use this from now on'. The set name is his word for the thing — glm, " +
+        "magnolia, sky-ciela, warm-film. It COPIES, so the picture he dropped stays where it was and " +
+        "the conversation it arrived in still makes sense. " +
+        "If he shows you something good and does not say to keep it, ASK whether he wants it saved — " +
+        "a reference he has to re-send every time is one he will stop sending.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: { type: "string", description: "The picture to file. A dropped file's path, or anything on disk." },
+          set: { type: "string", description: "His name for the thing: a brand, an artist, a project, or a look." },
+        },
+        required: ["path", "set"],
+      },
+    },
+    async run({ path, set }) {
+      const r = await saveReference(path, set);
+      if (!r.ok) return `Could not save that as a reference: ${r.error}`;
+      return `Saved to the ${r.set} reference set: ${r.path}. It was copied, so ${r.copiedFrom} is ` +
+             `untouched. Anything he asks for in that style from now on can start from it — call ` +
+             `list_references to see the set.`;
     },
   },
 

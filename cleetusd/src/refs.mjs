@@ -25,9 +25,9 @@
 // every GLM request from whatever happens to be first in a folder is the kind
 // of helpfulness that becomes impossible to debug.
 
-import { readdir, stat } from "node:fs/promises";
+import { readdir, stat, mkdir, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, extname } from "node:path";
+import { join, extname, basename, resolve } from "node:path";
 import { CONFIG } from "./config.mjs";
 
 export const REFS_DIR = process.env.CLEETUSD_REFS_DIR ||
@@ -111,4 +111,63 @@ export function referencesText(sets) {
     `which picture you started from. Starting from his own artwork is the whole point of the folder; ` +
     `listing it and then styling from scratch produces a competent picture that looks like nobody. ` +
     `If none of them fits, say so plainly and generate without one.`;
+}
+
+/* ── Putting a picture INTO a set ────────────────────────────────────────────
+   Listing them was half a feature. The other half is how they get there, and
+   the answer was "move files by hand", which means the folder stays empty and
+   the whole thing is a good idea nobody uses.
+
+   Now: he drops a picture on the chat and says keep this for GLM. The drop is
+   already on disk with a path in the message, so filing it is a copy.
+
+   COPY, never move. The drops folder is the record of what he sent, and a
+   reference set is a curated thing he will prune. Moving would mean filing a
+   picture silently removes it from the conversation it arrived in, and the
+   answer he reads still names the old path. */
+
+/** A set name that is safe to be a folder, and recognisable a month later. */
+export function safeSetName(name) {
+  return String(name || "")
+    .trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+/**
+ * File a picture into a named set. Returns where it landed, or an error that
+ * says which of the several possible things went wrong.
+ */
+export async function saveReference(picturePath, setName) {
+  const set = safeSetName(setName);
+  if (!set) return { ok: false, error: "no set name — give it one, like glm or sky-ciela or warm-film" };
+
+  const src = resolve(String(picturePath || "").replace(/^~/, CONFIG.home));
+  if (!existsSync(src)) return { ok: false, error: `no such picture: ${src}` };
+  const ext = extname(src).toLowerCase();
+  if (!USABLE.has(ext)) {
+    return { ok: false,
+      error: `a ${ext || "file with no extension"} cannot be a reference — a sampler starts from ` +
+             `png, jpg, jpeg or webp. Keep it in the folder if it is a brand guide, but it will be ` +
+             `listed as unusable rather than offered.` };
+  }
+
+  const dir = join(REFS_DIR, set);
+  await mkdir(dir, { recursive: true });
+
+  /* His own name for the file, kept — "sky-ciela-last-single.jpg" says what it
+     is a year later and a timestamp does not. Collisions get a suffix rather
+     than overwriting, because the picture already in the set is one he chose
+     and this one is only the newest. */
+  const base = basename(src).replace(/[^A-Za-z0-9._-]/g, "_");
+  let dest = join(dir, base);
+  for (let n = 2; existsSync(dest); n++) {
+    const stem = base.replace(/\.[^.]+$/, "");
+    dest = join(dir, `${stem}-${n}${ext}`);
+    if (n > 50) return { ok: false, error: "too many files by that name in the set" };
+  }
+
+  await copyFile(src, dest);
+  return { ok: true, path: dest, set, copiedFrom: src };
 }

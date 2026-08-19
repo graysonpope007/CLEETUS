@@ -157,6 +157,10 @@ export const AGENTS = {
       "If a set matches, start from one of its pictures and say which. Do not go hunting the disk with " +
       "find_files for logos and artwork — that folder is where they are, and an unbounded search of " +
       "his home directory is not a substitute for looking in the one place they live. " +
+      "And save_reference is how a picture gets INTO a set. When he drops something and says keep " +
+      "this, or that is our style, file it. When he shows you something good and does NOT say, ask " +
+      "whether he wants it kept — a reference he has to re-send every time is one he stops sending, " +
+      "and the folder being empty is the only reason any of this is still guesswork. " +
 
       /* ── Do what he said ─────────────────────────────────────────────────
          The system prompt already carries a per-turn clause when he has been
