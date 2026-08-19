@@ -66,6 +66,15 @@ process.env.CLEETUSD_MEDIA_PYTHON = STUB;
 process.env.CLEETUSD_MEDIA_OUT = join(dir, "out");
 mkdirSync(process.env.CLEETUSD_MEDIA_OUT, { recursive: true });
 
+/* A reference set of its own, so case 5 has something to find and his real
+   media/refs is never read. Two pictures, because one would let a lucky guess
+   at a filename pass for having looked. */
+process.env.CLEETUSD_REFS_DIR = join(dir, "refs");
+mkdirSync(join(process.env.CLEETUSD_REFS_DIR, "glm"), { recursive: true });
+for (const f of ["sky-ciela-cover.png", "last-single.png"]) {
+  writeFileSync(join(process.env.CLEETUSD_REFS_DIR, "glm", f), "x");
+}
+
 writeFileSync(LOG, "");
 
 // Imported AFTER the stub is in place: the media tool reads the interpreter
@@ -92,13 +101,25 @@ const check = (label, ok, detail = "") => {
   console.log(`  ${ok ? "ok  " : "FAIL"} ${label}${detail ? `\n         ${detail}` : ""}`);
 };
 
+let lastAnswer = "";
+let toolsCalled = [];
 async function run(label, message) {
   writeFileSync(LOG, "");
+  toolsCalled = [];
   const t0 = Date.now();
   // probe:true so a benchmark run is never read back later as something
   // Grayson actually asked for.
+  //
+  // onStep is how a tool that never reaches the SAMPLER becomes observable.
+  // The first version of case 5 asserted on the answer text instead, and
+  // "it looked at his reference sets" passed because the answer contained the
+  // word GLM — which the request also contains. A check that passes for the
+  // wrong reason is worse than no check, and it is the same trap as a green
+  // test that never ran.
   const out = await ask({ history: [{ role: "user", content: message }], agent: "image",
-                          probe: true, maxSteps: 8 });
+                          probe: true, maxSteps: 8,
+                          onStep: ({ tool }) => toolsCalled.push(tool) });
+  lastAnswer = String(out.answer || "");
   const argv = calls();
   console.log(`\n### ${label}  (${Math.round((Date.now() - t0) / 1000)}s, ${argv.length} tool call(s))`);
   console.log(`    ${String(out.answer || "(nothing)").replace(/\s+/g, " ").slice(0, 160)}`);
@@ -212,6 +233,35 @@ async function run(label, message) {
       seed ? `--seed ${seed}, and his was 771144` :
              "no --seed at all, so 'warmer light' returns a different person entirely");
   }
+}
+
+// ── 5. "It invented a house style instead of using ours" ────────────────────
+{
+  /* The tool is plumbing until the habit forms. list_references exists and the
+     brief mentions it; the question is whether a request naming one of his
+     brands makes the agent LOOK before it styles.
+
+     The old behaviour was find_files across his home directory, and when that
+     turned up nothing — which was most of the time — the fallback was
+     inventing a house style. That is the most expensive kind of wrong answer
+     here, because it is competent and confident and looks like nothing in
+     particular. */
+  const argv = await run("a request naming one of his brands",
+    "make a cover for the next GLM single, in our usual style");
+  const looked = calls().length === 0;  // list_references does not touch the sampler
+  const gen = argv.find((a) => argOf(a, "--prompt"));
+  // The tool call itself is invisible in the sampler log, so the evidence is
+  // in the ANSWER: it should name the set or the picture it started from.
+  check("it called list_references before styling", toolsCalled.includes("list_references"),
+    `tools called: ${toolsCalled.join(", ") || "(none)"}`);
+  if (gen) {
+    const ref = argOf(gen, "--reference");
+    check("and started from one of his pictures", !!ref && ref.includes("refs/"),
+      ref ? `reference=${ref}` : "no --reference, so it invented a look rather than using his");
+  }
+  void looked;
+  check("and did not spend the whole budget re-rolling", argv.length <= 3,
+    `${argv.length} generate calls for one request`);
 }
 
 console.log(failed ? `\n${failed} check(s) FAILED` : "\nall checks passed");
