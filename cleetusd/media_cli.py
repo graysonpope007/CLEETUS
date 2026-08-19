@@ -290,6 +290,118 @@ def _warn_if_truncated(pipe, label: str, text: str) -> None:
             f"…{kept[-60:]!r} was DROPPED. Shorten it — the tail did not reach the model.")
 
 
+# ── Saying all of it, rather than the first seventy-seven tokens ─────────────
+#
+# _warn_if_truncated above tells the truth and does nothing about it. What it
+# is telling the truth about, measured on this machine with the real tokenizer:
+#
+#   "a bassist on a dim club stage, blue rim light from behind, sweat on his
+#    forearms, a Fender P-Bass, crowd out of focus in the foreground, shot from
+#    the pit looking up, and a bright red umbrella propped against the amp"
+#
+# is 53 tokens. The photographic style appended to it is 25 more. 78 > 77, so
+# the sampler never saw the film grain — and a prompt six words longer than
+# that loses the umbrella instead, without anybody being told which.
+#
+# That is the whole "it did not make what I asked for" complaint, and it is not
+# a model weakness: the words never arrived. CLIP's encoder takes 77 tokens per
+# forward pass, but nothing says a prompt may only have one forward pass. Split
+# it into 75-token pieces, run each through the encoder, and concatenate the
+# hidden states along the sequence axis. Cross-attention reads a sequence; it
+# does not care that the sequence was assembled from three passes.
+#
+# ONLY WHEN IT WOULD OTHERWISE BE CUT. A short prompt takes the ordinary path
+# untouched, deliberately: every seed Grayson has written down was produced by
+# that path, and routing them through a different encoding would quietly stop
+# reproducing the pictures he saved the seeds for. This changes what happens to
+# prompts that were being damaged and nothing else.
+def _chunked_ids(tokenizer, text, chunk=75):
+    """The prompt as a list of 77-long id windows, bos/eos on each, padded."""
+    ids = tokenizer(text, truncation=False, add_special_tokens=False).input_ids
+    bos, eos = tokenizer.bos_token_id, tokenizer.eos_token_id
+    pad = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else eos
+    windows = []
+    for i in range(0, max(len(ids), 1), chunk):
+        piece = ids[i:i + chunk]
+        piece = [bos] + piece + [eos]
+        piece += [pad] * (chunk + 2 - len(piece))
+        windows.append(piece)
+    return windows
+
+
+def _encode_long(pipe, text, device, want_chunks=None):
+    """Encode a prompt of any length into (hidden_states, pooled).
+
+    Two encoders on SDXL, one on SD. The hidden state taken is the penultimate
+    layer, which is what diffusers itself uses — taking the last one is a
+    subtle, hard-to-see quality regression rather than an error.
+
+    The POOLED vector comes from the first window only. It is a single summary
+    embedding with no sequence axis to extend, so there is nothing to
+    concatenate; averaging the windows was tried and reads as a muddier
+    composition. First window means the pooled summary describes the opening of
+    the prompt, which is where the subject is.
+    """
+    import torch
+
+    toks = [pipe.tokenizer]
+    encs = [pipe.text_encoder]
+    if getattr(pipe, "tokenizer_2", None) is not None:
+        toks.append(pipe.tokenizer_2)
+        encs.append(pipe.text_encoder_2)
+
+    per_encoder = []
+    pooled = None
+    n_windows = None
+    for tok, enc in zip(toks, encs):
+        windows = _chunked_ids(tok, text)
+        if want_chunks is not None and len(windows) < want_chunks:
+            # The prompt and the negative prompt must come out the same length:
+            # the sampler stacks them into one batch and a ragged pair is a
+            # shape error at the worst possible moment, after the model load.
+            pad_row = _chunked_ids(tok, "")[0]
+            windows = windows + [pad_row] * (want_chunks - len(windows))
+        n_windows = len(windows)
+        states = []
+        for w_i, w in enumerate(windows):
+            ids = torch.tensor([w], dtype=torch.long, device=device)
+            out = enc(ids, output_hidden_states=True)
+            states.append(out.hidden_states[-2])
+            # text_encoder_2 is the one carrying the pooled vector on SDXL; on
+            # SD there is only one encoder and the pipeline wants no pooled at all.
+            if w_i == 0 and enc is encs[-1] and len(encs) > 1:
+                pooled = out[0]
+        per_encoder.append(torch.cat(states, dim=1))
+
+    # SDXL concatenates the two encoders on the FEATURE axis (768 + 1280 = 2048).
+    embeds = torch.cat(per_encoder, dim=-1) if len(per_encoder) > 1 else per_encoder[0]
+    return embeds, pooled, n_windows
+
+
+def _long_prompt_kwargs(pipe, prompt, negative, device):
+    """prompt_embeds/negative_prompt_embeds, or None when the short path is fine."""
+    limit = CLIP_LIMIT
+    n_prompt = len(pipe.tokenizer(prompt, truncation=False).input_ids)
+    n_negative = len(pipe.tokenizer(negative or "", truncation=False).input_ids)
+    if n_prompt <= limit and n_negative <= limit:
+        return None, None
+
+    import torch
+
+    # Both sides get the same number of windows — see the note in _encode_long.
+    want = max(-(-max(n_prompt, n_negative) // 75), 1)
+    p_embeds, p_pooled, _ = _encode_long(pipe, prompt, device, want_chunks=want)
+    n_embeds, n_pooled, _ = _encode_long(pipe, negative or "", device, want_chunks=want)
+
+    kw = {"prompt_embeds": p_embeds, "negative_prompt_embeds": n_embeds}
+    if p_pooled is not None:
+        kw["pooled_prompt_embeds"] = p_pooled
+        kw["negative_pooled_prompt_embeds"] = n_pooled
+    note = (f"the prompt is {n_prompt} tokens, past CLIP's {limit}, so it was encoded in "
+            f"{want} passes and all of it reached the model")
+    return kw, note
+
+
 def _dimensions(args, spec):
     """Width and height, from --aspect or an explicit --size."""
     if args.size:
@@ -324,12 +436,15 @@ def _render(args, model_key, enrich=True):
 
     pipe = _load_image_pipe(model_key)
 
-    # Say it plainly if the encoder is about to drop the end of either prompt.
-    # Only meaningful for the CLIP-based models; FLUX uses T5 and has room.
+    # Nothing is dropped any more, but say what had to be done about it.
+    # FLUX is on T5 with room to spare and takes the ordinary path.
+    long_kw, long_note = (None, None)
     if not spec.get("flux"):
         _warn_if_truncated(pipe, "prompt", prompt)
-        if negative_used:
-            _warn_if_truncated(pipe, "negative prompt", negative)
+        long_kw, long_note = _long_prompt_kwargs(
+            pipe, prompt, negative if negative_used else "", pipe.device)
+        if long_note:
+            log(f"[media] {long_note}")
 
     # ALWAYS a real seed, even when none was asked for.
     #
@@ -357,7 +472,15 @@ def _render(args, model_key, enrich=True):
         kw["max_sequence_length"] = 256
     else:
         kw["guidance_scale"] = guidance
-        kw["negative_prompt"] = negative or None
+        if long_kw:
+            # Embeddings and raw strings are mutually exclusive: diffusers
+            # raises rather than picking one, which is the right call — and it
+            # caught this on the first run, when `prompt` was still sitting in
+            # kw from the line that builds it.
+            kw.pop("prompt", None)
+            kw.update(long_kw)
+        else:
+            kw["negative_prompt"] = negative or None
     image = pipe(**kw).images[0]
     dt = time.time() - t0
 
@@ -367,7 +490,7 @@ def _render(args, model_key, enrich=True):
     return {"ok": True, "kind": "image", "path": str(dest), "model": model_key,
             "steps": steps, "width": width, "height": height, "guidance": guidance,
             "negative_applied": negative_used, "prompt_used": prompt,
-            "seed": seed, "seconds": round(dt, 1)}
+            "long_prompt": long_note, "seed": seed, "seconds": round(dt, 1)}
 
 
 def cmd_image(args):

@@ -111,9 +111,14 @@ export const mediaTools = {
       // The seed is reported back deliberately: it is how a picture he liked
       // gets tweaked instead of replaced. Without it every "warmer light" is a
       // different photograph of a different person.
+      // If the prompt had to be encoded in more than one pass, say so. It used
+      // to be a line on stderr nobody read, while the result said "Made a
+      // 832x1216 image" — so a prompt whose last third never reached the
+      // sampler was indistinguishable from one that did.
+      const long = r.long_prompt ? ` Note: ${r.long_prompt}.` : "";
       return `Made a ${r.width}x${r.height} image with ${r.model} in ${r.seconds}s ` +
              `(${r.steps} steps, guidance ${r.guidance}` +
-             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}`;
+             `${r.seed != null ? `, seed ${r.seed}` : ""}). Saved to ${r.path}${long}`;
     },
   },
 
