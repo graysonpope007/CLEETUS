@@ -174,16 +174,34 @@ test("the review pass cannot write, because being told not to did not hold", asy
   assert.match(src, /BE HONEST ABOUT run_shell/);
 });
 
-test("the review is bounded by the clock, not only by the step budget", () => {
+test("the review is bounded by the clock, not only by the step budget", async () => {
   // Every other unattended job here passes deadlineMs: 0 and is right to. This
   // one is due at 07:03: the brief composes then and reads whatever row exists.
   // Measured on the first live run — 84 tool calls and still climbing toward
   // ask()'s ceiling of 120, which at thirty to sixty seconds a step is up to two
   // hours from a 04:00 start.
   assert.doesNotMatch(src, /deadlineMs: 0/, "an unbounded review can miss the brief it exists to feed");
-  const m = src.match(/CLEETUSD_REVIEW_DEADLINE_MS \|\| (\d+) \* 60_000/);
-  assert.ok(m, "the deadline must be a stated number of minutes");
-  const minutes = Number(m[1]);
-  assert.ok(minutes >= 30, "too short to read two repositories");
-  assert.ok(minutes <= 150, `${minutes} minutes from 04:00 does not reliably beat the 07:03 brief`);
+
+  const { reviewDeadlineMs } = await import("../src/selfreview.mjs");
+  const at = (h, m) => new Date(2026, 7, 19, h, m);
+  const mins = (d) => Math.round(reviewDeadlineMs(d) / 60_000);
+
+  // A normal 04:00 start gets the full cap and still finishes long before the
+  // brief.
+  assert.strictEqual(mins(at(4, 0)), 75);
+  assert.ok(4 * 60 + 75 < 6 * 60 + 30, "the cap itself must land before the cutoff");
+
+  // The bound is a TIME OF DAY, so whatever the fix phase spent comes out of it.
+  // improveOnce can burn forty minutes on a builder pass plus ten waiting for a
+  // Cloudflare deploy, twice; a stopwatch started here would not know that.
+  assert.strictEqual(mins(at(6, 0)), 30, "an hour of fixing must shorten the review, not delay the brief");
+  assert.ok(mins(at(6, 20)) <= 15);
+
+  // Never zero. ask() reads deadlineMs: 0 as "no deadline at all", so a job that
+  // started after the cutoff would run for two hours — the exact opposite of
+  // what a late start should do.
+  for (const h of [6, 7, 9, 23]) {
+    assert.ok(reviewDeadlineMs(at(h, 45)) > 0, `${h}:45 produced a zero deadline`);
+    assert.ok(mins(at(h, 45)) >= 15, `${h}:45 left no time to say anything at all`);
+  }
 });

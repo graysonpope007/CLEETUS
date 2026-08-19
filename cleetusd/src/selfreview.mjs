@@ -403,6 +403,34 @@ async function saveState(s) {
   await writeFile(STATE, JSON.stringify(s, null, 2), "utf8");
 }
 
+/**
+ * How long the review pass may run, given what the night has already spent.
+ *
+ * A fixed 75 minutes is right when the review is the only thing that happens.
+ * It is not right after the fix phase: improveOnce can spend forty minutes on a
+ * builder pass, ten more waiting for a Cloudflare deploy, and it may do that
+ * twice. 04:00 + two fixes + 75 minutes lands at about 06:35 on a bad night,
+ * and 07:03 is when the brief composes and reads whatever row exists.
+ *
+ * So the bound is a TIME OF DAY, not a duration: be finished by 06:30, and take
+ * the shorter of that and the cap. The floor exists because a job that starts
+ * late — the Mac woke at 06:20 — should still produce a short review rather
+ * than a zero-millisecond deadline, which ask() reads as "no deadline at all"
+ * and would run for two hours.
+ */
+export function reviewDeadlineMs(now = new Date(), {
+  capMs = Number(process.env.CLEETUSD_REVIEW_DEADLINE_MS || 75 * 60_000),
+  byHour = Number(process.env.CLEETUSD_REVIEW_BY_HOUR ?? 6),
+  byMinute = 30,
+  floorMs = 15 * 60_000,
+} = {}) {
+  const due = new Date(now);
+  due.setHours(byHour, byMinute, 0, 0);
+  const left = due.getTime() - now.getTime();
+  if (left <= 0) return floorMs;
+  return Math.max(floorMs, Math.min(capMs, left));
+}
+
 /** Is it the hour this is allowed to ship in? */
 export function inSmallHours(now = new Date(), [from, to] = SMALL_HOURS) {
   const h = now.getHours();
@@ -481,11 +509,9 @@ export async function reviewOnce({ dry = false, now = new Date(), hours = 24 } =
       // Measured on the first live run: 84 tool calls and still going. ask()
       // grows its own budget to a ceiling of 120 while the model keeps reaching
       // for tools, and 120 steps at thirty to sixty seconds each is ninety
-      // minutes to two hours — which starting at 04:00 is a coin flip against
-      // the brief. Seventy-five minutes puts the report on disk by 05:15 at the
-      // latest, and ask() answers from the work already done when it stops
-      // rather than losing it.
-      deadlineMs: Number(process.env.CLEETUSD_REVIEW_DEADLINE_MS || 75 * 60_000),
+      // minutes to two hours. Taken from the clock rather than from a stopwatch
+      // started here, so the time the fix phase already spent comes out of it.
+      deadlineMs: reviewDeadlineMs(new Date()),
       // The system reviewing itself is not a request Grayson made. Without this
       // the review lands in his open loops and in tomorrow's digest as his own
       // unfinished work — which is exactly how brain-analysis started reading
