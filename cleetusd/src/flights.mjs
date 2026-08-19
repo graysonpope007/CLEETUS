@@ -37,14 +37,28 @@ export const ANCHORS = [
 
 // Order matters: first one with actual aircraft wins.
 //
-// adsb.fi is first because it is the only one of the three still serving data.
-// The other two are kept, not deleted — feeds come back, and a source that is
-// dead today costs one failed request to check.
+// AIRPLANES.LIVE GATED ITS FREE API (checked 2026-08-18): an anonymous call now
+// returns {"error":"Please contact us at contact@airplanes.live..."} for every
+// point, not aircraft. So it cannot be the default any more even though it is the
+// tracker Grayson named — leading with it just wastes a request before the loop
+// falls through. It comes BACK to the front the moment a key exists: register a
+// project with airplanes.live, upload the key as AIRPLANES_LIVE_KEY on the deck's
+// secrets form, and it is tried first with that key on the header their members
+// API expects. Until then adsb.fi (same readsb shape, 500+ aircraft live) leads.
+// adsb.lol stays LAST: it answers 200 with an empty list for every point on
+// earth, so anywhere but last it masks a working feed with a polite nothing.
+const ALIVE_KEY = secrets.AIRPLANES_LIVE_KEY && secrets.AIRPLANES_LIVE_KEY !== "REPLACE_ME"
+  ? secrets.AIRPLANES_LIVE_KEY : null;
 const SOURCES = [
   ["adsb.fi", (la, lo) => `https://opendata.adsb.fi/api/v2/lat/${la}/lon/${lo}/dist/250`],
   ["adsb.lol", (la, lo) => `https://api.adsb.lol/v2/lat/${la}/lon/${lo}/dist/250`],
-  ["airplanes.live", (la, lo) => `https://api.airplanes.live/v2/point/${la}/${lo}/250`],
+  ["airplanes.live", (la, lo) => `https://api.airplanes.live/v2/point/${la}/${lo}/250`,
+    ALIVE_KEY ? { "api-auth": ALIVE_KEY } : null],
 ];
+// With a key, airplanes.live actually answers, so it leads — which is what
+// "use airplanes.live" meant. Without one its anonymous call just errors, so the
+// working feed stays first and airplanes.live rides at the back as a fallback.
+const ORDERED = ALIVE_KEY ? [SOURCES[2], SOURCES[0], SOURCES[1]] : SOURCES;
 
 function normalise(list) {
   const out = [];
@@ -82,9 +96,12 @@ async function anchor(la, lo) {
   // So: keep going until something actually has aircraft in it. Zero aircraft
   // over Atlanta at midday is not data, it is a dead feed being polite.
   let answered = null;
-  for (const [name, url] of SOURCES) {
+  for (const [name, url, extraHeaders] of ORDERED) {
     try {
-      const r = await fetch(url(la, lo), { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) });
+      const r = await fetch(url(la, lo), {
+        headers: { Accept: "application/json", ...(extraHeaders || {}) },
+        signal: AbortSignal.timeout(9000),
+      });
       if (!r.ok) continue; // 429 and 403 are normal here; the fallback carries it
       const j = await r.json();
       const ac = j.ac || j.aircraft || [];
