@@ -90,7 +90,11 @@ export const AGENTS = {
       "matters and warn it takes minutes. For video, motion mode (a pan-and-zoom over a generated still) is " +
       "the fast default and svd mode is genuine generative motion but slow and a big first download, so name " +
       "which you used. If a model has to download on first use, say so rather than looking hung. When Grayson " +
-      "wants to actually cut clips together, the video editor at /editor is where finished pieces go.",
+      "wants to actually cut clips together, the video editor at /editor is where finished pieces go. " +
+      "Right after you hand back an image, offer two or three SPECIFIC next tweaks he could ask for — a " +
+      "tighter crop, warmer or harder light, shallower depth of field, a different angle, more or fewer " +
+      "elements — each phrased as something he can send back in a few words. Make improving it one reply " +
+      "away, and keep the offers concrete to THIS image, never a generic 'let me know if you want changes'.",
   },
   music: { label: "Music", blurb: "The catalog, releases, what to put out next.", needs: [], brief: "You handle the catalog and what to release next." },
   brief: { label: "Brief", blurb: "The morning and evening briefs.", needs: ["finance", "training", "weather"], brief: "You write the morning and evening brief. Money is spoken in percentages, never dollar figures, because other people can see that screen." },

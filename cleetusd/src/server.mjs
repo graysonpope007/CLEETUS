@@ -252,10 +252,19 @@ async function handle(req, res) {
     const TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
       ".webp": "image/webp", ".gif": "image/gif", ".mp4": "video/mp4", ".mov": "video/quicktime",
       ".m4v": "video/mp4", ".webm": "video/webm" };
-    res.writeHead(200, {
+    const headers = {
       "Content-Type": TYPES[extname(abs).toLowerCase()] || "application/octet-stream",
       "Cache-Control": "no-store",
-    });
+      "Access-Control-Allow-Origin": "*",
+    };
+    // The download link in /reach is cross-origin (cleetusai.com → 127.0.0.1),
+    // and the HTML `download` attribute is ignored cross-origin — only a
+    // Content-Disposition from here forces a save instead of a navigation. So a
+    // dl=1 flag turns this response into an attachment.
+    if (url.searchParams.get("dl") === "1") {
+      headers["Content-Disposition"] = `attachment; filename="${abs.split("/").pop()}"`;
+    }
+    res.writeHead(200, headers);
     // Stream rather than buffer: a video clip can be tens of MB and the preview
     // pane seeks into it, so handing it as a file stream is both lighter and
     // what lets the <video> element range-request.
