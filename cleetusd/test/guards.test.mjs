@@ -13,6 +13,33 @@ const REPO = join(CONFIG.home, "cleetusv2");
 let pass = 0, fail = 0;
 const t = (n, c, d = "") => { c ? (pass++, console.log(`  ok   ${n}`)) : (fail++, console.log(`  FAIL ${n} ${d}`)); };
 
+/* ── Say which memory root is about to be written to ─────────────────────────
+   This suite writes into CONFIG.memoryRoot, and by default that is the real
+   ~/cleetus-memory holding the real improve-state. Nothing said so, which is
+   how it came to be a surprise: a hung run of this file left improve-state
+   truncated to zero bytes for twenty minutes, and there is no backup of that
+   file anywhere — it is not in git and nothing else copies it.
+
+   It did not need to be that way. CONFIG.memoryRoot already honours
+   CLEETUS_MEMORY_ROOT, so this whole class of hazard is one environment
+   variable away:
+
+       CLEETUS_MEMORY_ROOT=$(mktemp -d) node test/guards.test.mjs
+
+   That is not made the default here, because doing so silently would change
+   what the suite exercises — improveOnce reads its history and its runs from
+   that same root, and a suite that quietly tests against an empty one is a
+   suite reporting on a machine that does not exist. So it is offered, loudly,
+   and the choice stays with whoever runs it.
+
+   loadState() tolerates a truncated file (it catches and returns fresh state),
+   so the blast radius is the history and the day's count rather than a halted
+   loop. That is the only reason this reads as a warning and not an incident. */
+console.log(`  memory root: ${CONFIG.memoryRoot}` +
+  (process.env.CLEETUS_MEMORY_ROOT
+    ? "  (overridden — the real one is untouched)"
+    : "  (THE REAL ONE — set CLEETUS_MEMORY_ROOT to a temp dir to keep it out of this)"));
+
 // This suite drives the real repo, so it needs a clean tree to distinguish
 // "the loop found nothing" from "the loop refused because of your edits".
 // Stated up front rather than failing four assertions later with a confusing
