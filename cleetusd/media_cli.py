@@ -283,9 +283,11 @@ def _load_image_pipe(model_key: str):
     # actually is, once, before spending anything on it.
     if spec.get("gated") and not _has_hf_token() and not _hf_cache_has(spec["repo"]):
         raise RuntimeError(
-            f"{spec['repo']} is gated on Hugging Face and this Mac has no token. "
-            "Accept the licence on the model page while signed in, then run "
-            "`huggingface-cli login` (or put HF_TOKEN in cleetus.env). "
+            f"{spec['repo']} is auto-gated on Hugging Face and no token reached this process. "
+            "It is Apache-2.0, so the gate is a one-time terms acceptance rather than an approval "
+            "queue: sign in on the model page and accept, then put the token in EITHER place — the "
+            "deck's Keys form (as HF_TOKEN) or cleetus.env. Both are read and both are passed "
+            "through to this process. "
             f"Until then use the {DEFAULT_MODEL} model, which is ungated and needs nothing.")
 
     log(f"[media] loading {spec['repo']} on {device} ({dtype})")

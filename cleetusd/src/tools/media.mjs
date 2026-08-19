@@ -19,6 +19,7 @@ import { existsSync } from "node:fs";
 import { CONFIG } from "../config.mjs";
 import { liftNegations } from "../literal.mjs";
 import { inferAspect } from "../aspect.mjs";
+import { get as getSecret } from "../keyring.mjs";
 
 // media_cli.py lives beside the daemon; its interpreter is the isolated media
 // venv, overridable for a machine that keeps it elsewhere.
@@ -40,9 +41,34 @@ function stamp() {
   return new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14);
 }
 
-function py(args, ms) {
+/* ── The instruction to add a token was not true ─────────────────────────────
+   media_cli.py refuses FLUX with "put HF_TOKEN in cleetus.env", and following
+   that did nothing at all. cleetus.env is read into a local object to build
+   CONFIG; it is never put into process.env, and execFile inherits process.env.
+   So the token went in, the message stayed the same, and there was nothing to
+   tell him why.
+
+   That is worse than the whisper claim found an hour ago. That one only capped
+   what the assistant would attempt. This one sends HIM to do something that
+   cannot work, and then reports the same failure as if he had not done it.
+
+   keyring.get() is the right door and already existed: it checks the keyring
+   the deck writes to AND falls back to cleetus.env, so both places named in
+   any message are genuinely covered by one lookup. */
+async function hfEnv() {
+  for (const name of ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"]) {
+    const found = await getSecret(name).catch(() => null);
+    if (found?.value) return { HF_TOKEN: found.value, HUGGING_FACE_HUB_TOKEN: found.value };
+  }
+  return {};
+}
+
+async function py(args, ms) {
+  const extra = await hfEnv();
   return new Promise((resolve) => {
-    execFile(PY, [SCRIPT, ...args], { timeout: ms, killSignal: "SIGKILL", maxBuffer: 8_000_000 },
+    execFile(PY, [SCRIPT, ...args],
+      { timeout: ms, killSignal: "SIGKILL", maxBuffer: 8_000_000,
+        env: { ...process.env, ...extra } },
       (err, stdout, stderr) => {
         const raw = String(stdout || "").trim();
         if (raw) {
@@ -75,7 +101,9 @@ export const mediaTools = {
         "texture and lens character. Use it for anything meant to look like a photograph, which is most " +
         "requests. 'sdxl-turbo' is a three-second DRAFT — use it only when he is still deciding what he " +
         "wants, and say it is a draft. 'sdxl' is the general-purpose base. 'flux' is the best of them but " +
-        "needs a Hugging Face token this Mac does not have, so it will tell you so rather than run. " +
+        "is the best of them but needs a Hugging Face token: it is Apache-2.0 but auto-gated, so an " +
+        "account has to accept the terms once. If no token is present it says so rather than running. " +
+        "Add it as HF_TOKEN on the deck's Keys form, or in cleetus.env; either is picked up. " +
         "ASPECT matters: use 'portrait' or 'tall' for a person, 'landscape' or 'wide' for a scene. Square " +
         "is the default and is wrong for most photographs of people. " +
         "The FIRST use of a model downloads it (multi-GB) — if that is a concern, call list_media_models " +

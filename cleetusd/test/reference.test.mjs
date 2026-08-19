@@ -191,3 +191,30 @@ test("a dropped picture tells the agent it can be a reference", () => {
   assert.match(dropsSrc, /pass this path to generate_image as its 'reference'/);
   assert.match(dropsSrc, /A description loses the exact colour, grain and composition/);
 });
+
+test("a token he is told to add actually reaches the sampler", async () => {
+  /* media_cli refused FLUX with "put HF_TOKEN in cleetus.env", and doing that
+     did nothing at all. cleetus.env is read into a local object to build
+     CONFIG; it is never put into process.env, and execFile inherits
+     process.env. So the token went in, the refusal stayed identical, and
+     nothing told him why.
+
+     That is worse than a capability claim written without looking. A wrong
+     "cannot" only caps what the assistant attempts. This sent HIM to do
+     something that could not work and then reported the same failure as though
+     he had not done it.
+
+     keyring.get() covers both places named in any message — the deck's Keys
+     form and cleetus.env — so one lookup makes every version of the
+     instruction true. Verified live once: a token put in the keyring arrived
+     in the subprocess as HF_TOKEN, and was removed again afterwards. */
+  assert.match(mediaSrc, /import \{ get as getSecret \} from "\.\.\/keyring\.mjs"/);
+  assert.match(mediaSrc, /async function hfEnv\(\)/);
+  assert.match(mediaSrc, /env: \{ \.\.\.process\.env, \.\.\.extra \}/,
+    "the subprocess still inherits a process.env that never had the token in it");
+  // Every caller must await, or py() returns a promise into a JSON parse.
+  const calls = mediaSrc.match(/\bpy\(/g) || [];
+  const awaited = mediaSrc.match(/await py\(/g) || [];
+  assert.equal(calls.length - 1, awaited.length,
+    "a py() call is missing its await now that it resolves a secret first");
+});
