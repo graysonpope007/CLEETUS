@@ -89,6 +89,8 @@ MODELS = {
     "realvis": {
         "repo": "SG161222/RealVisXL_V5.0", "steps": 30, "guidance": 4.5, "size": 1024,
         "photoreal": True,
+        # What its own model card asks for. See _retune_scheduler.
+        "scheduler": "sde-dpmsolver++",
         # Trimmed to fit CLIP's 77 tokens — see CLIP_LIMIT. The faults that
         # actually read as "AI" first: plastic skin, mangled hands, the
         # illustration look, and the oversaturated over-sharpened default.
@@ -100,6 +102,8 @@ MODELS = {
     # than turbo, still not a photoreal specialist.
     "sdxl": {
         "repo": "stabilityai/stable-diffusion-xl-base-1.0", "steps": 30, "guidance": 7.0, "size": 1024,
+        # Base SDXL is guided and many-step too, so it takes the same benefit.
+        "scheduler": "dpmsolver++",
         "negative": "lowres, blurry, jpeg artifacts, deformed, disfigured, extra fingers, bad hands, "
                     "bad anatomy, watermark, signature, text",
     },
@@ -227,6 +231,44 @@ def _hf_cache_has(repo: str) -> bool:
 _PIPE_CACHE = {}
 
 
+# ── The sampler the model was actually tuned for ─────────────────────────────
+#
+# RealVisXL ships with DDIMScheduler in its repo config, so that is what
+# diffusers loads, and it is not what the fine-tune was made to be run with.
+# Its own model card asks for DPM++ SDE Karras. The difference at 30 steps is
+# not subtle and it is exactly the axis this file already cares about: fine
+# detail, skin and hair texture, the difference between a photograph and a
+# render of one.
+#
+# Karras sigmas are the other half. They redistribute the noise schedule so
+# more steps are spent where the image is actually being decided, which is what
+# makes 30 steps behave like a much larger number.
+#
+# NOT for the turbo models. They are DISTILLED — the scheduler is part of what
+# was distilled, and swapping it does not make them better, it makes them
+# wrong. FLUX is flow-matching and has nothing to do with any of this. So the
+# swap is per-model and opt-in via the spec, rather than applied to everything
+# that happens to load through here.
+def _retune_scheduler(pipe, spec):
+    want = spec.get("scheduler")
+    if not want:
+        return None
+    try:
+        from diffusers import DPMSolverMultistepScheduler
+        pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+            pipe.scheduler.config,
+            algorithm_type=want,
+            use_karras_sigmas=True,
+        )
+        return f"{want} with Karras sigmas"
+    except Exception as exc:
+        # A scheduler that will not build is not worth failing a picture over;
+        # the model's own default still produces an image.
+        log(f"[media] could not retune the scheduler ({exc}); keeping "
+            f"{type(pipe.scheduler).__name__}")
+        return None
+
+
 def _load_image_pipe(model_key: str):
     if model_key in _PIPE_CACHE:
         return _PIPE_CACHE[model_key]
@@ -265,7 +307,9 @@ def _load_image_pipe(model_key: str):
         pipe.enable_attention_slicing()
     except Exception:
         pass
-    log(f"[media] pipe ready in {time.time() - t0:.1f}s")
+    tuned = _retune_scheduler(pipe, spec)
+    log(f"[media] pipe ready in {time.time() - t0:.1f}s"
+        + (f", sampling with {tuned}" if tuned else f", sampling with {type(pipe.scheduler).__name__}"))
     _PIPE_CACHE[model_key] = pipe
     return pipe
 
