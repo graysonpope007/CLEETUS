@@ -20,6 +20,7 @@ import { CONFIG } from "../config.mjs";
 import { liftNegations } from "../literal.mjs";
 import { inferAspect } from "../aspect.mjs";
 import { get as getSecret } from "../keyring.mjs";
+import { listReferences, referencesText, REFS_DIR } from "../refs.mjs";
 
 // media_cli.py lives beside the daemon; its interpreter is the isolated media
 // venv, overridable for a machine that keeps it elsewhere.
@@ -291,6 +292,25 @@ export const mediaTools = {
       return `Made a ${r.seconds}s pan-and-zoom video (${r.fps}fps)${dims} in ${r.render_seconds}s. ` +
              `Saved to ${r.path} (keyframe ${r.keyframe}).${shaped}${kept} ` +
              `For genuine generative motion, ask for svd mode.`;
+    },
+  },
+
+  list_references: {
+    schema: {
+      description:
+        "List the reference pictures Grayson keeps for a brand, artist, project or look, so a " +
+        "generation can START FROM his own artwork instead of from a description of it. " +
+        "CALL THIS BEFORE generating anything for one of his brands or artists — GLM, Magnolia, " +
+        "STEAP, Higher Ways, a specific artist, a venue — or any time he says 'like we usually do' " +
+        "or 'in our style'. If a set matches, pass one of its paths to generate_image as `reference`, " +
+        "and SAY which picture you started from. If nothing matches and the look matters, ask him " +
+        "for two or three pictures rather than inventing a house style. " +
+        "Do not go hunting the disk with find_files for logos and artwork: this is where they are.",
+      parameters: { type: "object", properties: {} },
+    },
+    async run() {
+      const sets = await listReferences();
+      return `Reference sets (${REFS_DIR}):\n${referencesText(sets)}`;
     },
   },
 

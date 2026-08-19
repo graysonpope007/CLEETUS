@@ -12,3 +12,10 @@ media/out/
 # something he was in the middle of. None of it is source, all of it is
 # private, and a repo is the last place any of it should end up.
 media/drops/
+
+# Reference pictures for brands and looks — his artwork, not source, and the
+# same reasoning as the drops folder above. The README is the exception: it is
+# what tells anyone finding an empty folder what it is for, so ignoring it too
+# would mean a fresh checkout has neither the pictures nor the explanation.
+media/refs/*
+!media/refs/README.md

@@ -128,6 +128,12 @@ export const AGENTS = {
       "scene reinterpreted, 0.85 for loosely inspired by. The output takes the reference's own shape " +
       "unless you set aspect. When he has NOT given you one and the exact look matters, ask him for a " +
       "reference picture instead of guessing: one image tells you more than any paragraph he could type. " +
+      "AND HE MAY ALREADY HAVE GIVEN YOU ONE. list_references shows the pictures he keeps per brand, " +
+      "artist, project or look. Call it BEFORE generating anything for GLM, Magnolia, STEAP, Higher " +
+      "Ways, a named artist or a venue, and any time he says 'like we usually do' or 'in our style'. " +
+      "If a set matches, start from one of its pictures and say which. Do not go hunting the disk with " +
+      "find_files for logos and artwork — that folder is where they are, and an unbounded search of " +
+      "his home directory is not a substitute for looking in the one place they live. " +
 
       /* ── Do what he said ─────────────────────────────────────────────────
          The system prompt already carries a per-turn clause when he has been
