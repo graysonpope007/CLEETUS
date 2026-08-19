@@ -337,3 +337,31 @@ test('"with nothing added" has to mean nothing added', () => {
   // And the claim in the answer must be earned rather than asserted.
   assert.match(mediaSrc, /Sent your wording with nothing appended/);
 });
+
+test("an exclusion is only claimed when the sampler could honour it", () => {
+  /* A REGRESSION THIS WORK INTRODUCED, found by sweeping for the same class it
+     had spent the night removing from everywhere else.
+
+     The message was printed on the strength of having lifted a term and never
+     asked whether the sampler USED the negative prompt. The turbo models are
+     distilled to run at guidance 0, where there is no unconditional pass to
+     steer away from and the negative is inert.
+
+     Measured: "a quiet beach at sunrise, no people" on sdxl-turbo came back
+     with negative_applied false and an answer saying the people had been kept
+     out. Worse than doing nothing, because the lift had already removed
+     `people` from the POSITIVE prompt — so the exclusion existed nowhere, and
+     the only trace of it was a sentence reporting success. */
+  assert.match(mediaSrc, /r\.negative_applied/,
+    "the claim is made without checking whether the negative prompt was applied");
+  assert.match(mediaSrc, /Nothing is keeping it out of this picture/,
+    "a model that ignores exclusions must say so, not stay quiet");
+  assert.match(mediaSrc, /offer to remake it on realvis or sdxl/,
+    "the warning names no remedy, so it is a complaint rather than an answer");
+  // The video path carries the same fault: a keyframe from a turbo model
+  // ignores the negative, and the clip then holds the excluded thing for
+  // four seconds.
+  const vid = mediaSrc.slice(mediaSrc.indexOf("generate_video: {"));
+  assert.match(vid, /negative_applied === false/,
+    "a clip can still claim an exclusion its keyframe model ignored");
+});

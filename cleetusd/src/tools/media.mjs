@@ -219,9 +219,26 @@ export const mediaTools = {
       const long = r.long_prompt ? ` Note: ${r.long_prompt}.` : "";
       // Said out loud, because it is a change to what he typed. Silent
       // helpfulness is the thing this whole area of the code is apologising for.
-      const kept = lifted.terms.length
-        ? ` Kept out via the negative prompt rather than the positive one, which a sampler reads backwards: ${lifted.terms.join(", ")}.`
-        : "";
+      /* ── The claim has to survive the model that ignores it ──────────────
+         This said "Kept out via the negative prompt" on the strength of having
+         lifted a term, and never asked whether the sampler USED the negative.
+         The turbo models are distilled to run at guidance 0, where there is no
+         unconditional pass to steer away from and the negative prompt is inert.
+
+         Measured: "a quiet beach at sunrise, no people" on sdxl-turbo returned
+         negative_applied: false, and the answer said the people had been kept
+         out. Worse than doing nothing — the lift had already removed `people`
+         from the POSITIVE prompt, so the exclusion existed nowhere at all, and
+         the sentence reporting success was the only trace of it.
+
+         That is a regression this file introduced, in exactly the class it
+         spent the night removing from everywhere else. */
+      const kept = !lifted.terms.length ? ""
+        : r.negative_applied
+          ? ` Kept out via the negative prompt rather than the positive one, which a sampler reads backwards: ${lifted.terms.join(", ")}.`
+          : ` WARNING: he asked to leave out ${lifted.terms.join(", ")}, and ${r.model} runs at guidance ` +
+            `${r.guidance} where a negative prompt does nothing. Nothing is keeping it out of this picture. ` +
+            `Tell him, and offer to remake it on realvis or sdxl, which honour exclusions.`;
       // Said out loud, like the lifted negations. A silent crop is the most
       // visible unasked-for change there is.
       const bare = literal ? " Sent your wording with nothing appended, not even the house photographic style." : "";
@@ -301,9 +318,14 @@ export const mediaTools = {
       }
       const dims = r.width && r.height ? ` at ${r.width}x${r.height}` : "";
       const shaped = shape ? ` He set no shape, so it was made ${shape.aspect} (${shape.why}).` : "";
-      const kept = lifted.terms.length
-        ? ` Kept out via the negative prompt rather than the positive one: ${lifted.terms.join(", ")}.`
-        : "";
+      // Same as the still: a keyframe made by a turbo model ignores the
+      // negative prompt, and the clip then holds the thing he excluded for
+      // four seconds.
+      const kept = !lifted.terms.length ? ""
+        : r.negative_applied === false
+          ? ` WARNING: he asked to leave out ${lifted.terms.join(", ")}, and the keyframe model ignores ` +
+            `negative prompts. Nothing is keeping it out. Offer to remake the keyframe on sdxl.`
+          : ` Kept out via the negative prompt rather than the positive one: ${lifted.terms.join(", ")}.`;
       return `Made a ${r.seconds}s pan-and-zoom video (${r.fps}fps)${dims} in ${r.render_seconds}s. ` +
              `Saved to ${r.path} (keyframe ${r.keyframe}).${shaped}${kept} ` +
              `For genuine generative motion, ask for svd mode.`;
