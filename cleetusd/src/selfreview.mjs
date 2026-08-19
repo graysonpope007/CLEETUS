@@ -288,10 +288,41 @@ export function somethingBroke(e) {
    change. It does not change anything, and it is told so plainly, because an
    agent that believes it is about to be judged on shipping will ship. */
 
+/* What the review pass is allowed to touch.
+ *
+ * NOT a prompt instruction, because a prompt instruction does not hold. The
+ * first live dry run was told, in its own brief, that it was not fixing anything
+ * on this pass — and it called edit_file and wrote itself a morning brief at
+ * ~/cleetus-memory/morning-brief-2026-08-19.md. On a DRY run. The wording
+ * invited it ("you are writing the list he reads at 7am") and the model took the
+ * invitation, exactly as the image agent took its refusal script: this file's
+ * own history says prompt text loses that argument.
+ *
+ * So write_file, edit_file, save_skill, remember_fact, send_email, the keyring
+ * writers and everything that moves a device are simply not on the list. The
+ * answer IS the report; the caller writes it down.
+ *
+ * BE HONEST ABOUT run_shell. It is here because the review is worthless without
+ * git log, grep and tail, and it can obviously write a file if it decides to.
+ * What removing the file tools buys is not a guarantee, it is the absence of an
+ * affordance: the model reached for edit_file because edit_file was there. A
+ * shell that has to be talked into `cat > file` is a much longer road, and the
+ * one time it was walked, it was not walked deliberately. */
+export const REVIEW_TOOLS = [
+  "read_file", "list_dir", "search_files", "find_files", "run_shell",
+  "vault_read", "vault_search",
+  "repo_status", "list_repos",
+  "recall_chat", "read_chat", "recent_work",
+  "health_report", "check_access", "scheduled_jobs",
+  "read_security_skill", "find_security_skill",
+];
+
 const PROPOSAL_BRIEF = (evidence, diffs) => [
-  "You are reviewing Grayson's own code overnight. Nobody is awake. You are NOT fixing anything on this",
-  "pass — you are writing the list he reads at 7am, and anything you change now he would find without",
-  "having agreed to it. Read, then write.",
+  "You are reviewing Grayson's own code overnight. Nobody is awake.",
+  "",
+  "YOUR ANSWER IS THE REPORT. Do not create a file, do not edit one, do not write a brief — the tools to",
+  "do any of that are not on your list this pass, and something else assembles and delivers what you",
+  "return. The only thing you produce is the text of your final answer.",
   "",
   "WHAT HAPPENED IN THE LAST DAY:",
   evidence,
@@ -440,8 +471,21 @@ export async function reviewOnce({ dry = false, now = new Date(), hours = 24 } =
       // Reading is most of this. A budget that covers the reading and not the
       // writing produces a review that describes the codebase back.
       maxSteps: Number(process.env.CLEETUSD_REVIEW_STEPS || 40),
-      // Nobody is waiting at 4am; the step budget is the bound that matters.
-      deadlineMs: 0,
+      // Reading and grepping only. See REVIEW_TOOLS: the first live run wrote
+      // itself a file despite being told not to, on a dry pass.
+      tools: REVIEW_TOOLS,
+      // A wall-clock bound, unlike every other unattended job here, and for a
+      // reason specific to this one: the report has to EXIST by 07:03, when the
+      // brief is composed. Nobody is waiting at 4am, but something is due at 7.
+      //
+      // Measured on the first live run: 84 tool calls and still going. ask()
+      // grows its own budget to a ceiling of 120 while the model keeps reaching
+      // for tools, and 120 steps at thirty to sixty seconds each is ninety
+      // minutes to two hours — which starting at 04:00 is a coin flip against
+      // the brief. Seventy-five minutes puts the report on disk by 05:15 at the
+      // latest, and ask() answers from the work already done when it stops
+      // rather than losing it.
+      deadlineMs: Number(process.env.CLEETUSD_REVIEW_DEADLINE_MS || 75 * 60_000),
       // The system reviewing itself is not a request Grayson made. Without this
       // the review lands in his open loops and in tomorrow's digest as his own
       // unfinished work — which is exactly how brain-analysis started reading

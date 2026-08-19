@@ -146,3 +146,44 @@ test("failedJobs reads a real log and respects the window", async () => {
   assert.strictEqual(out.blind, null);
   assert.deepStrictEqual(out.items, ["flights: the tracker did not answer"]);
 });
+
+test("the review pass cannot write, because being told not to did not hold", async () => {
+  // The first live dry run was told plainly that it was not fixing anything on
+  // this pass. It called edit_file and wrote itself a morning brief at
+  // ~/cleetus-memory/morning-brief-2026-08-19.md. On a DRY run. The same lesson
+  // as the image agent's refusal, from the other direction: prompt text does not
+  // win an argument with the weights, and the fix is the tool list.
+  const { REVIEW_TOOLS } = await import("../src/selfreview.mjs");
+  const { TOOLS } = await import("../src/tools/index.mjs");
+
+  for (const name of REVIEW_TOOLS) {
+    assert.ok(TOOLS[name], `REVIEW_TOOLS names ${name}, which is not a tool — it would be silently dropped`);
+  }
+  for (const writer of ["write_file", "edit_file", "save_skill", "remember_fact",
+                        "send_email", "save_secret", "forget_secret", "get_secret",
+                        "web_act", "desk_light", "clone_repo", "learn_face"]) {
+    assert.ok(!REVIEW_TOOLS.includes(writer), `${writer} must not be offered to the review pass`);
+  }
+  // And the allowlist has to actually be handed to ask(), not merely declared.
+  assert.match(src, /tools: REVIEW_TOOLS/);
+
+  // run_shell IS on the list and can obviously write. That is a stated trade,
+  // not an oversight: without git and grep the review is worthless. The comment
+  // saying so is load-bearing — the next person to read this list will ask.
+  assert.ok(REVIEW_TOOLS.includes("run_shell"));
+  assert.match(src, /BE HONEST ABOUT run_shell/);
+});
+
+test("the review is bounded by the clock, not only by the step budget", () => {
+  // Every other unattended job here passes deadlineMs: 0 and is right to. This
+  // one is due at 07:03: the brief composes then and reads whatever row exists.
+  // Measured on the first live run — 84 tool calls and still climbing toward
+  // ask()'s ceiling of 120, which at thirty to sixty seconds a step is up to two
+  // hours from a 04:00 start.
+  assert.doesNotMatch(src, /deadlineMs: 0/, "an unbounded review can miss the brief it exists to feed");
+  const m = src.match(/CLEETUSD_REVIEW_DEADLINE_MS \|\| (\d+) \* 60_000/);
+  assert.ok(m, "the deadline must be a stated number of minutes");
+  const minutes = Number(m[1]);
+  assert.ok(minutes >= 30, "too short to read two repositories");
+  assert.ok(minutes <= 150, `${minutes} minutes from 04:00 does not reliably beat the 07:03 brief`);
+});

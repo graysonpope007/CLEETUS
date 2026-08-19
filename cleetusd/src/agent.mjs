@@ -897,7 +897,7 @@ export function statedFact(question) {
 }
 
 export async function ask({ history, agent, onStep, probe = false, maxSteps = CONFIG.maxSteps,
-                            deadlineMs = CONFIG.turnDeadlineMs }) {
+                            deadlineMs = CONFIG.turnDeadlineMs, tools = null }) {
   /* Route on what HE said, not on what the eyes reported.
      Measured: "What am I doing in this picture?" with a photo attached went to
      the `image` agent — the one that art-directs GENERATED images — and it
@@ -1004,7 +1004,7 @@ export async function ask({ history, agent, onStep, probe = false, maxSteps = CO
       onStep?.({ tool: "…", args: { note: `stopping after ${Math.round((Date.now() - startedAt) / 60_000)} minutes` } });
       break;
     }
-    const res = await chat({ messages, tools: toolSchemas() });
+    const res = await chat({ messages, tools: toolSchemas(tools || undefined) });
 
     if (!res.toolCalls.length) {
       answer = res.text || answer;
