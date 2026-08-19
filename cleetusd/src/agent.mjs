@@ -1345,9 +1345,33 @@ export async function ask({ history, agent, onStep, probe = false, maxSteps = CO
      like "image" or "photo", so the wording test said this was not a picture
      request at all. Being ON the image agent is itself the evidence that it
      is one; that is what the agent is. */
+  /* ── Or it simply never got round to it ───────────────────────────────────
+     The trigger above was `isRefusal` alone, which covers the case where the
+     model argued and misses the one measured this morning. Five runs of "make
+     a cover for the next GLM single":
+
+         7 generate calls · 1 · 6 · 2 · and ZERO
+
+     The last one called list_references twice, read files, listed directories,
+     searched the vault four times, ran out of budget, and produced no picture
+     at all. Nothing in that answer is a refusal, so nothing fired, and he asked
+     for a cover and got a research summary.
+
+     That is the failure this file already has a paragraph about one screen up —
+     "an answer that explains what would need to be done is a failure, however
+     accurate it is" — arriving through a door the guard was not standing in.
+     And the tighter step ceiling added for this agent makes it MORE reachable,
+     not less, which is a good reason to close it in the same change rather
+     than notice it later.
+
+     So: an image request that ends without a picture goes down the forced
+     path, whether it declined or merely wandered. forceGeneration asks once
+     more with only the generation tools on offer, and falls through to
+     writeAndRender, which does not ask anybody. */
   if ((agentId === "image" || wantsPicture(question)) &&
       !mentionsMinor(question) &&
-      !used.some((u) => String(u).startsWith("generate_")) && isRefusal(answer)) {
+      !used.some((u) => String(u).startsWith("generate_")) &&
+      (isRefusal(answer) || ranOut)) {
     const forced = await forceGeneration({ question, system, history, onStep, run });
     if (forced) {
       answer = forced.answer;

@@ -30,8 +30,20 @@ const mentionsMinor = (q) => MINOR_WORDS.test(q) || UNDER_18.test(q);
 
 test("a refusal with no generation tool called triggers the override", () => {
   assert.match(agent, /function isRefusal\(text\)/);
-  assert.match(agent, /!used\.some\(\(u\) => String\(u\)\.startsWith\("generate_"\)\) && isRefusal\(answer\)/,
+  /* The invariant is that the override never fires when a picture was already
+     made. This asserted one exact line — `!used.some(…) && isRefusal(answer)` —
+     which is a paraphrase of the invariant, and it broke when a SECOND trigger
+     was added beside the refusal even though the guard itself was untouched.
+
+     Fourth proxy assertion to break tonight on a correct change. Assert the
+     parts, not their punctuation. */
+  const cond = agent.slice(agent.indexOf('(agentId === "image" || wantsPicture(question))'),
+                           agent.indexOf("const forced = await forceGeneration"));
+  assert.ok(cond, "the override condition is gone");
+  assert.match(cond, /!used\.some\(\(u\) => String\(u\)\.startsWith\("generate_"\)\)/,
     "the override must require that NO picture was actually made");
+  assert.match(cond, /isRefusal\(answer\)/,
+    "a refusal must still be one of the things that triggers it");
   // OR, not AND. Gating on the agent alone misses "i want a picture of…",
   // which the router sends to the generalist; gating on the wording alone
   // missed "generate a gory battle scene", where no word means "picture".

@@ -255,3 +255,36 @@ test("the reference listing tells it what to do NEXT, not only what exists", () 
   // And the honest branch: a set with no usable picture must not be offered.
   assert.match(refs, /None of these has a picture a sampler can start from/);
 });
+
+test("an image request that ends without a picture reaches the forced path", () => {
+  /* The trigger used to be `isRefusal(answer)` alone, which covers the model
+     arguing and misses the case measured this morning. Five runs of "make a
+     cover for the next GLM single" produced 7, 1, 6, 2 and ZERO generate calls.
+
+     The zero run called list_references twice, read files, listed directories,
+     searched the vault four times, ran out of budget and made no picture.
+     Nothing in that answer is a refusal, so nothing fired: he asked for a cover
+     and got a research summary. That is the failure this file has a paragraph
+     about — "an answer that explains what would need to be done is a failure,
+     however accurate it is" — arriving through a door the guard was not
+     standing in. The tighter step ceiling for this agent makes it MORE
+     reachable, which is why both landed in the same change.
+
+     ASSERTED ON THE SOURCE, deliberately, and the reason is worth recording:
+     the live A/B was inconclusive. With the fix reverted and a budget of two
+     steps the agent still produced a picture, because how many steps it spends
+     varies run to run — so a single reverted run proves nothing either way.
+     The evidence for this fix is the observed zero-generate run plus the code
+     path, not a demonstration I could reproduce on demand. */
+  const block = agentSrc.slice(agentSrc.indexOf("Or it simply never got round to it"),
+                               agentSrc.indexOf("const forced = await forceGeneration"));
+  assert.ok(block, "the budget-exhaustion branch is gone");
+  assert.match(block, /\(isRefusal\(answer\) \|\| ranOut\)/,
+    "only a refusal reaches the forced path again, so running out silently returns no picture");
+  // The other two halves of the condition must survive: it fires for picture
+  // requests only, and never when a picture was already made.
+  assert.match(block, /agentId === "image" \|\| wantsPicture\(question\)/);
+  assert.match(block, /!used\.some\(\(u\) => String\(u\)\.startsWith\("generate_"\)\)/);
+  // And the one line that is never overridden stays in front of it.
+  assert.match(block, /!mentionsMinor\(question\)/);
+});
