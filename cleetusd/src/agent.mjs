@@ -6,6 +6,7 @@ import { CONFIG } from "./config.mjs";
 import { chat, quick, see, visionReady } from "./ollama.mjs";
 import { AGENTS, isAgent, agentMenu, agentList } from "./agents.mjs";
 import { literalMode, literalClause, verbatimText, liftNegations } from "./literal.mjs";
+import { captureCorrection } from "./corrections.mjs";
 import { TOOLS, toolSchemas, callTool } from "./tools/index.mjs";
 import { startRun, logStep, finishRun, loadMemory, relevantSkills, remember,
          rememberForAgent, loadAgentMemory, loadAllAgentMemory } from "./memory.mjs";
@@ -1416,6 +1417,26 @@ export async function ask({ history, agent, onStep, probe = false, maxSteps = CO
     // was talking to.
     await rememberForAgent(agentId, question.trim()).catch(() => {});
   }
+
+  /* ── The one failure signal that is free, and was being thrown away ───────
+     looksFailed cannot see a wrong picture. Its second line is
+     `if (used.length > 0) return false` — a run that called a tool did some
+     work — so an image request that generated entirely the wrong thing is
+     recorded as a success, and the teacher never sees it. The agent whose
+     failures are most frequent is the only one that never learns from them.
+
+     But he says so. "That is not what I asked for" is a labelled failure, in
+     his words, about the turn immediately before, and literal.mjs already
+     detects it to stop treating the correction as a fresh brief — then drops
+     it. This keeps it, as a RULE rather than a transcript. See corrections.mjs
+     for why that distinction is the entire design.
+
+     Fire and forget, for the same reason teachFromRun is: this runs after an
+     answer he is already unhappy with, and bookkeeping must never turn a slow
+     reply into no reply. */
+  captureCorrection({ agentId, question, history, probe })
+    .then((rule) => { if (rule) onStep?.({ tool: "learned", args: { note: rule } }); })
+    .catch(() => {});
 
   // Did this actually work? See looksFailed — deliberately narrow, because a
   // teacher call on every answer would mean every request costs a cloud call,

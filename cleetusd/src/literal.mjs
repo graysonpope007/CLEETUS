@@ -84,6 +84,20 @@ const CORRECTING = new RegExp([
   "\\bagain,? (?:but|and)\\b",
 ].join("|"), "i");
 
+/**
+ * Is he telling us the last answer was wrong?
+ *
+ * Exported because two different things need it and they need the SAME
+ * definition: literalMode uses it to stop treating a correction as a fresh
+ * brief, and corrections.mjs uses it to decide there is a lesson to record.
+ * Two regexes that drift apart would mean the assistant behaves as though it
+ * has been corrected while learning nothing from it, which is the worse half
+ * of both.
+ */
+export function isCorrection(question) {
+  return CORRECTING.test(String(question || ""));
+}
+
 /* ── Negations, which a sampler reads backwards ──────────────────────────────
    "A quiet beach at sunrise, no people" puts the token `people` in the prompt.
    Cross-attention has no operator for "not"; it has a vector for `people`, and

@@ -148,12 +148,35 @@ t("a failed run becomes work", !!r.wouldFix, JSON.stringify(r).slice(0,200));
 }
 await rm(fake, { force: true });
 
-// 5. back to quiet
+/* 5. back to quiet — but only if the world is quiet.
+
+   This asserts that nothing blocks the loop once the suite has cleaned up
+   after itself. That is false on any day the REAL daily cap has been reached,
+   and it failed exactly that way: improve-state said day 2026-08-20, count 3,
+   cap 3. Nothing was wrong; the loop had done its three improvements and said
+   so.
+
+   A test that goes red when nothing is broken teaches whoever hits it to stop
+   reading it, which is the same reasoning as the dirty-tree skip at the top of
+   this file. So the real cap is checked rather than assumed, and the
+   assertion is skipped with a reason when it genuinely applies. */
+const capped = await (async () => {
+  try {
+    const raw = await (await import("node:fs/promises")).readFile(STATE, "utf8");
+    const st = JSON.parse(raw);
+    return st.day === new Date().toISOString().slice(0, 10) &&
+           (st.count || 0) >= Number(process.env.CLEETUSD_IMPROVE_CAP || 3);
+  } catch { return false; }
+})();
+
 r = await improveOnce({ dry: true });
-t("no guard blocks it once cleaned up",
+if (capped) {
+  console.log("  SKIP the daily cap really is reached today, so a cap blocker is correct");
+} else t("no guard blocks it once cleaned up",
   !(r.blockers || []).some((b) => /STOP file|dirty|cap/.test(b)) &&
   !/STOP file|dirty|cap/.test(r.skipped || ""),
   JSON.stringify(r));
+
 
 } finally {
   // Deliberately AFTER the try body and before the exit. `process.exit()` does
