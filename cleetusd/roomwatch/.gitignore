@@ -1,0 +1,15 @@
+# Runtime data only. Nothing in this directory belongs in the repository.
+#
+# clips/ holds camera frames of Grayson's BEDROOM — the alarm's evidence and
+# the pictures that let a surprising calibration be checked against reality.
+# They must never leave this machine, and the home directory is a git repo with
+# a GitHub origin, so an unguarded `git add` would push them.
+#
+# samples/ is tens of megabytes of raw sensing recordings, regenerable in four
+# minutes with `roomwatch sample`. state.json and events.jsonl are live state.
+#
+# The measured RESULT of all this — roomwatch-baseline.json — lives one level
+# up and IS tracked, because the thresholds and the verdict are the part worth
+# keeping.
+*
+!.gitignore

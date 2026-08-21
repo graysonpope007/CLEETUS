@@ -19,3 +19,9 @@ media/drops/
 # would mean a fresh checkout has neither the pictures nor the explanation.
 media/refs/*
 !media/refs/README.md
+
+# Compiled binary. The Swift source is tracked at src/swift/midictl.swift and
+# rebuilding is one line — a committed arm64 binary is unreviewable and goes
+# stale the moment somebody edits the source next to it:
+#     swiftc -O -o bin/midictl src/swift/midictl.swift
+bin/midictl

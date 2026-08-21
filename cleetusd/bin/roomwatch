@@ -1,0 +1,162 @@
+#!/usr/bin/env node
+// bin/roomwatch — the room alarm, by hand.
+//
+//   roomwatch sample empty 240      record the room with NOBODY in it
+//   roomwatch sample occupied 240   record it with someone moving about
+//   roomwatch baseline              build thresholds from those two, and say
+//                                   plainly whether RuView separates at all
+//   roomwatch status                baseline, armed state, recent events
+//   roomwatch arm | disarm          whether a confirmed person raises an alarm
+//   roomwatch once                  one full stage-two check, right now
+//   roomwatch test-alert            send the real alert, to prove the channel
+//   roomwatch run                   the watcher (this is what launchd runs)
+//   roomwatch selftest              every part, checked, no alarm raised
+
+import {
+  sample, buildBaseline, loadBaseline, cameraProbe, whoIsThere, pushAlert, flashRoom,
+  readState, writeState, runWatch, PATHS, scoreFrame, openSensing, sleep, logEvent,
+} from "../src/roomwatch.mjs";
+import { readFileSync, existsSync } from "node:fs";
+
+const [, , cmd = "status", ...rest] = process.argv;
+
+switch (cmd) {
+  case "sample": {
+    const label = rest[0] || "empty";
+    const secs = Number(rest[1] || 240);
+    if (label === "empty") {
+      console.error(`Recording ${secs}s with the room EMPTY. Leave now — a person in the room during`);
+      console.error("this recording teaches the alarm that a human IS the empty-room floor, which is");
+      console.error("exactly how the node presence thresholds got poisoned before.\n");
+      await sleep(8000);
+    }
+    let last = 0;
+    const r = await sample(label, secs, (n) => {
+      if (n - last >= 500) { last = n; process.stderr.write(`\r  ${n} sensing frames`); }
+    });
+    console.error(`\n${r.frames} sensing frames, ${r.camSamples} camera samples -> ${r.path}`);
+    break;
+  }
+
+  case "baseline": {
+    const b = await buildBaseline();
+    console.log(`labelled by the camera: ${b.still_seconds}s with nothing moving, ${b.moving_seconds}s with real movement\n`);
+    for (const [id, n] of Object.entries(b.nodes)) {
+      console.log(`node ${id}: still p50 ${n.still?.p50} p99 ${n.still?.p99}` +
+        (n.moving ? `   moving p50 ${n.moving.p50} p99 ${n.moving.p99}   AUC ${n.auc}` : "") +
+        `   -> trip ${b.trip[id]}`);
+    }
+    console.log(`\ncombined AUC ${b.auc}\n`);
+    console.log("the rule the watcher runs — 3 consecutive frames over threshold:");
+    console.log("  threshold   false wakes/hr   catches/min of movement");
+    for (const o of b.operating) {
+      console.log(`  ${String(o.threshold).padStart(9)}   ${String(o.false_wakes_per_hour).padStart(14)}   ${String(o.catches_per_minute_of_movement).padStart(23)}`);
+    }
+    console.log(`\ncamera: ${b.camera.probes} probes, still ${b.camera.still?.p50 ?? "-"}%, moving p50 ${b.camera.moving?.p50 ?? "-"}% -> trip ${b.camera.trip}%`);
+    console.log(`\n${b.verdict}`);
+    break;
+  }
+
+  case "status": {
+    const b = await loadBaseline(), s = await readState();
+    console.log(`armed:    ${s.armed ? "YES" : "no"}${s.since ? ` since ${s.since}` : ""}`);
+    console.log(`baseline: ${b ? `${b.built_at} (${b.feature})` : "NONE — stage one disabled"}`);
+    if (b) {
+      console.log(`  trips:  ${Object.entries(b.trip).map(([k, v]) => `node${k}=${v}`).join("  ")}   camera=${b.camera?.trip}`);
+      console.log(`  ${b.verdict}`);
+    }
+    if (existsSync(PATHS.events)) {
+      const lines = readFileSync(PATHS.events, "utf8").trim().split("\n").filter(Boolean).slice(-8);
+      console.log(`\nlast ${lines.length} event(s):`);
+      for (const l of lines) {
+        const e = JSON.parse(l);
+        console.log(`  ${e.at}  ${e.kind}${e.action ? `/${e.action}` : ""}  ${e.why || ""} diff=${e.max_diff ?? "-"}${e.who?.length ? ` who=${e.who.join(",")}` : ""}`);
+      }
+    } else console.log("\nno events recorded yet");
+    break;
+  }
+
+  case "arm":
+  case "disarm": {
+    const armed = cmd === "arm";
+    // roomwatch arm [seconds]  — the exit delay, default 60s.
+    const delay = armed ? Number(rest[0] ?? 60) : 0;
+    const armed_at = armed ? Date.now() + delay * 1000 : null;
+    await writeState({ ...(await readState()), armed, armed_at, since: armed ? new Date().toISOString() : null });
+    logEvent({ kind: armed ? "armed" : "disarmed", by: "cli", exit_delay_s: delay || undefined });
+    console.log(armed
+      ? `roomwatch ARMS in ${delay}s. Movement before then is ignored, so you can walk out.`
+      : "roomwatch is now disarmed.");
+    break;
+  }
+
+  case "once": {
+    const b = await loadBaseline();
+    const p = await cameraProbe({ frames: 10, gapMs: 300, tag: "manual", save: true });
+    console.log("camera:", JSON.stringify(p));
+    if (b?.camera?.trip != null) console.log(`verdict: ${p.max_diff >= b.camera.trip ? "MOVEMENT" : "still"} (trip ${b.camera.trip})`);
+    else console.log("verdict: cannot say — camera not calibrated");
+    console.log("faces:", JSON.stringify(await whoIsThere()));
+    break;
+  }
+
+  case "test-alert": {
+    console.log("push:", JSON.stringify(await pushAlert("Cleetus — roomwatch test",
+      "This is the alarm channel being proved. Nothing is wrong.", { test: true })));
+    console.log("hue:", JSON.stringify(await flashRoom()));
+    break;
+  }
+
+  case "run": {
+    const r = await runWatch({});
+    if (!r.ok) { console.error(r.why); process.exit(1); }
+    process.on("SIGTERM", () => { r.stop(); process.exit(0); });
+    process.on("SIGINT", () => { r.stop(); process.exit(0); });
+    break;
+  }
+
+  case "selftest": {
+    // Every stage exercised for real. Nothing here raises an alarm, because a
+    // self-test that pages you is a self-test nobody runs.
+    const out = [];
+    const b = await loadBaseline();
+    out.push([`baseline present`, Boolean(b), b ? `${b.still_seconds}s still + ${b.moving_seconds}s moving, camera-labelled` : "run: roomwatch sample empty 150 && roomwatch baseline"]);
+    out.push([`camera threshold set`, b?.camera?.trip != null, `trip ${b?.camera?.trip}`]);
+
+    let frames = 0;
+    const stop = openSensing(() => frames++);
+    await sleep(3000); stop();
+    out.push([`sensing stream delivers frames`, frames > 0, `${frames} in 3s`]);
+
+    if (b && frames) {
+      let f = null; const s2 = openSensing((x) => (f = x)); await sleep(1500); s2();
+      const sc = f ? scoreFrame(f, b) : null;
+      out.push([`stage one scores a live frame`, Boolean(sc), sc ? `peak ${sc.peak}x trip, ${sc.tripped.length} node(s) over` : "no frame"]);
+    }
+
+    const cam = await cameraProbe({ frames: 4, gapMs: 200, tag: "selftest" });
+    out.push([`camera readable`, cam.ok === true, cam.ok ? `max_diff ${cam.max_diff}` : `${cam.error} ${cam.detail || ""}`]);
+
+    const who = await whoIsThere();
+    out.push([`face recogniser answers`, who.ok === true, who.ok ? `${who.faces} face(s), named: ${who.named.join(",") || "none"}` : who.why]);
+
+    const { hueConfigured } = await import("../src/hue.mjs");
+    out.push([`hue reachable`, hueConfigured(), hueConfigured() ? "HUE_APP_KEY set" : "no key"]);
+
+    // APNs is exercised by `roomwatch test-alert`, which buzzes the phone on
+    // purpose. A self-test that pages you is a self-test nobody runs, so this
+    // only confirms the credentials exist rather than sending anything.
+    const { secrets } = await import("../src/config.mjs");
+    const haveApns = ["APNS_TEAM_ID", "APNS_KEY_ID", "APNS_BUNDLE_ID"].every((k) => Boolean(secrets[k]));
+    out.push([`apns credentials present`, haveApns, haveApns ? "prove delivery with: roomwatch test-alert" : "missing APNS_* in cleetus.env"]);
+
+    let bad = 0;
+    for (const [name, ok, detail] of out) { if (!ok) bad++; console.log(`${ok ? "ok  " : "FAIL"}  ${name.padEnd(32)} ${detail}`); }
+    console.log(`\n${out.length - bad}/${out.length} passed`);
+    process.exit(bad ? 1 : 0);
+  }
+
+  default:
+    console.error(readFileSync(new URL(import.meta.url), "utf8").split("\n").slice(1, 14).join("\n").replace(/^\/\/ ?/gm, ""));
+    process.exit(2);
+}

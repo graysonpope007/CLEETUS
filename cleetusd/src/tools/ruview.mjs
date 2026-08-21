@@ -44,6 +44,15 @@ import { homedir } from "node:os";
 const BASE = process.env.RUVIEW_URL || "http://127.0.0.1:3000";
 const FUSION_LOG = `${homedir()}/Library/Logs/ruview.log`;
 
+// The empty-room motion floor, measured with the room genuinely empty and
+// written by scripts/ruview-baseline. Served from here so the Mac, the deck,
+// /ruview and the Pi panel all scale their heat against the SAME numbers —
+// a display that invents its own scale is how an empty room looks busy.
+const BASELINE_FILE = `${homedir()}/cleetusd/ruview-baseline.json`;
+async function loadBaseline() {
+  try { return JSON.parse(await readFile(BASELINE_FILE, "utf8")); } catch { return null; }
+}
+
 /**
  * Whether multistatic fusion is actually completing cycles, and by how much it
  * is missing when it is not.
@@ -74,25 +83,55 @@ const FUSION_LOG = `${homedir()}/Library/Logs/ruview.log`;
 async function fusionHealth() {
   const text = await readFile(FUSION_LOG, "utf8").catch(() => null);
   if (text === null) return null;
-  const lines = text.split("\n");
-  const recent = lines.slice(-400);
+
+  // RATE, not presence.
+  //
+  // The first version of this called fusion "failing" if the recent log held
+  // any error at all. That was right when every single cycle failed, and
+  // became wrong the moment the guard was fixed: fusion now clears >99% of
+  // cycles and still emits the occasional warning on the tail, which the old
+  // test would have reported as a total failure. A check that cannot tell
+  // "broken" from "working with a tail" is worse than no check, because it
+  // trains you to ignore it.
+  //
+  // The warning is rate-limited to one per 10 s in the server, so a fully
+  // failing engine tops out at ~6/min and that ceiling is the yardstick.
+  const WINDOW_S = 300;
+  const now = Date.now();
   const spreads = [];
-  let guard = null;
-  for (const l of recent) {
-    const m = l.match(/Timestamp spread (\d+) us exceeds guard interval (\d+) us/);
-    if (m) { spreads.push(Number(m[1]) / 1000); guard = Number(m[2]) / 1000; }
+  let guard = null, recent = 0, total = null;
+
+  for (const line of text.split("\n").slice(-1200)) {
+    const clean = line.replace(/\u001b\[[0-9;]*m/g, "");
+    const tm = clean.match(/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)/);
+    const em = clean.match(/total_engine_errors=(\d+)/);
+    if (em) total = Number(em[1]);
+    const sm = clean.match(/Timestamp spread (\d+) us exceeds guard interval (\d+) us/);
+    if (!sm || !tm) continue;
+    guard = Number(sm[2]) / 1000;
+    const ageS = (now - Date.parse(tm[1] + "Z")) / 1000;
+    if (ageS <= WINDOW_S) { recent++; spreads.push(Number(sm[1]) / 1000); }
   }
-  const errs = recent.join("\n").match(/total_engine_errors=(\d+)/g);
-  const total = errs && errs.length ? Number(errs[errs.length - 1].split("=")[1]) : null;
-  if (!spreads.length) return { failing: false, total };
+
+  // Measured, not guessed. With the mis-derived 120 ms guard this log ran at
+  // 5.7/min for 693 minutes — pinned against the 6/min ceiling, i.e. an error
+  // in nearly every bucket. With the guard set from the real distribution it
+  // sits at 2.2/min, which is the tail of a working fuser rather than a broken
+  // one (total_engine_errors went from 680,730 to 59). So the line between
+  // "broken" and "working with a tail" belongs near the ceiling, not near zero.
+  const FAILING_PER_MIN = 4.5;
+  const perMin = recent / (WINDOW_S / 60);
   spreads.sort((a, b) => a - b);
   return {
-    failing: true,
+    failing: perMin > FAILING_PER_MIN,
+    degraded: perMin > 0.5 && perMin <= FAILING_PER_MIN,
+    perMin: Number(perMin.toFixed(1)),
+    windowMin: WINDOW_S / 60,
     total,
     guardMs: guard,
-    medianMs: spreads[Math.floor(spreads.length / 2)],
-    minMs: spreads[0],
-    maxMs: spreads[spreads.length - 1],
+    medianMs: spreads.length ? spreads[Math.floor(spreads.length / 2)] : null,
+    minMs: spreads.length ? spreads[0] : null,
+    maxMs: spreads.length ? spreads[spreads.length - 1] : null,
     samples: spreads.length,
   };
 }
@@ -112,12 +151,6 @@ async function grab(path, ms = 4000) {
 
 const bad = (o) => !o || o.__error;
 
-// Read-only passthrough, by exact name. The sensing server also exposes
-// training, model load/unload, calibration start/stop and recording, and none
-// of those should become reachable just because the read path is — this daemon
-// is published through the tunnel. Mirrors the allowlist in cleetusv2's
-// functions/api/ruview/[[path]].js deliberately: two doors onto one server
-// should not disagree about what is behind them.
 export const READABLE = new Set([
   "health",
   "api/v1/info",
@@ -175,6 +208,7 @@ export async function senseRoom() {
   // separately rather than left as "v?" in every report that quotes it.
   const info = health && !health.__error ? await grab("/api/v1/info") : null;
   const fusion = await fusionHealth();
+  const baseline = await loadBaseline();
 
   if (bad(health) && bad(nodes)) {
     return { up: false, why: nodes.__error || "unreachable" };
@@ -235,13 +269,15 @@ export async function senseRoom() {
   //    herring and what it cost to treat it as one.
   if (fusion && fusion.failing) {
     reasons.push(
-      `multistatic fusion is failing every cycle: frames arriving in one window are spread ` +
+      `multistatic fusion is failing ${fusion.perMin}/min: frames arriving in one window are spread ` +
       `${fusion.medianMs.toFixed(0)} ms apart (median of ${fusion.samples} recent, range ` +
       `${fusion.minMs.toFixed(0)}-${fusion.maxMs.toFixed(0)} ms) against a ${fusion.guardMs.toFixed(0)} ms guard` +
       (fusion.total ? `, ${fusion.total.toLocaleString()} engine errors so far` : "") +
-      `. Nothing is being combined across boards, so there is no triangulated fix.`,
+      `. Little or nothing is being combined across boards.`,
     );
   }
+  // A tail is NOT a fault and must not join the reasons list, or the room
+  // reads as untrustworthy forever on the strength of one dropped cycle.
 
   // 6. Boards present in the fleet but missing from the mesh never contribute
   //    to a fused fix at all, however healthy they look in /nodes.
@@ -271,6 +307,7 @@ export async function senseRoom() {
     claimedHeart: vitals?.vital_signs?.heart_rate_bpm ?? null,
     motionEnergy: edge?.edge_vitals?.motion_energy ?? null,
     fusion,
+    baseline,
     trustworthy: reasons.length === 0,
     reasons,
   };

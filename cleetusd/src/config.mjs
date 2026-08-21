@@ -24,7 +24,26 @@ function loadEnvFile(path) {
   if (!existsSync(path)) return out;
   for (const line of readFileSync(path, "utf8").split("\n")) {
     const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
-    if (m) out[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    if (!m) continue;
+    let value = m[2];
+
+    // TRAILING COMMENTS ARE NOT PART OF THE SECRET.
+    //
+    // cleetus.env documents itself inline — 23 of its keys are written as
+    //     APNS_KEY_ID=M54J9L88Y9        # Key ID of the APNs .p8. Not secret.
+    // and this loader used to hand back the key ID WITH that sentence glued to
+    // it. Everything downstream then failed in a way that named the wrong
+    // thing: the APNs push reported a missing .p8 at a path ending
+    // "Not secret..p8", which reads as a missing file rather than a parser bug.
+    // PLAID_SECRET, AUTH_SECRET, ENCRYPTION_KEY and MS_WEB_CLIENT_SECRET are
+    // all written the same way.
+    //
+    // Only an UNQUOTED value is trimmed, and only at whitespace followed by a
+    // hash — checked against every key in the file, none of which contains a
+    // hash that is part of its value. A quoted value is left exactly alone, so
+    // a secret that genuinely needs a " #" can say so by quoting.
+    if (!/^\s*["']/.test(value)) value = value.replace(/\s+#.*$/, "");
+    out[m[1]] = value.trim().replace(/^["']|["']$/g, "");
   }
   return out;
 }

@@ -30,6 +30,7 @@ import { securityTools } from "./security.mjs";
 import { mediaTools } from "./media.mjs";
 import { piTools } from "./pi.mjs";
 import { ruviewTools } from "./ruview.mjs";
+import { hueTools } from "./hue.mjs";
 
 // ── The vault ───────────────────────────────────────────────────────────────
 
@@ -246,7 +247,7 @@ const bridgeTools = {
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
-export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools, ...piTools, ...ruviewTools };
+export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools, ...piTools, ...ruviewTools, ...hueTools };
 
 /** Ollama's native tool format. */
 export function toolSchemas(names = Object.keys(TOOLS)) {
@@ -329,6 +330,21 @@ const ALIASES = {
   wifi_sensing: "room_sense",
   ruview: "room_sense",
   sensors: "room_sense",
+  // The lights have the same shape of problem as the room did: many spellings,
+  // and a model with no tool matched will cheerfully claim it turned them off.
+  // Read and write stay distinct — an alias never maps a look onto a change.
+  lights: "lights_read",
+  light: "lights_read",
+  lamps: "lights_read",
+  hue: "lights_read",
+  lighting: "lights_read",
+  are_the_lights_on: "lights_read",
+  turn_on_lights: "lights_set",
+  turn_off_lights: "lights_set",
+  lights_on: "lights_set",
+  lights_off: "lights_set",
+  set_lights: "lights_set",
+  dim_lights: "lights_set",
 };
 
 /**

@@ -1,0 +1,173 @@
+{
+  "built_at": "2026-08-21T22:45:10.785Z",
+  "feature": "motion_band_power",
+  "source": "ws /ws/sensing node_features[].features.motion_band_power",
+  "labelled_by": "camera changed_pct — 0 means the camera saw nothing move, >=3 means it saw something real",
+  "margin": 1.6,
+  "still_frames": 6439,
+  "moving_frames": 3372,
+  "still_seconds": 92,
+  "moving_seconds": 48,
+  "unlabelled_frames": 7067,
+  "nodes": {
+    "1": {
+      "still": {
+        "n": 6439,
+        "min": 1.62,
+        "p50": 146.38,
+        "p95": 880.68,
+        "p99": 941.19,
+        "p995": 952.58,
+        "max": 999.18,
+        "mean": 248.45,
+        "sd": 227.73
+      },
+      "moving": {
+        "n": 3372,
+        "min": 2.17,
+        "p50": 173.56,
+        "p95": 699.53,
+        "p99": 893.39,
+        "p995": 953.14,
+        "max": 977.5,
+        "mean": 233.4,
+        "sd": 187.06
+      },
+      "auc": 0.52
+    },
+    "2": {
+      "still": {
+        "n": 6439,
+        "min": 1.52,
+        "p50": 163.16,
+        "p95": 580.18,
+        "p99": 666.01,
+        "p995": 683.7,
+        "max": 1026.03,
+        "mean": 196.88,
+        "sd": 123.48
+      },
+      "moving": {
+        "n": 3372,
+        "min": 2.13,
+        "p50": 193.99,
+        "p95": 337.41,
+        "p99": 791.61,
+        "p995": 882.61,
+        "max": 919.26,
+        "mean": 218.82,
+        "sd": 129.37
+      },
+      "auc": 0.648
+    },
+    "3": {
+      "still": {
+        "n": 6439,
+        "min": 1.01,
+        "p50": 154.83,
+        "p95": 239.16,
+        "p99": 733.45,
+        "p995": 756.01,
+        "max": 796.76,
+        "mean": 162.68,
+        "sd": 88.29
+      },
+      "moving": {
+        "n": 3372,
+        "min": 1.4,
+        "p50": 180.32,
+        "p95": 251.43,
+        "p99": 755.58,
+        "p995": 768.3,
+        "max": 809.35,
+        "mean": 193.21,
+        "sd": 116.74
+      },
+      "auc": 0.647
+    }
+  },
+  "auc": 0.6,
+  "operating": [
+    {
+      "quantile": 0.9,
+      "threshold": 672.23,
+      "false_wakes_per_hour": 6418,
+      "catches_per_minute_of_movement": 139.5
+    },
+    {
+      "quantile": 0.95,
+      "threshold": 885.86,
+      "false_wakes_per_hour": 3209,
+      "catches_per_minute_of_movement": 17.44
+    },
+    {
+      "quantile": 0.99,
+      "threshold": 941.61,
+      "false_wakes_per_hour": 626,
+      "catches_per_minute_of_movement": 7.47
+    },
+    {
+      "quantile": 0.995,
+      "threshold": 952.58,
+      "false_wakes_per_hour": 313,
+      "catches_per_minute_of_movement": 6.23
+    },
+    {
+      "quantile": 0.999,
+      "threshold": 983.43,
+      "false_wakes_per_hour": 39,
+      "catches_per_minute_of_movement": 0
+    }
+  ],
+  "chosen_operating_point": {
+    "quantile": 0.995,
+    "threshold": 952.58,
+    "false_wakes_per_hour": 313,
+    "catches_per_minute_of_movement": 6.23
+  },
+  "trip": {
+    "1": 952.58,
+    "2": 683.7,
+    "3": 756.01
+  },
+  "camera": {
+    "still": {
+      "n": 54,
+      "min": 0,
+      "p50": 0,
+      "p95": 0,
+      "p99": 0,
+      "p995": 0,
+      "max": 0,
+      "mean": 0,
+      "sd": 0
+    },
+    "moving": {
+      "n": 29,
+      "min": 3.04,
+      "p50": 4.39,
+      "p95": 93.58,
+      "p99": 98.55,
+      "p995": 98.55,
+      "max": 98.55,
+      "mean": 12.25,
+      "sd": 23.31
+    },
+    "all": {
+      "n": 136,
+      "min": 0,
+      "p50": 0.19,
+      "p95": 6.8,
+      "p99": 93.58,
+      "p995": 98.55,
+      "max": 98.55,
+      "mean": 3.02,
+      "sd": 11.81
+    },
+    "probes": 136,
+    "trip": 0.5
+  },
+  "usable": false,
+  "running_at": "stage one trips at {\"1\":952.58,\"2\":683.7,\"3\":756.01}, chosen for 313 camera wakes an hour in a still room and 6.23 catches per minute of movement.",
+  "verdict": "motion_band_power does NOT work as a gate. Best AUC 0.65, and no threshold is both quiet and catching: every setting that catches movement wakes the camera thousands of times an hour, and every quiet setting catches nothing. The still room's own peaks (p99 941.61) run HIGHER than the moving room's, so thresholding the top end is worse than chance. The camera heartbeat is what is actually guarding this room."
+}

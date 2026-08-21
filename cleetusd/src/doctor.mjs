@@ -775,14 +775,16 @@ export async function runDoctor() {
       if (!f) {
         skip("ruview", "multistatic fusion is completing cycles", "the fusion log is not readable");
       } else {
+        const detail = f.samples
+          ? `${f.perMin}/min over ${f.windowMin} min (6/min is the rate-limit ceiling); spread median ` +
+            `${f.medianMs.toFixed(0)} ms, range ${f.minMs.toFixed(0)}-${f.maxMs.toFixed(0)} ms against a ` +
+            `${f.guardMs.toFixed(0)} ms guard` + (f.total != null ? `, ${f.total.toLocaleString()} engine errors` : "")
+          : "no fusion errors in the recent log";
         check("ruview", "multistatic fusion is completing cycles", !f.failing,
-          f.failing
-            ? `every cycle failing: frames spread ${f.medianMs.toFixed(0)} ms (median of ${f.samples}, ` +
-              `range ${f.minMs.toFixed(0)}-${f.maxMs.toFixed(0)}) against a ${f.guardMs.toFixed(0)} ms guard` +
-              (f.total ? `, ${f.total.toLocaleString()} engine errors` : "")
-            : "no fusion errors in the recent log",
-          "NOT a clock fault and not fixable by power-cycling a board — the boards run at different frame " +
-          "rates on a staggered TDM schedule, so widening the guard only hides it");
+          detail + (f.degraded && !f.failing ? " — a tail, not a failure" : ""),
+          // The fix that worked, recorded here because the obvious one did not.
+          "set WDP_GUARD_INTERVAL_US in com.cleetus.ruview.plist from the MEASURED spread distribution " +
+          "(p99 with a healthy fleet), then unload+load the agent — kickstart -k will not re-read it");
       }
     }
   } catch (e) {
@@ -811,6 +813,46 @@ export async function runDoctor() {
       "add the port to RUVIEW_CSP in functions/_middleware.js — the socket fails soft into polling, so nothing else will tell you");
   } catch (e) {
     check("ruview", "the CSP allows the websocket the page opens", false, e.message);
+  }
+
+  // ── roomwatch: the room alarm ───────────────────────────────────────────────
+  //
+  // Three things can make this system silently useless, and none of them raise
+  // an error on their own: no baseline (stage one disabled AND the camera has
+  // no threshold, so the agent refuses to run), a camera that stopped serving
+  // frames, and being disarmed and forgotten. The last one is the reason
+  // "armed" is reported as a fact rather than checked as a fault — leaving it
+  // disarmed is a legitimate choice, but it should never be a surprise.
+  try {
+    const rw = await import("./roomwatch.mjs");
+    const base = await rw.loadBaseline();
+    const state = await rw.readState();
+
+    check("roomwatch", "the alarm is calibrated", Boolean(base) && base.camera?.trip != null,
+      base
+        ? `built ${base.built_at?.slice(0, 10)} from ${base.empty_frames} empty frames; camera trip ${base.camera?.trip}, ` +
+          `node trips ${Object.entries(base.trip || {}).map(([k, v]) => `${k}=${v}`).join(" ")}`
+        : "no baseline — the watcher will not run at all",
+      "record the room with nobody in it, then build: bin/roomwatch sample empty 240 && bin/roomwatch baseline");
+
+    if (base) {
+      // Reported, not asserted. RuView failing to separate is a measured fact
+      // about this hardware, not a fault someone can go and fix tonight, and a
+      // permanently red check is a check people learn to scroll past.
+      // Reported as a passing check with the verdict in its detail: it is a
+      // measured property of the hardware, not a fault to be fixed tonight.
+      check("roomwatch", "the WiFi stage has been measured for separation", true, base.verdict);
+    }
+
+    const cam = await rw.cameraProbe({ frames: 3, gapMs: 150, tag: "doctor" });
+    check("roomwatch", "the confirming camera serves frames", cam.ok === true,
+      cam.ok ? `${cam.frames} frames, max_diff ${cam.max_diff}` : `${cam.error}: ${cam.detail || ""}`,
+      "the C920 is served by the AirPad process on 127.0.0.1:8768 — opening the device a second time is how you get a camera that returns nothing forever");
+
+    check("roomwatch", "armed state is deliberate", true,
+      state.armed ? `ARMED since ${state.since}` : "disarmed — a confirmed person raises no alarm");
+  } catch (e) {
+    check("roomwatch", "the alarm is calibrated", false, e.message);
   }
 
   // ── the desk light ──────────────────────────────────────────────────────────
