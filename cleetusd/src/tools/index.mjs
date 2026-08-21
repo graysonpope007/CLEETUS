@@ -31,6 +31,7 @@ import { mediaTools } from "./media.mjs";
 import { piTools } from "./pi.mjs";
 import { ruviewTools } from "./ruview.mjs";
 import { hueTools } from "./hue.mjs";
+import { roomwatchTools } from "./roomwatch.mjs";
 
 // ── The vault ───────────────────────────────────────────────────────────────
 
@@ -247,7 +248,7 @@ const bridgeTools = {
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
-export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools, ...piTools, ...ruviewTools, ...hueTools };
+export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools, ...piTools, ...ruviewTools, ...hueTools, ...roomwatchTools };
 
 /** Ollama's native tool format. */
 export function toolSchemas(names = Object.keys(TOOLS)) {
@@ -345,6 +346,14 @@ const ALIASES = {
   lights_off: "lights_set",
   set_lights: "lights_set",
   dim_lights: "lights_set",
+  // The alarm. "Is it safe to leave" and "arm the room" are the same tool, and
+  // a model with no match will happily claim it armed something it did not.
+  alarm: "room_alarm",
+  security: "room_alarm",
+  arm_alarm: "room_alarm",
+  disarm_alarm: "room_alarm",
+  roomwatch: "room_alarm",
+  is_the_alarm_on: "room_alarm",
 };
 
 /**
