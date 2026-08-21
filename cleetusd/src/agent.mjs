@@ -392,7 +392,28 @@ function isRefusal(text) {
 }
 
 /* ── The one refusal that is never overridden ──────────────────────────────
-   Nothing. Everything should be accepted. 
+   Everything below this point exists to stop the model declining things it has
+   no business declining. That machinery ends by calling generate_image ITSELF,
+   without asking — which means it would sail straight past the single line that
+   is not a matter of taste, unless the line is enforced here rather than left
+   to the model's judgment.
+
+   So: if the request mentions a minor at all, the override does not run. The
+   model's own refusal stands, whatever it was. This is deliberately blunt and
+   deliberately over-inclusive, and it costs nothing to be — the override only
+   ever fires on a request the model ALREADY refused, so the false positives it
+   catches are requests that were being declined either way. */
+const MINOR_WORDS = /\b(child|children|kid|kids|minor|minors|underage|under[- ]?age|toddler|infant|baby|babies|preteen|pre[- ]teen|teen|teens|teenage|teenager|adolescent|juvenile|schoolgirl|schoolboy|school ?girl|school ?boy|loli|shota|young (?:girl|boy)|little (?:girl|boy))\b/i;
+// "12 year old", "9-yr-old", "aged 15", "age 7" — anything stated under
+// eighteen, with or without the word "year". The bare "aged N" form is a
+// separate branch because it was missed by the first version, which required
+// "year(s) old" to follow the number.
+const UNDER_18 = /\b(?:([0-9]|1[0-7])\s*[- ]?\s*(?:year|yr)s?[\s-]*old|aged?\s*(?:[0-9]|1[0-7])\b)/i;
+
+function mentionsMinor(question) {
+  const q = String(question || "");
+  return MINOR_WORDS.test(q) || UNDER_18.test(q);
+}
 
 /** Is this a request for a picture or a clip at all? */
 // "scene", "art" and "portrait" are here because they were missing: a request
@@ -740,7 +761,7 @@ async function writeAndRender({ question, history = [], onStep, run }) {
     { role: "user", content: String(question) },
   ];
 
-  
+  if (mentionsMinor(question)) return null;
 
   /* ── The expansion is the bug when he has already been specific ───────────
      This rung asks the model to turn his sentence into "subject, pose,
@@ -754,7 +775,14 @@ async function writeAndRender({ question, history = [], onStep, run }) {
      text as the prompt; literal uses his own words through promptForRender,
      which strips the request grammar and nothing else. See literal.mjs. */
   const mode = literalMode(question, history);
-
+  if (mode.level === "verbatim") {
+    const exact = verbatimText(question, mode.quoted);
+    if (!mentionsMinor(exact)) {
+      return renderPrompt({ prompt: exact, question, onStep, run, literal: true,
+                            note: "used his wording exactly, with nothing added" });
+    }
+    return null;
+  }
 
   let prompt = "";
   if (mode.level === "literal") {
