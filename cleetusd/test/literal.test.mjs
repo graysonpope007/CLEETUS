@@ -300,8 +300,17 @@ test("an image request that ends without a picture reaches the forced path", () 
   const block = agentSrc.slice(agentSrc.indexOf("Or it simply never got round to it"),
                                agentSrc.indexOf("const forced = await forceGeneration"));
   assert.ok(block, "the budget-exhaustion branch is gone");
-  assert.match(block, /\(isRefusal\(answer\) \|\| ranOut\)/,
-    "only a refusal reaches the forced path again, so running out silently returns no picture");
+  /* Asserted as two parts rather than as the exact disjunction it was written
+     as. This pinned `(isRefusal(answer) || ranOut)` verbatim and broke the day
+     two more triggers were added beside them — a correct widening, failing a
+     test whose actual subject, "running out of steps still reaches the forced
+     path", was never in question. That is the fourth proxy assertion in this
+     area to fail for the wrong reason; imagerefusal.test.mjs records the same
+     lesson twice. Assert the parts. */
+  assert.match(block, /isRefusal\(answer\)/,
+    "a refusal must still reach the forced path");
+  assert.match(block, /ranOut/,
+    "running out of steps must still reach the forced path, or it silently returns no picture");
   // The other two halves of the condition must survive: it fires for picture
   // requests only, and never when a picture was already made.
   assert.match(block, /agentId === "image" \|\| wantsPicture\(question\)/);
