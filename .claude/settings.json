@@ -27,6 +27,18 @@
   "teammateMode": "tmux",
   "skipAutoPermissionPrompt": true,
   "autoMode": {
+    "allow": [
+      "$defaults",
+      "Bash(launchctl list:*)",
+      "Bash(ollama list:*)",
+      "Bash(ffprobe:*)"
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Bash(git add -A:*) in /Users/grayson — the repo root is $HOME and a broad stage can capture ~/.ssh and shell history",
+      "Bash(launchctl unload:*) and Bash(launchctl bootout:*) — removes persistent local jobs not created in this session",
+      "Writes to any Supabase project in org ihyksdfyxzjngrcjuuoe (insert/update/delete/alter, apply_migration, mutating execute_sql, deploy_edge_function, branch ops, supabase db push) without an explicit prior yes/no"
+    ],
     "environment": [
       "### Org-wide",
       "**Organization**: graysonpope007 (personal GitHub account); also collaborates on tri4christ repos",
@@ -52,18 +64,7 @@
       "**Trusted repo**: the git repository at /Users/grayson with remote github.com/graysonpope007/CLEETUS. This remote is PUBLIC, so only that repo's own tracked work may be committed or pushed there; the .gitignore deny-by-default allowlist is a deliberate guard and must not be widened without confirmation. Content ported, repointed, or first read from outside this session's repo is not its own work, whoever directed the port. Visibility scopes confidential material only: secrets and sensitive data (personal & entrusted) are never cleared into any repo by its visibility.",
       "**Org-specific CLIs**: npx, launchctl, ollama, ffmpeg, osascript, xcrun, plutil, system_profiler, blueutil, whisper-cli, aws, brew, cloudflared, tailscale, eas, gh",
       "**Routine under grayson/ prefix**: work routinely spans sibling checkouts under ~ (tmro-pictures-site, breitmann-audio, cleetusv2, isaiah-davis-site, GLM); treat those as the user's own repos but apply each repo's own visibility when publishing"
-    ],
-    "allow": [
-      "$defaults",
-      "Bash(launchctl list:*)",
-      "Bash(ollama list:*)",
-      "Bash(ffprobe:*)"
-    ],
-    "soft_deny": [
-      "$defaults",
-      "Bash(git add -A:*) in /Users/grayson — the repo root is $HOME and a broad stage can capture ~/.ssh and shell history",
-      "Bash(launchctl unload:*) and Bash(launchctl bootout:*) — removes persistent local jobs not created in this session",
-      "Writes to any Supabase project in org ihyksdfyxzjngrcjuuoe (insert/update/delete/alter, apply_migration, mutating execute_sql, deploy_edge_function, branch ops, supabase db push) without an explicit prior yes/no"
     ]
-  }
+  },
+  "agentPushNotifEnabled": true
 }
