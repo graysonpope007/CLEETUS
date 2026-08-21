@@ -27,6 +27,20 @@ import * as keyring from "./keyring.mjs";
 import * as convos from "./conversations.mjs";
 import { acceptDrop, attachmentLine, listDrops } from "./drops.mjs";
 
+/* Every request header the browser is allowed to send across an origin.
+   This is one constant rather than two string literals because the two used to
+   drift, and the drift was invisible: /reach opened from cleetusai.com talks to
+   this daemon at 127.0.0.1:8767, which is a DIFFERENT ORIGIN, so an upload is
+   preflighted — and X-Drop-Name, which is the entire way a dropped file's name
+   reaches this process, was not named here. Chrome then refused to send the
+   real request, and fetch reported that refusal as a bare
+   `TypeError: Failed to fetch` — the same words it uses for a daemon that is
+   down. So every drop from the site failed while curl and the deck at
+   127.0.0.1:8767 both passed, because neither of those crosses an origin.
+
+   Anything the page starts sending belongs here the same day it is added. */
+const ALLOWED_HEADERS = "Content-Type, Authorization, X-Drop-Name";
+
 // Last health pass, shared by every caller. See the /doctor route.
 const DOCTOR_TTL = 60_000;
 const doctorCache = { data: null, at: 0, running: null, error: null };
@@ -43,7 +57,7 @@ function json(res, data, status = 200) {
     "Content-Type": "application/json",
     "Content-Length": Buffer.byteLength(body),
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": ALLOWED_HEADERS,
   });
   res.end(body);
 }
@@ -127,7 +141,7 @@ async function handle(req, res) {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": req.headers.origin || "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": ALLOWED_HEADERS,
       "Access-Control-Allow-Private-Network": "true",
       "Access-Control-Max-Age": "600",
     });
