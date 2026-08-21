@@ -505,10 +505,32 @@ export async function describe(abs, { bytes, mime, original } = {}) {
   return d;
 }
 
+/**
+ * The name to show him, and to put in the sentence the model reads.
+ *
+ * A drop is no longer always a loose file. Dropping a FOLDER on a chat window
+ * sends every file under it, and the header carries each one's path relative to
+ * that folder rather than a bare name — which is the whole point of walking the
+ * folder at all. A shoot is forty files called IMG_0001.HEIC and "day2/IMG_0001
+ * .HEIC" is the only thing that says which one this is. basename() threw that
+ * away, so every file in a dropped folder arrived looking like every other.
+ *
+ * Never used to build a path. safeName does that, from the same string, and
+ * flattens it to one segment on its way to disk. This is for eyes only — and
+ * the dot segments and leading slashes come off regardless, so nothing shaped
+ * like an escape ever reaches a screen claiming to be where a file came from.
+ */
+export function displayName(name) {
+  const parts = String(name || "").split("/").filter((p) => p && p !== "." && p !== "..");
+  // The last few segments, not the whole tree: the useful context is the folder
+  // it sat in, and a path eleven deep is a chip nobody can read.
+  return parts.slice(-4).join("/") || "file";
+}
+
 /** Receive and describe in one go — what the route actually wants. */
 export async function acceptDrop(req, { name, mime }) {
   const { path, bytes } = await receive(req, name);
-  return describe(path, { bytes, mime, original: basename(String(name || "")) || undefined });
+  return describe(path, { bytes, mime, original: displayName(name) });
 }
 
 /**

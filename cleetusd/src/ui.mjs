@@ -21,6 +21,7 @@ export const DASHBOARD = String.raw`<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cleetus &middot; Local</title>
+<link rel="icon" href="/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -156,7 +157,9 @@ body{display:grid;grid-template-columns:210px 1fr 260px;gap:10px;padding:10px;ov
   <div class="clips" id="clips"></div>
   <form class="ask" id="form" autocomplete="off">
     <input type="file" id="picker" multiple hidden>
-    <button type="button" class="paperclip" id="clipbtn" title="Attach a file — or just drop one on the window">&#128206;</button>
+    <input type="file" id="folderpicker" webkitdirectory directory multiple hidden>
+    <button type="button" class="paperclip" id="clipbtn" title="Attach files — or just drop them on the window">&#128206;</button>
+    <button type="button" class="paperclip" id="folderbtn" title="Attach a whole folder, subfolders and all">&#128193;</button>
     <input id="in" placeholder="Ask Cleetus — drop a file on this window, or paste one" autofocus>
     <button type="submit" id="send">Send</button>
   </form>
@@ -164,7 +167,7 @@ body{display:grid;grid-template-columns:210px 1fr 260px;gap:10px;padding:10px;ov
 
 <div class="lightbox" id="lightbox"></div>
 
-<div class="dropveil" id="veil"><div><b>Drop it anywhere</b><span>pictures, video, PDFs, documents, anything<br>it lands on this Mac and nowhere else</span></div></div>
+<div class="dropveil" id="veil"><div><b>Drop it anywhere</b><span>pictures, video, PDFs, documents, whole folders<br>it lands on this Mac and nowhere else</span></div></div>
 
 <aside class="side">
   <div class="hdr"><b>Reach</b></div>
@@ -582,11 +585,46 @@ const CONVO = (() => {
 
    A file that FAILED stays on screen as a red chip instead of vanishing. A
    silent drop is the worst outcome available: he watches the file disappear,
-   assumes it arrived, and asks a question about a document nobody read. */
+   assumes it arrived, and asks a question about a document nobody read.
+
+   FOLDERS ARE FILES HERE TOO. They were not, and the way they failed is worth
+   writing down because it read as a network fault for weeks: dataTransfer.files
+   carries an entry for a dropped FOLDER, that entry has a name and a size and
+   looks exactly like a file, and the bytes behind it cannot be read. fetch does
+   not distinguish "the server refused" from "the browser could not read what
+   you handed me" — both come back as a bare TypeError reading "Failed to
+   fetch". So dropping a folder of photos on this window produced the one error
+   message that points at the daemon, about the one thing the daemon never saw.
+
+   A folder has to be WALKED, and the walk has two details that separate
+   "reads the folder" from "reads some of the folder":
+
+     readEntries returns AT MOST 100 entries per call, and an empty array only
+     when it is genuinely finished. Called once, it silently truncates every
+     folder with more than a hundred things in it — which is most folders of
+     photos, and a truncation nothing on screen would have reported.
+
+     The DataTransferItemList is emptied the moment the drop handler yields, so
+     webkitGetAsEntry has to run synchronously, before the first await. The
+     recursion after that is async and safe. */
 const ATTACH = [];
 let uploading = 0;
 
-function clipRow(a, i) {
+// One drop should not be able to start ten thousand uploads. The number is
+// generous on purpose — a shoot folder is hundreds of frames and that is the
+// case this exists for — and when it is hit it SAYS so as a red chip, because
+// a cap that truncates quietly is the same bug as readEntries returning 100.
+const MAX_FILES = 2000;
+// Four at a time. Serial made a 300-photo folder an afternoon; unbounded makes
+// this Mac run 300 sips and ffmpeg processes at once, which is worse.
+const UPLOAD_LANES = 4;
+// Chips are for reading. Past this many the list stops being a list.
+const MAX_CHIPS = 60;
+// The junk every folder on a Mac is full of. Not an error, just not the thing
+// he dropped, and forty .DS_Store chips bury the photos that are.
+const JUNK = /^(\.DS_Store|\.localized|Thumbs\.db|desktop\.ini|Icon.?)$/;
+
+function clipRow(a) {
   const el = document.createElement('div');
   el.className = 'clip' + (a.state === 'work' ? ' work' : '') + (a.state === 'bad' ? ' bad' : '');
   if (a.vision) {
@@ -597,6 +635,7 @@ function clipRow(a, i) {
   const n = document.createElement('span');
   n.className = 'n';
   n.textContent = a.name;
+  n.title = a.name;
   el.appendChild(n);
   const m = document.createElement('span');
   m.className = 'm';
@@ -604,55 +643,199 @@ function clipRow(a, i) {
     : a.state === 'bad' ? (a.error || 'failed')
     : [a.kind, a.size, a.seconds != null ? a.seconds + 's' : '', a.text ? 'text read' : '']
         .filter(Boolean).join(' · ');
+  m.title = m.textContent;
   el.appendChild(m);
   const x = document.createElement('button');
   x.type = 'button';
-  x.textContent = '\u00d7';
+  x.textContent = '×';
   x.title = 'remove';
-  x.onclick = () => { ATTACH.splice(i, 1); drawClips(); };
+  // By identity, not by the index it had when it was drawn. Removing the third
+  // of forty chips renumbers every chip after it, and an index captured at
+  // draw time then deletes the wrong file on the next click.
+  x.onclick = () => { const i = ATTACH.indexOf(a); if (i >= 0) ATTACH.splice(i, 1); drawClips(); };
   el.appendChild(x);
   return el;
 }
 
+function tallyRow() {
+  const ok = ATTACH.filter(a => a.state === 'ok').length;
+  const work = ATTACH.filter(a => a.state === 'work').length;
+  const bad = ATTACH.filter(a => a.state === 'bad').length;
+  const el = document.createElement('div');
+  el.className = 'clip' + (work ? ' work' : bad ? ' bad' : '');
+  const n = document.createElement('span');
+  n.className = 'n';
+  n.textContent = ATTACH.length + ' attached';
+  el.appendChild(n);
+  const m = document.createElement('span');
+  m.className = 'm';
+  m.textContent = [ok ? ok + ' ready' : '', work ? work + ' reading' : '', bad ? bad + ' failed' : '']
+    .filter(Boolean).join(' · ');
+  el.appendChild(m);
+  return el;
+}
+
+// Coalesced. Every finished upload used to rebuild the whole strip, which on a
+// folder of four hundred is four hundred full re-renders racing the uploads
+// they are reporting on.
+let drawPending = false;
 function drawClips() {
+  if (drawPending) return;
+  drawPending = true;
+  requestAnimationFrame(() => { drawPending = false; renderClips(); });
+}
+
+function renderClips() {
   const box = $('clips');
   box.textContent = '';
-  ATTACH.forEach((a, i) => box.appendChild(clipRow(a, i)));
+  if (ATTACH.length > MAX_CHIPS) box.appendChild(tallyRow());
+  // Failures are always drawn, however far down the list they are. They are
+  // the only chips that need acting on, and hiding one behind a "+340 more"
+  // is how a folder half-arrives and reads as if it all did.
+  const bad = ATTACH.filter(a => a.state === 'bad');
+  const rest = ATTACH.filter(a => a.state !== 'bad').slice(0, Math.max(0, MAX_CHIPS - bad.length));
+  bad.forEach(a => box.appendChild(clipRow(a)));
+  rest.forEach(a => box.appendChild(clipRow(a)));
   $('send').disabled = uploading > 0;
 }
 
-async function takeFiles(list) {
-  const files = Array.from(list || []);
-  if (!files.length) return;
-  for (const f of files) {
-    const slot = { name: f.name || 'pasted', state: 'work' };
-    ATTACH.push(slot);
-    uploading++;
-    drawClips();
+/* Every entry under a dropped folder, however deep. */
+function readAll(reader) {
+  return new Promise((resolve, reject) => {
+    const out = [];
+    const pump = () => reader.readEntries(batch => {
+      if (!batch.length) return resolve(out);
+      for (const e of batch) out.push(e);
+      pump();
+    }, reject);
+    pump();
+  });
+}
+
+const fileOf = (entry) => new Promise((res, rej) => entry.file(res, rej));
+
+async function walk(entry, prefix, out) {
+  if (!entry || out.length >= MAX_FILES) return;
+  const rel = prefix ? prefix + '/' + entry.name : entry.name;
+  if (entry.isFile) {
+    if (JUNK.test(entry.name)) return;
+    try { out.push({ file: await fileOf(entry), rel: rel }); }
+    catch (err) { out.push({ rel: rel, error: 'the browser could not open this one (' + (err && err.name || 'unknown') + ')' }); }
+    return;
+  }
+  if (!entry.isDirectory) return;
+  let kids = [];
+  try { kids = await readAll(entry.createReader()); }
+  catch (err) { out.push({ rel: rel, error: 'could not read this folder (' + (err && err.name || 'unknown') + ')' }); return; }
+  for (const k of kids) await walk(k, rel, out);
+}
+
+/* The real files behind a drop, folders opened. */
+async function gather(entries, flat) {
+  if (!entries.length) {
+    // No entry API at all. The flat list is everything there is, and a folder
+    // in it will fail on read rather than silently going nowhere.
+    return flat.filter(f => !JUNK.test(f.name)).map(f => ({ file: f, rel: f.name }));
+  }
+  const out = [];
+  for (const en of entries) await walk(en, '', out);
+  if (out.length >= MAX_FILES) {
+    out.push({ rel: 'the rest of that folder',
+               error: 'stopped at ' + MAX_FILES + ' files in one drop — send these, then drop the rest' });
+  }
+  return out;
+}
+
+/* Is the failure the FILE or the connection?
+   fetch rejects with the same bare TypeError either way, so it has to be asked
+   directly. Reading ONE BYTE answers it without pulling a 400MB video into
+   memory: a folder, an iCloud file that was never downloaded, and a file that
+   moved since the drop all fail here; a daemon that is down does not. */
+async function whyUnreadable(file) {
+  try { await file.slice(0, 1).arrayBuffer(); return null; }
+  catch (err) {
+    const n = (err && err.name) || '';
+    if (n === 'NotFoundError') {
+      return 'this is a folder, or it moved since you dropped it — nothing was read';
+    }
+    if (n === 'NotReadableError') {
+      return 'the bytes are not on this Mac — if it lives in iCloud, download it first';
+    }
+    return 'this Mac would not let the browser read it (' + (err && err.message || n || 'unknown') + ')';
+  }
+}
+
+/* One file, with the reason it failed said in words that point somewhere. */
+async function upload(file, rel) {
+  let last = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch('/upload', {
         method: 'POST',
         headers: {
           // encodeURIComponent because a header may only carry latin-1 and a
           // filename routinely is not — an em dash or an accent in the name
-          // throws before the request is ever sent.
-          'X-Drop-Name': encodeURIComponent(f.name || 'pasted'),
-          'Content-Type': f.type || 'application/octet-stream',
+          // throws before the request is ever sent. The RELATIVE path rides
+          // here, not the bare name, so two b.png from two subfolders stay two
+          // recognisable things in the conversation.
+          'X-Drop-Name': encodeURIComponent(rel),
+          'Content-Type': file.type || 'application/octet-stream',
         },
-        body: f,
+        body: file,
       });
-      const d = await res.json();
+      let d = null;
+      try { d = await res.json(); } catch (e) { d = null; }
+      if (!d) throw new Error('cleetusd answered ' + res.status + ' with something that was not JSON');
       if (!d.ok) throw new Error(d.error || 'upload failed');
-      Object.assign(slot, d, { state: 'ok' });
+      return d;
     } catch (err) {
-      Object.assign(slot, { state: 'bad', error: err.message });
-    } finally {
-      uploading--;
-      drawClips();
+      last = err;
+      // Anything that is not a TypeError is cleetusd having answered — too big,
+      // empty, disk full. Those are already in words; say them as they are.
+      if (!(err instanceof TypeError)) throw err;
+      const why = await whyUnreadable(file);
+      if (why) throw new Error(why);
+      // The file is fine, so the connection was not. Worth exactly one retry.
     }
   }
+  throw new Error('could not reach Cleetus (' + (last && last.message || 'unknown') +
+                  ') — check that cleetusd is running at 127.0.0.1:8767');
+}
+
+/* Upload a batch, a few lanes at a time, one bad file never stopping the rest. */
+async function takeItems(items) {
+  if (!items.length) return;
+  const jobs = [];
+  for (const it of items) {
+    const slot = { name: it.rel || 'pasted', state: 'work' };
+    ATTACH.push(slot);
+    if (it.error) { slot.state = 'bad'; slot.error = it.error; continue; }
+    uploading++;
+    jobs.push({ slot: slot, file: it.file, rel: slot.name });
+  }
+  renderClips();
+  let next = 0;
+  const lane = async () => {
+    for (;;) {
+      const j = jobs[next++];
+      if (!j) return;
+      try { Object.assign(j.slot, await upload(j.file, j.rel), { state: 'ok' }); }
+      catch (err) { Object.assign(j.slot, { state: 'bad', error: err.message }); }
+      finally { uploading--; drawClips(); }
+    }
+  };
+  const lanes = [];
+  for (let i = 0; i < Math.min(UPLOAD_LANES, jobs.length); i++) lanes.push(lane());
+  await Promise.all(lanes);
+  renderClips();
   $('in').focus();
 }
+
+// A plain FileList — paste, and the file picker. webkitRelativePath is set when
+// the pick was a folder, and it is the folder context worth keeping.
+const takeFiles = (list) => takeItems(Array.from(list || [])
+  .filter(f => !JUNK.test(f.name))
+  .map(f => ({ file: f, rel: f.webkitRelativePath || f.name || 'pasted' })));
 
 /* The counter, rather than a plain dragleave handler.
    Dragging across the page fires dragleave on every element boundary crossed,
@@ -680,7 +863,14 @@ window.addEventListener('drop', e => {
   e.preventDefault();
   dragDepth = 0;
   $('veil').classList.remove('on');
-  takeFiles(e.dataTransfer.files);
+  // Synchronously, before anything awaits: the item list is emptied the moment
+  // this handler returns, and an entry fetched after that is null.
+  const entries = Array.from(e.dataTransfer.items || [])
+    .filter(it => it.kind === 'file')
+    .map(it => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+    .filter(Boolean);
+  const flat = Array.from(e.dataTransfer.files || []);
+  gather(entries, flat).then(takeItems);
 });
 
 // A screenshot lives on the clipboard, not on the disk, and cmd-shift-4 then
@@ -692,6 +882,11 @@ window.addEventListener('paste', e => {
 
 $('clipbtn').onclick = () => $('picker').click();
 $('picker').onchange = () => { takeFiles($('picker').files); $('picker').value = ''; };
+// The folder picker is the keyboard-and-mouse way to do what dropping a folder
+// does, and the only way to do it at all when the folder is somewhere a drag
+// cannot reach.
+$('folderbtn').onclick = () => $('folderpicker').click();
+$('folderpicker').onchange = () => { takeFiles($('folderpicker').files); $('folderpicker').value = ''; };
 
 $('form').addEventListener('submit', async e => {
   e.preventDefault();
@@ -707,11 +902,24 @@ $('form').addEventListener('submit', async e => {
 
   // The line for each file is written by the server, not here, so this window
   // and /reach word the same dropped file identically. See drops.mjs.
-  const said = [q].concat(files.map(f => f.line)).filter(Boolean).join('\n\n');
+  let said = [q].concat(files.map(f => f.line)).filter(Boolean).join('\n\n');
   const pictures = files.filter(f => f.vision);
-  const content = pictures.length
+  // Every file that arrived is in the message as a path. Not every one can be
+  // in it as a PICTURE: a folder of three hundred photos is three hundred
+  // base64 images in one request, which is a prompt no local model will take
+  // and a failure that would arrive AFTER the upload he watched succeed. So
+  // the eyes are capped and the cap is stated, which keeps the honest half —
+  // the paths are all there and read_file opens any of them.
+  const MAX_INLINE_PICTURES = 12;
+  const seen = pictures.slice(0, MAX_INLINE_PICTURES);
+  if (pictures.length > seen.length) {
+    said += '\n\n[' + seen.length + ' of these ' + pictures.length + ' pictures are attached for you to look at; ' +
+            'the other ' + (pictures.length - seen.length) + ' are on disk at the paths above and nowhere in this message. ' +
+            'Do not describe one you were not shown — open it with read_file or the shell first.]';
+  }
+  const content = seen.length
     ? [{ type: 'text', text: said }].concat(
-        pictures.map(f => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.vision } })))
+        seen.map(f => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: f.vision } })))
     : said;
 
   say('me', '> ' + (q || '(no message)') +
