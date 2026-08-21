@@ -29,6 +29,7 @@ import { readFile, readdir, writeFile, unlink, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG, secrets } from "./config.mjs";
 import { accessReport } from "./access.mjs";
+import { senseRoom } from "./tools/ruview.mjs";
 
 const run = promisify(execFile);
 const sh = (c) => run("/bin/zsh", ["-lc", c], { timeout: 20_000 }).then(r => r.stdout).catch(e => e.stdout || "");
@@ -717,6 +718,99 @@ export async function runDoctor() {
     }
   } catch (e) {
     check("cleetusd", "handoff lists the tools that exist", false, e.message);
+  }
+
+  // ── the room sensor, and whether it is sensing anything ────────────────────
+  //
+  // RuView is the newest way for a degraded state to look identical to a good
+  // one, and it is the worst offender yet: three boards stream 40 fps each, the
+  // API answers 200 on every endpoint, the dashboard draws people on a radar —
+  // and not one of those people was ever detected. Nothing is down. Everything
+  // is green. The output is invented.
+  //
+  // So the checks that matter here are the negative ones. "The server answers"
+  // was already true throughout the entire failure and would have caught none
+  // of it.
+  try {
+    const room = await senseRoom();
+    if (!room.up) {
+      check("ruview", "sensing server answers", false, room.why,
+        "launchctl kickstart -k gui/$(id -u)/com.cleetus.ruview");
+      for (const n of ["all three boards are reporting", "the room sensor has ever detected anyone",
+                       "multistatic fusion is completing cycles"]) {
+        skip("ruview", n, "the sensing server is not answering");
+      }
+    } else {
+      check("ruview", "sensing server answers", true, `v${room.version || "?"}, ${room.activeCount} node(s) active`);
+
+      // A board that loses power vanishes from the fleet list a couple of
+      // minutes later rather than erroring, so a quiet 2-of-3 is the normal
+      // shape of a dead board. It rejoins on power alone — no cable.
+      check("ruview", "all three boards are reporting", room.totalCount === 3,
+        `${room.totalCount} of 3 in the fleet` +
+          (room.totalCount < 3 ? " — a board drops out silently when it loses power" : ""),
+        "give the missing board power; NVS holds its credentials, id and TDM slot, so it rejoins in ~20 s");
+
+      // THE CHECK THAT CATCHES THE FABRICATION. The server's own detection
+      // counter, against what it is streaming. These disagreeing is not a
+      // degraded reading, it is a generated one.
+      const fabricating = room.reasons.some((r) => r.includes("total_detections is 0"));
+      check("ruview", "the room sensor has ever detected anyone", !fabricating,
+        fabricating
+          ? `pose/current is streaming ${room.claimedPersons} people that pose/stats never counted — the occupancy output is fabricated`
+          : "detections counted, occupancy output is self-consistent",
+        "do not tune thresholds — the CSI geometry cannot see this room (the AP is downstairs, below the nodes)");
+
+      // Whether the boards are being combined into anything at all.
+      //
+      // This check used to assert that the mesh `offset_us` was near zero and
+      // called a large value a clock fault. It is not one: offset_us is the
+      // measured BOOT DELTA between boards, which the mesh reports so the fuser
+      // can subtract it. Acting on it cost a power cycle of a healthy board —
+      // after which the offset moved by six hours and the fusion spread did not
+      // move at all, which is what proved the point. The spread is measured on
+      // epoch-aligned timestamps, so it is what survives that compensation, and
+      // it is the number that decides whether fusion runs.
+      const f = room.fusion;
+      if (!f) {
+        skip("ruview", "multistatic fusion is completing cycles", "the fusion log is not readable");
+      } else {
+        check("ruview", "multistatic fusion is completing cycles", !f.failing,
+          f.failing
+            ? `every cycle failing: frames spread ${f.medianMs.toFixed(0)} ms (median of ${f.samples}, ` +
+              `range ${f.minMs.toFixed(0)}-${f.maxMs.toFixed(0)}) against a ${f.guardMs.toFixed(0)} ms guard` +
+              (f.total ? `, ${f.total.toLocaleString()} engine errors` : "")
+            : "no fusion errors in the recent log",
+          "NOT a clock fault and not fixable by power-cycling a board — the boards run at different frame " +
+          "rates on a staggered TDM schedule, so widening the guard only hides it");
+      }
+    }
+  } catch (e) {
+    check("ruview", "sensing server answers", false, e.message);
+  }
+
+  // ── the dashboard may only name ports the pages actually open ──────────────
+  //
+  // /ruview's websocket was blocked for weeks by our OWN Content-Security-Policy
+  // naming port 3000 while the page opened 3001. It fails soft — the socket
+  // errors, the page falls back to REST polling and keeps working — so it reads
+  // as a flaky socket rather than a policy that forbids it. HTTP and WS are
+  // separate listeners on this server and the page's port has already been
+  // corrected once without the CSP following.
+  try {
+    const mw = await readFile(join(CONFIG.home, "cleetusv2/functions/_middleware.js"), "utf8");
+    const page = await readFile(join(CONFIG.home, "cleetusv2/ruview.html"), "utf8");
+    const opened = [...page.matchAll(/new WebSocket\(\s*['"`]ws:\/\/([^'"`]+)['"`]/g)]
+      .map((m) => m[1].split("/")[0]);
+    const allowed = [...mw.matchAll(/ws:\/\/([0-9.]+:[0-9]+)/g)].map((m) => m[1]);
+    const unallowed = opened.filter((o) => !allowed.includes(o));
+    check("ruview", "the CSP allows the websocket the page opens", unallowed.length === 0,
+      unallowed.length
+        ? `ruview.html opens ws://${unallowed.join(", ")} but the CSP only allows ${allowed.join(", ") || "no ws origin"}`
+        : `page opens ${opened.join(", ") || "no socket"}; CSP allows ${allowed.join(", ")}`,
+      "add the port to RUVIEW_CSP in functions/_middleware.js — the socket fails soft into polling, so nothing else will tell you");
+  } catch (e) {
+    check("ruview", "the CSP allows the websocket the page opens", false, e.message);
   }
 
   // ── the desk light ──────────────────────────────────────────────────────────

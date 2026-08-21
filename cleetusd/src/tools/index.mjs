@@ -29,6 +29,7 @@ import { workTools } from "./work.mjs";
 import { securityTools } from "./security.mjs";
 import { mediaTools } from "./media.mjs";
 import { piTools } from "./pi.mjs";
+import { ruviewTools } from "./ruview.mjs";
 
 // ── The vault ───────────────────────────────────────────────────────────────
 
@@ -245,7 +246,7 @@ const bridgeTools = {
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
-export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools, ...piTools };
+export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools, ...piTools, ...ruviewTools };
 
 /** Ollama's native tool format. */
 export function toolSchemas(names = Object.keys(TOOLS)) {
@@ -312,6 +313,22 @@ const ALIASES = {
   remember_secret: "save_secret",
   search_chats: "recall_chat",
   past_conversations: "recall_chat",
+  // "Is anyone in the studio" has as many spellings as "who is that" did, and
+  // the failure mode is worse: with no tool matched the model has nothing to
+  // call, and a question about an empty room is one it will happily answer from
+  // nothing. Every spelling routes to the sensor that can at least say it does
+  // not know.
+  room: "room_sense",
+  presence: "room_sense",
+  occupancy: "room_sense",
+  is_anyone_home: "room_sense",
+  anyone_home: "room_sense",
+  who_is_home: "room_sense",
+  is_grayson_at_his_desk: "room_sense",
+  check_room: "room_sense",
+  wifi_sensing: "room_sense",
+  ruview: "room_sense",
+  sensors: "room_sense",
 };
 
 /**

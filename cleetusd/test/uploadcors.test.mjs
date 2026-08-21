@@ -44,10 +44,18 @@ const PAGES = [
 
 test("the gate names its allowed headers once, in one place", () => {
   assert.ok(allowed, "ALLOWED_HEADERS has gone missing from server.mjs");
-  assert.strictEqual(
-    SERVER.match(/"Access-Control-Allow-Headers":\s*ALLOWED_HEADERS/g)?.length, 2,
-    "both the preflight and json() must answer from the same constant, or they drift apart again",
-  );
+  // Was a hardcoded 2 — the preflight and json(). A third writer arrived (the
+  // /ruview passthrough, which streams the sensing server's own body and so
+  // cannot go through json()), and a count is the wrong thing to assert anyway:
+  // it fails on a correct new route and passes on a wrong one that keeps the
+  // total the same. What actually matters is that EVERY site answering this
+  // header answers from the constant, which is now what is checked.
+  const sites = SERVER.match(/"Access-Control-Allow-Headers":/g)?.length ?? 0;
+  const fromConst = SERVER.match(/"Access-Control-Allow-Headers":\s*ALLOWED_HEADERS/g)?.length ?? 0;
+  assert.ok(sites >= 2, "the preflight and json() must both still answer this header");
+  assert.strictEqual(fromConst, sites,
+    `${sites - fromConst} place(s) answer Access-Control-Allow-Headers without using ALLOWED_HEADERS — ` +
+    "they drift apart again, which is exactly how X-Drop-Name was lost");
   assert.ok(
     !/"Access-Control-Allow-Headers":\s*"/.test(SERVER),
     "a literal header list has come back; that is exactly how X-Drop-Name was lost",

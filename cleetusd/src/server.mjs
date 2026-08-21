@@ -10,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
 import { isLocalBrowser, authed } from "./gate.mjs";
+import { senseRoom, passthrough as ruviewPassthrough } from "./tools/ruview.mjs";
 import { ask, route } from "./agent.mjs";
 import { agentList } from "./agents.mjs";
 import { health as ollamaHealth, visionReady } from "./ollama.mjs";
@@ -210,9 +211,24 @@ async function handle(req, res) {
                           // talk to the daemon. Same gate as the dashboard:
                           // this machine only, no forwarding headers, so the
                           // tunnel cannot reach it whatever token it carries.
-                          "/reach", "/favicon.svg"];
+                          "/reach", "/favicon.svg",
+                          // /room is the RuView sensing fleet. It has to be
+                          // served from here rather than read from the sensing
+                          // server directly, because that server sends NO CORS
+                          // headers at all — so a page on cleetusai.com asking
+                          // 127.0.0.1:3000 for the room is refused by the
+                          // browser before the request is made, whatever the
+                          // page's CSP says. Being on this list also leaves the
+                          // bearer door open, which is how a phone reads the
+                          // room over the tunnel without a second hostname.
+                          "/room"];
   const localBrowser = isLocalBrowser(req) &&
-    (BROWSER_ROUTES.includes(url.pathname) || url.pathname.startsWith("/conversations/"));
+    (BROWSER_ROUTES.includes(url.pathname) || url.pathname.startsWith("/conversations/") ||
+     // A prefix, because /ruview reads a dozen endpoints off the sensing server
+     // and listing each one here would be a list that goes stale the first time
+     // the page grows a panel. Everything under it is already narrowed to the
+     // read-only allowlist in tools/ruview.mjs before anything is fetched.
+     url.pathname.startsWith("/ruview/"));
 
   // ── Anything that moves the cursor ──
   // Deliberately NOT bearer-gated like the rest, because the bearer is exactly
@@ -517,6 +533,45 @@ async function handle(req, res) {
     const value = url.searchParams.get("value");
     const args = value === null ? [action] : [action, value];
     return json(res, await litraRaw(...args));
+  }
+
+  // ── The room ──
+  // Raw JSON with the trust verdict attached, on the same principle as /light:
+  // the deck needs a value it can gate a rendering on, and the sentence version
+  // belongs to the model's tool, not to a canvas.
+  //
+  // The `trustworthy` flag and `reasons` are the point of this route. The
+  // sensing server answers 200 with invented people on it, so a surface that
+  // simply relayed its JSON would be handing every caller a number that looks
+  // measured and is not. One place computes the verdict — src/tools/ruview.mjs
+  // — and the tool, the doctor, the deck and /ruview all read it from there,
+  // rather than each keeping its own opinion about the same hardware.
+  if (url.pathname === "/room") {
+    return json(res, await senseRoom());
+  }
+
+  // ── The sensing server itself, read-only ──
+  //
+  // WHY THIS PROXY EXISTS AT ALL, given the page could just ask port 3000.
+  // It cannot. The sensing server sends no Access-Control-Allow-Origin on any
+  // response and has no flag to make it (checked against --help), so a page on
+  // cleetusai.com is refused by the browser before the request leaves it. On
+  // top of that Chrome requires a private-network preflight for a public origin
+  // reaching 127.0.0.1, answered with Access-Control-Allow-Private-Network —
+  // which this daemon sends and that one does not. Both doors are shut, and
+  // neither failure appears anywhere except the browser console, which is why
+  // /ruview has been showing "No route from here" while the server sat there
+  // answering every request put to it on the command line.
+  if (url.pathname.startsWith("/ruview/")) {
+    const r = await ruviewPassthrough(url.pathname.slice("/ruview/".length), url.search);
+    if (res.headersSent) return res.end();
+    res.writeHead(r.status, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": ALLOWED_HEADERS,
+      "Cache-Control": "no-store",
+    });
+    return res.end(r.body);
   }
 
   if (url.pathname === "/skills") {
