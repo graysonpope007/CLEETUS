@@ -393,11 +393,13 @@ async function handle(req, res) {
       // long as the only caller was the dashboard on this same origin — and
       // then /reach, served from cleetusai.com, got a bare ERR_FAILED that
       // reads in the page as "the tracker is down" while it is running fine.
-      res.writeHead(200, {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store",
-        "Access-Control-Allow-Origin": "*",
-      });
+      if (!res.headersSent) {
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*",
+        });
+      }
       return res.end(body);
     } catch (e) {
       return json(res, { ok: false, error: "airpad_unreachable", detail: e.message });
