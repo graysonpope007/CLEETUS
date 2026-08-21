@@ -830,7 +830,7 @@ export async function runDoctor() {
 
     check("roomwatch", "the alarm is calibrated", Boolean(base) && base.camera?.trip != null,
       base
-        ? `built ${base.built_at?.slice(0, 10)} from ${base.empty_frames} empty frames; camera trip ${base.camera?.trip}, ` +
+        ? `built ${base.built_at?.slice(0, 10)} from ${base.still_seconds}s still + ${base.moving_seconds}s moving (camera-labelled); camera trip ${base.camera?.trip}%, ` +
           `node trips ${Object.entries(base.trip || {}).map(([k, v]) => `${k}=${v}`).join(" ")}`
         : "no baseline — the watcher will not run at all",
       "record the room with nobody in it, then build: bin/roomwatch sample empty 240 && bin/roomwatch baseline");
