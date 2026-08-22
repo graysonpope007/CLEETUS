@@ -53,7 +53,15 @@
      so it gets the top of the column. The WiFi traces below it are the channel
      that was MEASURED not to separate occupied from empty — they are context,
      not the answer, and the layout says so. */
-  #cam{position:relative;background:#000;height:196px;flex:0 0 auto;overflow:hidden}
+  /* The answer, directly under the picture it comes from. The WiFi rows in the
+     footer say what they can honestly say; this says what is actually known. */
+  #who{background:var(--panel);padding:7px 10px;display:flex;align-items:baseline;
+    gap:8px;flex:0 0 auto;border-top:1px solid var(--line)}
+  #whoname{font-size:15px;letter-spacing:.12em;color:rgb(var(--phos));font-weight:700}
+  #whoname.empty{color:var(--dim);font-weight:400}
+  #whoname.unknown{color:var(--warn)}
+  #whoage{font-size:10px;letter-spacing:.1em;color:var(--dim);margin-left:auto}
+  #cam{position:relative;background:#000;height:148px;flex:0 0 auto;overflow:hidden}
   #cam img{width:100%;height:100%;object-fit:cover;display:block}
   #camtag{position:absolute;left:8px;top:7px;font-size:10px;letter-spacing:.18em;
     color:rgb(var(--phos));background:rgba(0,0,0,.55);padding:2px 6px;border-radius:2px}
@@ -102,12 +110,13 @@
       <div id="camtag">LIVE &middot; C920</div>
       <div id="camoff">CAMERA OFFLINE</div>
     </div>
+    <div id="who"><span id="whoname">&mdash;</span><span id="whoage"></span></div>
     <div id="nodes"></div>
   </div>
   <footer>
-    <div class="frow"><span class="lbl">FUSION</span><span class="val" id="fusion">&mdash;</span>
+    <div class="frow"><span class="lbl">WIFI FUSE</span><span class="val" id="fusion">&mdash;</span>
       <span class="why" id="fusion-why"></span></div>
-    <div class="frow"><span class="lbl">OCCUPANCY</span><span class="val" id="occ">&mdash;</span>
+    <div class="frow"><span class="lbl">WIFI OCC</span><span class="val" id="occ">&mdash;</span>
       <span class="why" id="occ-why"></span></div>
     <div class="frow"><span class="lbl">LINK</span><div id="bar"><i></i></div>
       <span class="val" id="age" style="width:96px;text-align:right">&mdash;</span></div>
@@ -167,8 +176,78 @@ async function poll() {
   render();
 }
 
+/* WHO IS IN THE ROOM.
+   Driven by the camera, because that is the only sensor here that can answer
+   it: the WiFi traces below were measured twice and do not separate an occupied
+   room from an empty one. A face recogniser needs a FACE, so a name that has
+   gone quiet is shown with its age rather than dropped — looking down at the
+   desk is not the room emptying. */
+function renderPresence() {
+  const p = S && S.presence;
+  const name = $('whoname'), age = $('whoage');
+  if (!name) return;
+
+  if (!p || p.ok === false) {
+    name.textContent = 'NO ANSWER';
+    name.className = 'empty';
+    age.textContent = (p && p.error) ? String(p.error).slice(0, 40) : 'camera unreachable';
+    return;
+  }
+  if (p.camera === 'down' || p.camera === 'frozen') {
+    /* A frozen stream is not a still room, and must never read as "nobody". */
+    name.textContent = (p.camera === 'frozen') ? 'CAMERA FROZEN' : 'CAMERA DOWN';
+    name.className = 'unknown';
+    age.textContent = 'presence unknown';
+    return;
+  }
+
+  const now = p.named || [];
+  const recent = p.recent_names || [];
+  const secs = (p.recent_age_ms != null) ? Math.round(p.recent_age_ms / 1000) : null;
+  const desk = p.desk;
+
+  /* WHO, then WHERE.
+     The name comes from the camera; whether he is AT THE DESK comes from HID
+     idle time, because the camera physically cannot see the desk — it points
+     across the room at the door, which is what the alarm needs. Two sensors,
+     each asked the question it can actually answer. */
+  const ago = (n) => n < 60 ? n + 's' : (n < 3600 ? Math.round(n / 60) + 'm' : Math.round(n / 3600) + 'h');
+
+  let where = '';
+  if (desk && desk.at_desk) where = 'at the desk';
+  else if (desk && desk.idle_seconds != null) where = 'away ' + ago(Math.round(desk.idle_seconds));
+  else if (p.moving) where = 'movement in frame';
+  else where = 'room still';
+
+  if (desk && desk.at_desk) {
+    /* HID activity is a direct measurement of a person using the desk. It
+       outranks a camera that cannot see the chair. */
+    name.textContent = (recent.length ? recent.join(' + ') : 'SOMEONE').toUpperCase();
+    name.className = '';
+  } else if (now.length) {
+    name.textContent = now.join(' + ').toUpperCase();
+    name.className = '';
+  } else if (p.unknown_faces) {
+    name.textContent = p.unknown_faces + ' UNRECOGNISED';
+    name.className = 'unknown';
+    where = 'face not enrolled';
+  } else if (recent.length && secs != null && secs < 180) {
+    name.textContent = recent.join(' + ').toUpperCase();
+    name.className = '';
+    where = 'seen ' + ago(secs) + ' ago';
+  } else if (p.moving) {
+    name.textContent = 'MOVEMENT';
+    name.className = '';
+  } else {
+    name.textContent = 'NOBODY SEEN';
+    name.className = 'empty';
+  }
+  age.textContent = where;
+}
+
 function render() {
   if (!S) return;
+  renderPresence();
   const fleet = S.fleet || [];
 
   // ── nodes column ──

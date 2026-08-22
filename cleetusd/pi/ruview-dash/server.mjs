@@ -39,6 +39,8 @@ const UPSTREAM = (process.env.RUVIEW_UPSTREAM || "https://me.cleetusai.com").rep
 
 const HISTORY = 72;          // samples kept per node, ~1 per second
 const state = {
+  presence: null,
+  presenceAt: 0,
   room: null,
   roomAt: 0,
   roomError: TOKEN ? null : "no token file",
@@ -54,6 +56,23 @@ async function up(path) {
   });
   if (!r.ok) throw new Error(`http ${r.status}`);
   return r.json();
+}
+
+// Who is in the room, from the camera — the one sensor here that can answer it.
+//
+// The WiFi traces on this panel were measured twice not to separate an occupied
+// room from an empty one, so the panel used to display "CANNOT TELL" while a
+// camera two panes above it knew the person's name. cleetusd computes this
+// (one place decides, as with /room) and caches it, so polling every 5 s costs
+// nothing.
+async function pollPresence() {
+  try {
+    state.presence = await up("/presence");
+    state.presenceAt = Date.now();
+  } catch (e) {
+    state.presence = { ok: false, error: String(e.message || e).slice(0, 90) };
+    state.presenceAt = Date.now();
+  }
 }
 
 async function pollRoom() {
@@ -95,6 +114,8 @@ function snapshot() {
   });
   return {
     ok: !!room && room.up,
+    presence: state.presence,
+    presenceAgeMs: state.presenceAt ? Date.now() - state.presenceAt : null,
     error: state.roomError,
     ageMs: state.roomAt ? Date.now() - state.roomAt : null,
     version: room ? room.version : null,
@@ -135,6 +156,8 @@ const send = (res, code, body, type) => {
 createServer(async (req, res) => {
   const path = (req.url || "/").split("?")[0];
   if (path === "/api/state") {
+    // presence rides along on the existing state poll — no second fetch from the page
+
     return send(res, 200, JSON.stringify(snapshot()), "application/json");
   }
   // The live view.
@@ -191,4 +214,6 @@ createServer(async (req, res) => {
 
 pollRoom(); pollMotion();
 setInterval(pollRoom, 2000);
+setInterval(pollPresence, 5000);
+pollPresence();
 setInterval(pollMotion, 1000);

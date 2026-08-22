@@ -26,6 +26,17 @@ import { createReadStream, existsSync } from "node:fs";
 import { extname } from "node:path";
 import * as keyring from "./keyring.mjs";
 import * as convos from "./conversations.mjs";
+
+// Cached answer for /presence — see the route for why 8 seconds.
+let presenceCache = { at: 0, value: null };
+// The most recent NAMED sighting, kept separately from the cache.
+//
+// A face recogniser needs a face. Look down at the bench, turn to the rack, and
+// the name vanishes while the person plainly has not — which on a wall panel
+// reads as the room emptying every time you glance away. So a name persists for
+// a couple of minutes and is reported WITH its age, and the panel can say
+// "seen 40s ago" instead of flickering between a name and nobody.
+let lastNamed = { names: [], at: 0 };
 import { acceptDrop, attachmentLine, listDrops } from "./drops.mjs";
 
 /* Every request header the browser is allowed to send across an origin.
@@ -221,7 +232,7 @@ async function handle(req, res) {
                           // page's CSP says. Being on this list also leaves the
                           // bearer door open, which is how a phone reads the
                           // room over the tunnel without a second hostname.
-                          "/room"];
+                          "/room", "/presence"];
   const localBrowser = isLocalBrowser(req) &&
     (BROWSER_ROUTES.includes(url.pathname) || url.pathname.startsWith("/conversations/") ||
      // A prefix, because /ruview reads a dozen endpoints off the sensing server
@@ -548,6 +559,72 @@ async function handle(req, res) {
   // rather than each keeping its own opinion about the same hardware.
   if (url.pathname === "/room") {
     return json(res, await senseRoom());
+  }
+
+  // ── Who is actually in the room, from the eye that can tell ──
+  //
+  // /room answers honestly that the WiFi sensing cannot say. That is correct and
+  // it is also useless to a panel on the wall, which then shows "CANNOT TELL"
+  // while a camera pointed at the same room knows the person's NAME. The sensor
+  // that works should be the one that answers the question.
+  //
+  // Cached for 8 seconds. The face recogniser spawns a Python process and takes
+  // a second or two; a wall panel polling every 5 s would otherwise keep one
+  // running permanently for a number that cannot meaningfully change that fast.
+  if (url.pathname === "/presence") {
+    const age = Date.now() - presenceCache.at;
+    if (!presenceCache.value || age > 8_000) {
+      try {
+        const rw = await import("./roomwatch.mjs");
+        const [probe, who, base] = await Promise.all([
+          rw.cameraProbe({ frames: 4, gapMs: 200, tag: "presence" }),
+          rw.whoIsThere(),
+          rw.loadBaseline(),
+        ]);
+        const trip = base?.camera?.trip ?? 0.5;
+
+        // THE DESK IS A DIFFERENT QUESTION FROM THE ROOM, and the camera cannot
+        // answer it. The C920 points across the room at the door — which is
+        // right for the alarm — so a person sitting at the desk is BEHIND it,
+        // facing away, with the chair back in the way. The Brio that does look
+        // at the desk has delivered zero frames since it was installed.
+        //
+        // com.cleetus.desk-trigger has been answering this correctly the whole
+        // time from HID idle time: keyboard and mouse activity is a direct
+        // measurement of someone using the desk, not an inference about it.
+        let desk = null;
+        try {
+          const raw = await readFile(join(CONFIG.home, "desk-trigger", "state.json"), "utf8");
+          const d = JSON.parse(raw);
+          desk = { at_desk: Boolean(d.at_desk), idle_seconds: d.idle_seconds ?? null, since: d.since ?? null };
+        } catch { /* the service may not be running; the camera half still answers */ }
+        if (who.ok && who.named.length) lastNamed = { names: who.named, at: Date.now() };
+        presenceCache = {
+          at: Date.now(),
+          value: {
+            ok: true,
+            // A frozen stream is NOT a still room, and saying "nobody here"
+            // because the capture stalled is the one answer this must never
+            // give. Reported as its own state.
+            camera: probe.ok ? (probe.frozen ? "frozen" : "live") : "down",
+            moving: probe.ok && !probe.frozen ? probe.max_changed_pct >= trip : null,
+            changed_pct: probe.ok ? probe.max_changed_pct : null,
+            trip,
+            named: who.ok ? who.named : [],
+            // who was here recently, even if no face is toward the lens now
+            recent_names: lastNamed.names,
+            recent_age_ms: lastNamed.at ? Date.now() - lastNamed.at : null,
+            unknown_faces: who.ok ? who.unknown : null,
+            faces: who.ok ? who.faces : null,
+            face_error: who.ok ? null : who.why,
+            desk,
+          },
+        };
+      } catch (e) {
+        presenceCache = { at: Date.now(), value: { ok: false, error: String(e.message || e).slice(0, 140) } };
+      }
+    }
+    return json(res, { ...presenceCache.value, age_ms: Date.now() - presenceCache.at });
   }
 
   // ── The sensing server itself, read-only ──
