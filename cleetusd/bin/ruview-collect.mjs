@@ -23,7 +23,7 @@
 // away while physically present. idle_seconds is kept on every row so a fit can
 // exclude the ambiguous middle (say 60-600 s) instead of learning from it.
 
-import { appendFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -82,8 +82,23 @@ function row(msg, desk) {
   return out;
 }
 
+// A 1 Hz writer left running is ~43 MB/day. That is fine for a few days and is
+// how a disk quietly fills over a month, so it stops itself rather than relying
+// on someone remembering it exists. 200 MB is about four days, far more than
+// the question needs.
+const CAP_BYTES = 200 * 1024 * 1024;
+let capped = false;
+
 let written = 0;
 setInterval(() => {
+  if (capped) return;
+  try {
+    if (existsSync(OUT) && statSync(OUT).size > CAP_BYTES) {
+      capped = true;
+      console.error(`reached the ${CAP_BYTES / 1024 / 1024} MB cap — stopping. Analyse or move the file, then restart the agent.`);
+      return;
+    }
+  } catch { /* a stat failure is not a reason to stop collecting */ }
   const desk = deskState();
   if (!latest || !desk) return;
   // Only rows where all three boards are contributing — a sample taken while a
