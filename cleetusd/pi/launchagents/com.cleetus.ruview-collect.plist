@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Builds the labelled dataset that decides whether RuView can detect desk
+  presence at all. Samples every sensing feature once a second and stamps it
+  with the desk-trigger's HID-derived label.
+
+  Runs as an agent rather than a shell job because the question needs HOURS of
+  both classes — a laptop-lid session gives ten minutes of one of them. Note
+  the guidance in the ruview plist next door: use unload then load -w, because
+  kickstart -k will not re-read an edited file.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.cleetus.ruview-collect</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/grayson/cleetusd/bin/ruview-collect.mjs</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/grayson/cleetusd</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key><string>/Users/grayson</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>20</integer>
+  <key>StandardOutPath</key><string>/Users/grayson/Library/Logs/ruview-collect.log</string>
+  <key>StandardErrorPath</key><string>/Users/grayson/Library/Logs/ruview-collect.err.log</string>
+</dict>
+</plist>
