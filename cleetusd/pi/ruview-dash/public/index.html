@@ -1,0 +1,391 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1024,height=600,initial-scale=1">
+<title>RuView · Studio</title>
+<!--
+  The studio's WiFi sensing fleet, on a 1024x600 panel.
+
+  THIS DISPLAY DOES NOT SHOW PEOPLE, AND THAT IS THE DESIGN.
+
+  RuView's occupancy output is fabricated: /api/v1/pose/stats reports
+  total_detections 0 while /api/v1/pose/current streams four or five bodies at
+  confidence 0.90, several sharing one coordinate, some outside the room. A
+  wall display is read at a glance and believed, so putting those dots on a
+  radar would be the most convincing lie in the house.
+
+  Everything drawn here is measured: which boards are powered and associated,
+  their frame rates, their link quality, their motion energy, whether the
+  fuser is combining them, and where the three nodes physically are. The
+  centre of the scope carries a stamp saying what cannot be resolved instead
+  of a contact that was never detected.
+
+  The trust verdict is NOT decided here. cleetusd computes it on the Mac and
+  this page renders it, so the tool, the doctor, the deck, /ruview and this
+  panel cannot drift into disagreeing about the same hardware. If the sensing
+  is ever fixed, the stamp clears on its own.
+
+  The panel is mounted upside-down; kanshi rotates the output 180. Nothing in
+  this file compensates for that, or it would be corrected twice.
+-->
+<style>
+  :root{
+    --bg:#07060c; --panel:#0d0b15; --line:#1d1a28;
+    --phos:95,158,147;        /* instrument chrome */
+    --data:#f0b13f;           /* measured values */
+    --warn:#e8412a;
+    --dim:#6b6572;
+    --mono:ui-monospace,"DejaVu Sans Mono","Liberation Mono",Menlo,monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1024px;height:600px;overflow:hidden;background:var(--bg);
+    color:rgb(var(--phos));font-family:var(--mono);-webkit-font-smoothing:antialiased}
+  #grid{display:grid;grid-template-columns:600px 1fr;grid-template-rows:44px 1fr 92px;
+    width:1024px;height:600px;gap:1px;background:var(--line)}
+  header{grid-column:1/3;background:var(--panel);display:flex;align-items:center;
+    justify-content:space-between;padding:0 16px}
+  #brand{font-size:15px;letter-spacing:.22em;color:rgb(var(--phos))}
+  #brand b{color:var(--data);font-weight:700}
+  #clock{font-size:15px;color:var(--dim);letter-spacing:.1em}
+  #scope{background:var(--panel);position:relative}
+  #scope canvas{display:block;width:100%;height:100%}
+  #right{display:flex;flex-direction:column;gap:1px;background:var(--line);min-height:0}
+  /* The camera is the thing that actually knows whether anyone is in the room,
+     so it gets the top of the column. The WiFi traces below it are the channel
+     that was MEASURED not to separate occupied from empty — they are context,
+     not the answer, and the layout says so. */
+  #cam{position:relative;background:#000;height:196px;flex:0 0 auto;overflow:hidden}
+  #cam img{width:100%;height:100%;object-fit:cover;display:block}
+  #camtag{position:absolute;left:8px;top:7px;font-size:10px;letter-spacing:.18em;
+    color:rgb(var(--phos));background:rgba(0,0,0,.55);padding:2px 6px;border-radius:2px}
+  #camtag.stale{color:var(--warn)}
+  #camoff{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    font-size:13px;letter-spacing:.2em;color:var(--warn);background:#000}
+  #cam.off #camoff{display:flex}
+  #nodes{background:var(--panel);padding:10px 12px;display:flex;flex-direction:column;
+    gap:6px;flex:1;min-height:0;overflow:hidden}
+  .node{border:1px solid var(--line);border-radius:3px;padding:8px 10px;flex:1;
+    display:flex;flex-direction:column;justify-content:center;gap:5px}
+  .node.out{opacity:.42}
+  .nrow{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .nid{font-size:13px;letter-spacing:.16em;color:rgb(var(--phos))}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:7px;
+    background:var(--data);box-shadow:0 0 6px var(--data)}
+  .node.out .dot{background:var(--dim);box-shadow:none}
+  .nfps{font-size:15px;color:var(--data);font-variant-numeric:tabular-nums}
+  .node.out .nfps{color:var(--dim)}
+  .nsub{font-size:11px;color:var(--dim);letter-spacing:.08em;
+    display:flex;justify-content:space-between}
+  .spark{height:20px;width:100%;display:block}
+  footer{grid-column:1/3;background:var(--panel);padding:9px 16px;
+    display:flex;flex-direction:column;gap:6px;justify-content:center}
+  .frow{display:flex;align-items:center;gap:10px;font-size:12px;letter-spacing:.09em}
+  .lbl{color:var(--dim);width:74px;flex:none}
+  .val{color:var(--data);font-variant-numeric:tabular-nums}
+  .val.bad{color:var(--warn)}
+  .why{color:var(--dim);font-size:11px;letter-spacing:.04em;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  #bar{flex:1;height:7px;background:#141220;position:relative;overflow:hidden;border-radius:2px}
+  #bar i{position:absolute;left:0;top:0;bottom:0;background:var(--data);width:0;
+    transition:width .35s ease}
+  #bar i.bad{background:var(--warn)}
+</style>
+
+<div id="grid">
+  <header>
+    <div id="brand"><b>RUVIEW</b> &middot; STUDIO</div>
+    <div id="clock">--:--:--</div>
+  </header>
+  <div id="scope"><canvas id="ppi"></canvas></div>
+  <div id="right">
+    <div id="cam">
+      <img id="camimg" alt="">
+      <div id="camtag">LIVE &middot; C920</div>
+      <div id="camoff">CAMERA OFFLINE</div>
+    </div>
+    <div id="nodes"></div>
+  </div>
+  <footer>
+    <div class="frow"><span class="lbl">FUSION</span><span class="val" id="fusion">&mdash;</span>
+      <span class="why" id="fusion-why"></span></div>
+    <div class="frow"><span class="lbl">OCCUPANCY</span><span class="val" id="occ">&mdash;</span>
+      <span class="why" id="occ-why"></span></div>
+    <div class="frow"><span class="lbl">LINK</span><div id="bar"><i></i></div>
+      <span class="val" id="age" style="width:96px;text-align:right">&mdash;</span></div>
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+/* THE LIVE VIEW.
+   An MJPEG <img> that has failed does not fire another `error` — it simply
+   stops updating, which on a wall panel is indistinguishable from a very still
+   room. So the stream is re-armed on error AND on a watchdog: if no frame has
+   decoded for 12 s the source is replaced, which forces a fresh connection. */
+(function camera() {
+  const img = $("camimg"), box = $("cam"), tag = $("camtag");
+  let lastFrame = 0;
+  const arm = () => {
+    box.classList.remove("off");
+    img.src = "/camera.mjpg?t=" + Date.now();
+  };
+  img.addEventListener("load", () => { lastFrame = Date.now(); tag.classList.remove("stale"); });
+  img.addEventListener("error", () => { box.classList.add("off"); setTimeout(arm, 3000); });
+  setInterval(() => {
+    if (!lastFrame) return;
+    const age = Date.now() - lastFrame;
+    if (age > 12000) { tag.classList.add("stale"); arm(); }
+  }, 4000);
+  arm();
+})();
+
+/* The three nodes, in metres, exactly as the sensing server was started with
+   (--node-positions in com.cleetus.ruview.plist). Drawing them is honest in a
+   way drawing people is not: this is where the hardware IS. The desk seat is
+   a measured point too (solved from two distances, 3.2 cm residual against the
+   third), and it gives the scope a scale a room can be recognised by. */
+const NODES = { 1: [0.000, 0.000], 2: [1.742, 2.184], 3: [2.642, 0.000] };
+const DESK  = [1.471, 1.438];
+const RANGE = 4.0;                      // metres to the outer ring
+
+let S = null, sweep = 0;
+
+/* Canvas font strings are not CSS — var(--mono) does not resolve there, the
+   assignment is silently dropped, and every label on the scope quietly falls
+   back to the default sans-serif. It renders, so nothing errors; it was only
+   visible by looking at a screenshot next to the DOM text. */
+const MONO = 'ui-monospace,"DejaVu Sans Mono","Liberation Mono",Menlo,monospace';
+const FONT = (px, weight) => `${weight ? weight + ' ' : ''}${px}px ${MONO}`;
+
+async function poll() {
+  try {
+    const r = await fetch('/api/state', { signal: AbortSignal.timeout(4000) });
+    S = await r.json();
+  } catch {
+    S = S ? { ...S, error: 'dashboard service unreachable', ok: false } : null;
+  }
+  render();
+}
+
+function render() {
+  if (!S) return;
+  const fleet = S.fleet || [];
+
+  // ── nodes column ──
+  const box = $('nodes');
+  box.textContent = '';
+  for (const id of [1, 2, 3]) {
+    const n = fleet.find((x) => String(x.id) === String(id));
+    const live = n && n.status === 'active';
+    const el = document.createElement('div');
+    el.className = 'node' + (live ? '' : ' out');
+    const fps = n && n.fps != null ? Math.round(n.fps) + ' fps' : '---';
+    // "out" rather than a zero. A board that loses power leaves the fleet
+    // list entirely, and a 0 there would read as a node reporting nothing
+    // instead of a node that is not there.
+    const rssi = n && n.rssi != null ? Math.round(n.rssi) + ' dBm' : '--';
+    const st = !n ? 'not reporting' : n.status;
+    el.innerHTML =
+      `<div class="nrow"><span class="nid"><span class="dot"></span>NODE ${id}</span>` +
+      `<span class="nfps">${fps}</span></div>` +
+      `<div class="nsub"><span>${rssi}</span><span>${st}</span></div>`;
+    const c = document.createElement('canvas');
+    c.className = 'spark';
+    el.appendChild(c);
+    box.appendChild(el);
+    drawSpark(c, n && n.trace ? n.trace : [], live);
+  }
+
+  // ── fusion ──
+  const f = S.fusion;
+  if (!S.ok) {
+    setVal('fusion', 'NO DATA', true);
+    $('fusion-why').textContent = S.error || 'the sensing server is not answering';
+  } else if (f && f.failing) {
+    setVal('fusion', 'FAILING', true);
+    $('fusion-why').textContent =
+      `frames ${f.medianMs.toFixed(0)} ms apart against a ${f.guardMs.toFixed(0)} ms guard` +
+      ` — nothing is combined across boards`;
+  } else if (f) {
+    setVal('fusion', 'LOCKED', false);
+    $('fusion-why').textContent = 'boards are being combined';
+  } else {
+    setVal('fusion', '—', false);
+    $('fusion-why').textContent = '';
+  }
+
+  // ── occupancy: the row that must never guess ──
+  if (!S.ok) {
+    setVal('occ', 'NO RECEIVER', true);
+    $('occ-why').textContent = '';
+  } else if (S.trustworthy) {
+    setVal('occ', String(S.claimedPersons ?? 0) + ' PRESENT', false);
+    $('occ-why').textContent = 'every consistency check passed';
+  } else {
+    setVal('occ', 'CANNOT TELL', true);
+    $('occ-why').textContent = (S.reasons && S.reasons[0]) || 'the occupancy output failed its checks';
+  }
+
+  // ── link freshness ──
+  const age = S.ageMs;
+  const stale = age == null || age > 12000;
+  const bar = $('bar').firstElementChild;
+  bar.style.width = age == null ? '0%' : Math.max(4, 100 - Math.min(100, age / 120)) + '%';
+  bar.className = stale ? 'bad' : '';
+  $('age').textContent = age == null ? 'no reading' : (age / 1000).toFixed(1) + 's ago';
+  $('age').className = 'val' + (stale ? ' bad' : '');
+}
+
+function setVal(id, text, bad) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = 'val' + (bad ? ' bad' : '');
+}
+
+/* A motion trace, not a motion READING. The number is real — it is the
+   frame-to-frame variance the board computes — but it does not discriminate
+   occupancy on this deployment (AUC 0.473), so it is drawn as a shape that
+   moves rather than a value to be read against a threshold. No y-axis, no
+   number: nothing here invites "it is above the line, someone is in". */
+function drawSpark(cv, trace, live) {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const w = cv.clientWidth || 240, h = 20;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+  if (!trace.length) return;
+  const max = Math.max(8, ...trace);
+  c.beginPath();
+  trace.forEach((v, i) => {
+    const x = (i / Math.max(1, trace.length - 1)) * w;
+    const y = h - (v / max) * (h - 2) - 1;
+    i ? c.lineTo(x, y) : c.moveTo(x, y);
+  });
+  c.strokeStyle = live ? 'rgba(240,177,63,.85)' : 'rgba(107,101,114,.5)';
+  c.lineWidth = 1.2;
+  c.stroke();
+}
+
+/* ── the scope ──
+   A PPI with the receiver on and no contacts. The sweep turns because the
+   boards really are streaming; the stamp is what stops a turning arm from
+   claiming an empty room. */
+function drawPPI() {
+  const cv = $('ppi');
+  const box = cv.parentElement.getBoundingClientRect();
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const w = box.width, h = box.height;
+  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.fillStyle = '#0d0b15'; c.fillRect(0, 0, w, h);
+
+  const cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.42;
+  const live = !!(S && S.ok);
+  const ink = (a) => `rgba(95,158,147,${live ? a : a * 0.55})`;
+  const m2px = R / RANGE;
+  // Room origin sits low-left of centre so the three nodes and the desk fall
+  // inside the rings rather than crowding the hub.
+  const ox = cx - 1.3 * m2px, oy = cy + 1.1 * m2px;
+
+  for (let k = 1; k <= 4; k++) {
+    c.beginPath(); c.arc(cx, cy, R * k / 4, 0, 7);
+    c.strokeStyle = ink(k === 4 ? 0.45 : 0.14); c.lineWidth = 1; c.stroke();
+  }
+  for (let b = 0; b < 360; b += 30) {
+    const a = (b - 90) * Math.PI / 180;
+    c.beginPath(); c.moveTo(cx + Math.cos(a) * R * 0.13, cy + Math.sin(a) * R * 0.13);
+    c.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+    c.strokeStyle = ink(0.09); c.stroke();
+  }
+  c.font = FONT(9); c.textAlign = 'center'; c.textBaseline = 'middle';
+  c.fillStyle = ink(0.4);
+  for (let k = 1; k < 4; k++) {
+    const rr = R * k / 4, a = (60 - 90) * Math.PI / 180;
+    const lx = cx + Math.cos(a) * rr, ly = cy + Math.sin(a) * rr;
+    c.fillStyle = '#0d0b15'; c.fillRect(lx - 13, ly - 6, 26, 12);
+    c.fillStyle = ink(0.4);
+    c.fillText((RANGE * k / 4).toFixed(1) + 'm', lx, ly);
+  }
+
+  if (live) {
+    // Sweep, clipped to the face.
+    c.save();
+    c.beginPath(); c.arc(cx, cy, R, 0, 7); c.clip();
+    const g = c.createConicGradient ? c.createConicGradient(sweep - Math.PI / 2, cx, cy) : null;
+    if (g) {
+      g.addColorStop(0, 'rgba(95,158,147,.20)');
+      g.addColorStop(0.10, 'rgba(95,158,147,0)');
+      g.addColorStop(1, 'rgba(95,158,147,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(cx, cy, R, 0, 7); c.fill();
+    }
+    c.beginPath(); c.moveTo(cx, cy);
+    c.lineTo(cx + Math.cos(sweep - Math.PI / 2) * R, cy + Math.sin(sweep - Math.PI / 2) * R);
+    c.strokeStyle = 'rgba(95,158,147,.5)'; c.lineWidth = 1.4; c.stroke();
+    c.restore();
+  }
+
+  // The nodes themselves, at their real coordinates.
+  const fleet = (S && S.fleet) || [];
+  for (const id of [1, 2, 3]) {
+    const p = NODES[id]; if (!p) continue;
+    const n = fleet.find((x) => String(x.id) === String(id));
+    const on = n && n.status === 'active';
+    const x = ox + p[0] * m2px, y = oy - p[1] * m2px;
+    c.beginPath(); c.arc(x, y, 5, 0, 7);
+    c.fillStyle = on ? 'rgba(240,177,63,.9)' : 'rgba(107,101,114,.55)'; c.fill();
+    if (on) {
+      // A ring that breathes with this node's own motion energy. Real number,
+      // no threshold implied.
+      const e = Math.min(1, ((n && n.energy) || 0) / 30);
+      c.beginPath(); c.arc(x, y, 7 + e * 13, 0, 7);
+      c.strokeStyle = `rgba(240,177,63,${0.10 + e * 0.32})`; c.lineWidth = 1; c.stroke();
+    }
+    c.font = FONT(9); c.textAlign = 'center'; c.fillStyle = ink(0.62);
+    c.fillText('N' + id, x, y - 13);
+  }
+  // The desk seat: measured, and the thing that makes the plan legible.
+  const dx = ox + DESK[0] * m2px, dy = oy - DESK[1] * m2px;
+  c.strokeStyle = ink(0.3); c.lineWidth = 1;
+  c.beginPath(); c.rect(dx - 7, dy - 5, 14, 10); c.stroke();
+  c.fillStyle = ink(0.42); c.font = FONT(8);
+  c.fillText('DESK', dx, dy + 13);
+
+  // The stamp. Never omitted while the fix is untrusted.
+  if (!live) {
+    c.fillStyle = 'rgba(232,65,42,.8)';
+    c.font = FONT(17, 700); c.textAlign = 'center';
+    c.fillText('NO RECEIVER', cx, cy - R * 0.52);
+  } else if (!(S && S.trustworthy)) {
+    c.fillStyle = 'rgba(232,65,42,.85)';
+    c.font = FONT(19, 700); c.textAlign = 'center';
+    c.fillText('NO FIX', cx, cy - R * 0.52);
+    c.fillStyle = 'rgba(232,65,42,.42)'; c.font = FONT(9);
+    c.fillText('POSITION NOT RESOLVABLE', cx, cy - R * 0.52 + 15);
+  }
+
+  c.font = FONT(9); c.textAlign = 'left'; c.textBaseline = 'top';
+  c.fillStyle = ink(0.4);
+  c.fillText('PPI · RNG ' + RANGE.toFixed(1) + 'M', 10, 8);
+  c.textAlign = 'right';
+  c.fillText(live ? (S.version ? 'v' + S.version : 'LIVE') : 'MUTED', w - 10, 8);
+}
+
+function frame() {
+  if (S && S.ok) sweep = (sweep + 0.017) % (Math.PI * 2);
+  drawPPI();
+  requestAnimationFrame(frame);
+}
+
+function tick() {
+  const d = new Date();
+  $('clock').textContent = [d.getHours(), d.getMinutes(), d.getSeconds()]
+    .map((n) => String(n).padStart(2, '0')).join(':');
+}
+
+tick(); setInterval(tick, 1000);
+poll(); setInterval(poll, 2000);
+requestAnimationFrame(frame);
+addEventListener('resize', drawPPI);
+</script>

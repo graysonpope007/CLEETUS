@@ -1,0 +1,21 @@
+[Unit]
+# The studio WiFi sensing panel. A --user unit on purpose: /etc/systemd/system
+# needs root and gpope04 has no NOPASSWD line, so a system unit could never be
+# installed or repaired unattended. Linger is on for this user, so this starts
+# at boot without anyone logging in.
+Description=RuView sensing dashboard (serves the panel and the tailnet)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=RUVIEW_DASH_PORT=8790
+Environment=RUVIEW_DASH_HOST=0.0.0.0
+Environment=RUVIEW_UPSTREAM=https://me.cleetusai.com
+Environment=RUVIEW_TOKEN_FILE=/opt/protocol-pi/secrets/ruview.token
+ExecStart=/usr/bin/node %h/ruview-dash/server.mjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
