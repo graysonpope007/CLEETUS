@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  RuView sensing server, the aggregator for the ESP32-S3 CSI nodes.
+
+  Every argument in ProgramArguments below is load-bearing; none are defaults.
+  They are described here WITHOUT their leading hyphens on purpose: a double
+  hyphen is illegal inside an XML comment, launchd's lenient parser accepts it
+  anyway, and the file then throws in every strict parser that reads it
+  (plistlib, and the doctor check that uses it). This file was unparseable for
+  exactly that reason until 2026-08-21.
+
+    udp-bind 0.0.0.0   The server binds UDP to 127.0.0.1 by DEFAULT, which
+                       silently drops every frame arriving from a LAN node.
+                       Without this flag the nodes stream perfectly and the
+                       API reports zero nodes, with nothing logged.
+    udp-allow          Required to accept a routable bind. Scoped to the LAN
+                       rather than the insecure-lan variant: the UDP data plane
+                       is NOT authenticated, so anything that can reach the port
+                       can inject CSI frames.
+    ws-port 3001       The WebSocket path is /ws/sensing, and it is served on
+                       BOTH 3000 and 3001. The PATH is the part that matters:
+                       a bare ws://127.0.0.1:3001 with no path is refused with a
+                       non-101 status and no explanation. Verified 2026-08-21.
+    ui-path            Absolute on purpose. The documented value is the relative
+                       "../ui", which only resolves if the process starts in
+                       v2/, and a working-directory dependency is not something
+                       to rely on under launchd.
+
+  Logs: ~/Library/Logs/ruview.log (and .err.log)
+  Check it:  curl -s localhost:3000/api/v1/nodes
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.cleetus.ruview</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/grayson/RuView/v2/target/release/sensing-server</string>
+    <string>--source</string><string>esp32</string>
+    <string>--http-port</string><string>3000</string>
+    <string>--ws-port</string><string>3001</string>
+    <string>--udp-port</string><string>5005</string>
+    <string>--udp-bind</string><string>0.0.0.0</string>
+    <string>--udp-allow</string><string>192.168.1.0/24</string>
+    <string>--ui-path</string><string>/Users/grayson/RuView/ui</string>
+    <string>--node-positions</string><string>0.000,0.000,0.75;1.742,2.184,0.75;2.642,0.000,0.75</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/grayson/RuView/v2</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Fusion was failing outright: "Timestamp spread 92043 us exceeds guard
+         interval 60000 us". The nodes run a 3-slot TDM schedule, so their frames
+         are staggered BY DESIGN and the stock 60 ms guard is simply narrower
+         than one cycle. guard = slots x slot_us x 1.2, so 3 x 33333 gives a
+         ~120 ms guard against the ~92 ms cycle actually measured here. Derived
+         from the observed spread, not inflated until the warning stopped. -->
+    <key>WDP_TDM_SLOTS</key>
+    <string>3</string>
+    <key>WDP_TDM_SLOT_US</key>
+    <string>33333</string>
+
+    <!-- THE DERIVED GUARD CAN NEVER PASS, and the two lines above are why it
+         was set that way. guard = slots x slot_us x 1.2 = 120 ms. But the
+         fuser does not compare node CLOCKS at all: multistatic_bridge.rs
+         timestamps each frame with the SERVER's arrival time
+         (last_time.duration_since(EPOCH)), and node_frames_from_states takes
+         simply the LATEST frame held for each node. Under a 3-slot TDM
+         schedule a board transmits once per ~100 ms cycle, so "latest frame
+         per node" is spread by up to a full cycle before any jitter is added.
+         The natural spread therefore sits ABOVE the guard derived from that
+         same schedule.
+
+         RAISED 300 -> 500 ms on 2026-08-21, because the fleet's spread drifted
+         up and 300 no longer cleared it. Measured live over 90 s with all three
+         boards active, sampling the gap between the freshest and stalest node
+         (that gap IS what the fuser sees, since it timestamps on arrival):
+
+           p50 68 ms   p90 222 ms   p95 302 ms   p99 488 ms   max 683 ms
+
+         300 ms cleared only 95.0% of healthy cycles; 500 ms clears 99.1% and
+         covers p99 with headroom, the same rule that picked 300.
+
+         WHAT IT ACTUALLY BOUGHT, measured as eight 30 s windows at each
+         setting, normalised per 1000 frames processed (errors/min alone is
+         useless — the frame rate moves):
+
+           300 ms   median 111   worst window 344
+           500 ms   median 103   worst window 124
+
+         So the MEDIAN barely moved and the worst-case bursts fell ~3x. Do not
+         repeat the first read of this, which compared one 60 s window at each
+         setting and appeared to show a 21x improvement; the between-window
+         variance is larger than the effect, and a single sample at each end is
+         not a measurement. The doctor's fusion check went from pinned at the
+         6/min rate-limit ceiling to 4/min, which passes but not comfortably.
+
+         The median stays put because engine_error_count is NOT a pure guard
+         counter — it rises from other paths too, so guard rejections can fall
+         5x while the counter moves a little.
+
+         AND THE STRUCTURAL POINT: after raising it, the logged exceedances
+         re-clustered just above the NEW guard (median 514 ms against 500).
+         They did the same at 300. The spread distribution is heavy-tailed, so
+         there is always a population sitting just over whatever line is drawn
+         and no value of this knob makes the warning disappear. Widening it
+         further trades temporal fidelity for a number that will look the
+         same.
+
+         DO NOT RAISE IT FURTHER TO CHASE THE LAST 1%. The log's exceedance
+         tail runs to 9.9 s and looks like it demands a 10 s guard; it does not.
+         That tail is a NODE BEING DOWN — a dropped node's last frame lingers
+         until STALE_THRESHOLD (10 s), so those samples are literally that
+         constant. Confirmed again 2026-08-21: over 30 h of log, 68% of
+         exceedances sit in 300-350 ms (real jitter) and the rest are seconds
+         apart (dropouts). A guard wide enough to admit a dropout is fusing
+         captures taken seconds apart, which is worse than rejecting them.
+         Rejecting a stale frame is CORRECT behaviour.
+
+         The cost is real and worth stating: frames up to 500 ms apart are now
+         fused. That is fine for breathing (0.2-0.5 Hz) and presence, and more
+         marginal for fast motion than 300 ms was. WDP_GUARD_INTERVAL_US always
+         wins over the TDM-derived value (main.rs:7394); the TDM pair is left in
+         place because it still sets the soft guard. -->
+    <key>WDP_GUARD_INTERVAL_US</key>
+    <string>500000</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>/Users/grayson</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <!-- If the binary is mid-rebuild or a port is briefly held, respawning as
+       fast as launchd is willing to just burns CPU and floods the log. -->
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>/Users/grayson/Library/Logs/ruview.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/grayson/Library/Logs/ruview.err.log</string>
+</dict>
+</plist>
