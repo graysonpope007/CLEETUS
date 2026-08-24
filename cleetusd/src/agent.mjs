@@ -569,6 +569,7 @@ async function forceGeneration({ question, system, history = [], onStep, run }) 
     messages.push(res.raw);
     for (const call of res.toolCalls) {
       const name = call.function?.name;
+      if (!name || typeof name !== "string") continue; // skip invalid tool calls
       const args = call.function?.arguments || {};
       onStep?.({ tool: name, args });
       const result = await callTool(name, args, { agentId: "image" });
@@ -1311,6 +1312,7 @@ export async function ask({ history, agent, onStep, probe = false, maxSteps = CO
 
     for (const call of res.toolCalls) {
       const name = call.function?.name;
+      if (!name || typeof name !== "string") continue; // skip invalid tool calls
       const args = call.function?.arguments || {};
       /* ── What he said to leave out has to survive the rewrite ────────────
          liftNegations already runs inside generate_image, but it can only see
