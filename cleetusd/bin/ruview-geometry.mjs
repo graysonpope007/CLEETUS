@@ -74,7 +74,10 @@ function paths(g) {
 const { g, at } = await load();
 const nodes = g.points.filter((p) => p.kind === "node" && p.node_id != null)
   .sort((a, b) => a.node_id - b.node_id);
-const flag = nodes.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(2)}`).join(";");
+// Negative zero formats as "-0.000", which would report a disagreement with the
+// plist for a layout that had not moved at all.
+const z3 = (v) => (Math.abs(v) < 5e-4 ? 0 : v).toFixed(3);
+const flag = nodes.map((p) => `${z3(p.x)},${z3(p.y)},${p.z.toFixed(2)}`).join(";");
 
 console.log(`saved ${new Date(at).toLocaleString()}   ${g.points.length} points, ${g.measurements.length} distances`);
 
