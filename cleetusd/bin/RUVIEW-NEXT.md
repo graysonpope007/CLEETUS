@@ -3,7 +3,50 @@
 Measured 2026-08-24 on 65.5 h of labelled data (215,072 samples, 29 transitions).
 Run `python3 bin/ruview-verdict.py` to reproduce.
 
-## The verdict
+## Settled with verified ground truth, 2026-08-24/25
+
+296 minutes of camera-corroborated EMPTY room against 83 minutes of verified
+OCCUPIED. No inferred labels anywhere. Run `python3 bin/ruview-empty.py`.
+
+**Every output RuView presents as an answer is a constant.**
+
+| output | verified empty | verified occupied | lift |
+|---|---|---|---|
+| `edge-vitals presence` | 5.4% true | 5.0% true | -0.4 pts |
+| `motion` | 100% | 100% | 0.0 |
+| `person_count > 0` | 100% | 100% | 0.0 |
+| `pose n > 0` | 100% | 99.9% | -0.1 |
+
+`presence` briefly looked like the one sane output because it is false 95% of
+the time in an empty room. It is false 95% of the time with somebody sitting
+there too. Low false-positive rate, zero true-positive rate.
+
+`pose` reported a mean of 4.5 people and a peak of **14** in a room the camera
+agreed was empty, every keypoint at confidence 0.00.
+
+**The CSI motion features do not respond to a human at all.** Verified-empty,
+HID-away and HID-at-desk medians for `mbp`, `bbp`, `var` and `spec` all sit
+within 0.06 sigma of each other. The old HID-derived negative class was never
+the problem: the sensor is.
+
+**RSSI differences are drift.** Node 3 wanders 2 dB across five hours with
+nobody in the room and has a 15 dB spread. The gap that looked like occupancy
+was 4 dB.
+
+**The verified return at 22:35:42** scored 1.rssi 0.752 at four minutes and
+0.683 / 0.666 / 0.666 across all three nodes at fifteen. Against the 41
+historical transitions scored identically, single-transition RSSI has a median
+of 0.508 and a p90 of 0.666: a node reaches that by chance 11% of the time and
+all three agree in direction on 17% of transitions. It was an ordinary
+transition that landed high, which is the same mechanism that produced the
+0.705 corrected earlier.
+
+The field calibration was also completed for the first time (12,831 frames, 14
+eigenvalues, variance explained 0.168) and changed none of the above.
+
+## The earlier verdict, from inferred labels
+
+
 
 **No usable signal, for either question.**
 
