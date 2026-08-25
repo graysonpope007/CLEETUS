@@ -22,7 +22,7 @@ import { homedir } from "node:os";
 
 const FILE = join(homedir(), "cleetusd", "roomwatch", "ruview-truth.jsonl");
 const [, , cmd, state, ...noteParts] = process.argv;
-const note = noteParts.join(" ");
+const note = noteParts.filter((w, i) => w !== "--at" && noteParts[i - 1] !== "--at").join(" ");
 
 function read() {
   if (!existsSync(FILE)) return [];
@@ -44,7 +44,24 @@ if (cmd === "begin") {
 } else if (cmd === "end") {
   const cur = open();
   if (!cur) { console.error("no window is open"); process.exit(2); }
-  const row = { event: "end", state: cur.state, t: Date.now() / 1000, note, source: "human" };
+  // A window should close when the room actually changed, not when somebody got
+  // round to saying so. "I am back now" can arrive minutes after walking in, and
+  // those minutes are occupied data sitting inside a window labelled empty,
+  // which is exactly the contamination this file exists to prevent. Pass
+  // --at <unix seconds> to close at an evidenced moment, e.g. the camera's
+  // first person-level heartbeat.
+  let when = Date.now() / 1000;
+  const atIdx = process.argv.indexOf("--at");
+  if (atIdx > -1 && process.argv[atIdx + 1]) {
+    const t = Number(process.argv[atIdx + 1]);
+    if (!Number.isFinite(t) || t <= cur.t || t > Date.now() / 1000 + 60) {
+      console.error(`--at must be a unix time inside the open window (after ${cur.t.toFixed(0)}, not in the future)`);
+      process.exit(2);
+    }
+    when = t;
+  }
+  const row = { event: "end", state: cur.state, t: when, source: "human",
+                note: (note || "") + (atIdx > -1 ? " [closed at evidenced time, not at report time]" : "") };
   appendFileSync(FILE, JSON.stringify(row) + "\n");
   const mins = (row.t - cur.t) / 60;
   console.log(`closed ${cur.state.toUpperCase()} window after ${mins.toFixed(1)} min`);
