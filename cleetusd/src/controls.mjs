@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
 import { lights, lightDevices, lightDetail, setLight, hueConfigured } from "./hue.mjs";
 import { goveeConfigured, goveeState, goveeSet } from "./govee.mjs";
+import { wemoState, wemoSet } from "./wemo.mjs";
 
 const run = promisify(execFile);
 const PY = join(CONFIG.home, ".config/meross/venv/bin/python");
@@ -61,11 +62,9 @@ const LAYOUT = [
     // still performs the write; the guard is against the accidental tap.
     { kind: "govee", device: "Keys monitors", label: "Keys monitors",
       confirm: "Keys monitors are powered speakers — cutting power can pop the drivers. Tap again to confirm." },
-    // The keys-station screens, on their own Govee plugs. Screens, not speakers,
-    // so no pop guard. Currently offline; they show unreachable until powered
-    // and switch fine once the plug is back on the network.
-    { kind: "govee", device: "Keys monitor left", label: "Keys screen L" },
-    { kind: "govee", device: "Keys monitor right", label: "Keys screen R" },
+    // The keys SCREEN is the one Belkin WeMo on the network (192.168.1.156,
+    // "Wemo Mini" Socket). Local SOAP, fast, a screen so no pop guard.
+    { kind: "wemo", host: "192.168.1.156", label: "Keys screen" },
   ] },
   { name: "Desk", kind: "mixed", items: [
     // The two desk monitors as one tile. Tapping switches both.
@@ -183,6 +182,15 @@ async function merossWrite(uuid, chRaw, on) {
 // instant a write lands. `null` on is "offline, state unknown" (see govee.mjs).
 const GOVEE_TTL = 8_000;
 const goveeCache = new Map();   // name -> { at, state }
+const WEMO_TTL = 4_000;
+const wemoCache = new Map();    // host -> { at, state }
+async function wemoCached(host) {
+  const hit = wemoCache.get(host);
+  if (hit && Date.now() - hit.at < WEMO_TTL) return hit.state;
+  const state = await wemoState(host);   // wemoState never throws; returns online:false on failure
+  wemoCache.set(host, { at: Date.now(), state });
+  return state;
+}
 async function goveeCached(name) {
   const hit = goveeCache.get(name);
   if (hit && Date.now() - hit.at < GOVEE_TTL) return hit.state;
@@ -293,6 +301,17 @@ export async function readControls() {
           confirm: it.confirm || null,     // page arms-then-fires when set
           protected: null,
         });
+      } else if (it.kind === "wemo") {
+        const st = await wemoCached(it.host);
+        items.push({
+          id: `wemo:${it.host}`,
+          name: it.label || "WeMo",
+          on: Boolean(st.on),
+          reachable: Boolean(st.online),
+          detail: st.online ? null : "offline",
+          confirm: it.confirm || null,
+          protected: null,
+        });
       }
     }
     groups.push({ name: col.name, kind: col.kind || "mixed", online: true, items });
@@ -373,6 +392,14 @@ export async function setControl(id, on, opts = {}) {
     const after = await goveeSet(name, on);
     goveeCache.set(name, { at: Date.now(), state: after });
     return { ok: true, id, on: Boolean(after.on), detail: after.online ? null : "offline" };
+  }
+
+  if (system === "wemo") {
+    const host = rest.join(":");
+    const after = await wemoSet(host, on);
+    wemoCache.set(host, { at: Date.now(), state: after });
+    if (!after.online) return { ok: false, error: `the keys screen (WeMo ${host}) is not reachable` };
+    return { ok: true, id, on: Boolean(after.on) };
   }
 
   return { ok: false, error: `unknown control id: ${id}` };

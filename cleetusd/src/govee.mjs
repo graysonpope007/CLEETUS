@@ -47,8 +47,8 @@ export async function goveeList() {
 }
 
 /** Read one plug: {name, online, on}. online:false => on is unknown. */
-export async function goveeState(name) {
-  const out = await govee(["state", name]);
+export async function goveeState(name, timeout = 6_000) {
+  const out = await govee(["state", name], timeout);
   const online = /online\s*=\s*true/i.test(out);
   const on = /powerSwitch\s*=\s*1/.test(out);
   return { name, online, on: online ? on : null, raw: out };
