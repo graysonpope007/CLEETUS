@@ -25,3 +25,6 @@ media/refs/*
 # stale the moment somebody edits the source next to it:
 #     swiftc -O -o bin/midictl src/swift/midictl.swift
 bin/midictl
+
+# Machine-local overrides for cleetus.env (CLEETUSD_EXTRA_HOSTS etc); never source
+.env

@@ -133,6 +133,12 @@ export const CONFIG = {
   // to 0.0.0.0 would put an unauthenticated shell on the LAN.
   host: "127.0.0.1",
   port: Number(env.CLEETUSD_PORT || 8767),
+  // Extra interfaces to ALSO listen on, comma-separated. Used for the wired
+  // link to the Pi (192.168.2.1 <-> 192.168.2.2) so the wall panel can reach
+  // /controls in under a millisecond instead of through the tunnel (5 s).
+  // Nothing on these is loopback, so every request must carry the bearer --
+  // the free pass in gate.mjs is for 127.0.0.1 only. Never put 0.0.0.0 here.
+  extraHosts: String(env.CLEETUSD_EXTRA_HOSTS || "").split(",").map((h) => h.trim()).filter(Boolean),
   token: env.CLEETUSD_TOKEN || env.CLEETUS_WEB_TOKEN || "",
 
   // The existing browser harness. Reads execute, commits queue — cleetusd does

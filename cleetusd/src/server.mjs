@@ -6,11 +6,15 @@
 // unauthenticated shell on the coffee-shop wifi.
 
 import { createServer } from "node:http";
+import { execFile as _execFile } from "node:child_process";
+import { promisify as _promisify } from "node:util";
+const execFileAsync = _promisify(_execFile);
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
 import { isLocalBrowser, authed } from "./gate.mjs";
 import { senseRoom, passthrough as ruviewPassthrough } from "./tools/ruview.mjs";
+import { loadGeometry, zoneStates } from "./zones.mjs";
 import { ask, route } from "./agent.mjs";
 import { agentList } from "./agents.mjs";
 import { health as ollamaHealth, visionReady } from "./ollama.mjs";
@@ -29,6 +33,8 @@ import * as convos from "./conversations.mjs";
 
 // Cached answer for /presence — see the route for why 8 seconds.
 let presenceCache = { at: 0, value: null };
+let devicesCache = { at: 0, value: null };
+let controlsCache = { at: 0, value: null };
 // The most recent NAMED sighting, kept separately from the cache.
 //
 // A face recogniser needs a face. Look down at the bench, turn to the rack, and
@@ -114,7 +120,7 @@ function sinceFor(lines, name) {
   return since;
 }
 
-const server = createServer((req, res) => {
+const onRequest = (req, res) => {
   handle(req, res).catch((e) => {
     console.error("[cleetusd] request failed:", req.method, req.url, e?.stack || e);
     try {
@@ -126,7 +132,8 @@ const server = createServer((req, res) => {
       }
     } catch { /* the socket is already gone; nothing left to say */ }
   });
-});
+};
+const server = createServer(onRequest);
 
 // Whether any turn in this conversation carries a picture.
 const hasImages = (history) =>
@@ -232,14 +239,17 @@ async function handle(req, res) {
                           // page's CSP says. Being on this list also leaves the
                           // bearer door open, which is how a phone reads the
                           // room over the tunnel without a second hostname.
-                          "/room", "/presence"];
+                          "/room", "/presence", "/devices", "/controls", "/controls/set"];
   const localBrowser = isLocalBrowser(req) &&
     (BROWSER_ROUTES.includes(url.pathname) || url.pathname.startsWith("/conversations/") ||
      // A prefix, because /ruview reads a dozen endpoints off the sensing server
      // and listing each one here would be a list that goes stale the first time
      // the page grows a panel. Everything under it is already narrowed to the
      // read-only allowlist in tools/ruview.mjs before anything is fetched.
-     url.pathname.startsWith("/ruview/"));
+     url.pathname.startsWith("/ruview/") ||
+     // Same door as the passthrough: the zone verdict is read-only and the
+     // viewer is a browser page on cleetusai.com like /ruview is.
+     url.pathname === "/ruview-zones");
 
   // ── Anything that moves the cursor ──
   // Deliberately NOT bearer-gated like the rest, because the bearer is exactly
@@ -561,6 +571,95 @@ async function handle(req, res) {
     return json(res, await senseRoom());
   }
 
+  // ── The Meross devices: both strips outlet by outlet, and the diffuser ──
+  //
+  // Cached for 10 seconds, and this cache is not optional. A read is a round
+  // trip to Meross's cloud and MEASURES ~1.9 s; the wall panel polls, so
+  // without this it would keep a permanent queue of cloud calls in flight for
+  // state that changes when somebody presses a button.
+  //
+  // A stale snapshot must never be served as if it were current, so every
+  // response carries `age_ms` and the panel greys out when it goes high. The
+  // failure that matters here is a panel confidently showing an outlet as ON
+  // long after the account went unreachable.
+  // ── The room as a set of things you can tap ──
+  //
+  // /devices is the Meross snapshot; this is the control surface: Hue lamps and
+  // Meross outlets in one list, named the way Apple Home names them, with the
+  // ones that must never be switched marked. Read is cached for 1.5 s: the
+  // Meross half is served from merossd's memory (~20 ms) and the Hue half is
+  // local, so the cache only absorbs a burst of panel polls; it no longer has
+  // to hide a 9 s cold start.
+  // Is money unlocked right now, and what did the last face check say.
+  // Read-only; there is deliberately no "unlock" over HTTP. The camera is the
+  // only way in, and a POST that bypassed it would be the gate's off switch.
+  if (url.pathname === "/facegate" && req.method === "GET") {
+    const { status } = await import("./facegate.mjs");
+    return json(res, status());
+  }
+  if (url.pathname === "/facegate/lock" && req.method === "POST") {
+    const { revoke, status } = await import("./facegate.mjs");
+    revoke();
+    return json(res, status());
+  }
+
+  if (url.pathname === "/controls" && req.method !== "POST") {
+    const age = Date.now() - controlsCache.at;
+    if (!controlsCache.value || age > 1_500) {
+      try {
+        const { readControls } = await import("./controls.mjs");
+        controlsCache = { at: Date.now(), value: await readControls() };
+      } catch (e) {
+        return json(res, { ok: false, groups: [], error: String(e.message || e).slice(0, 200) }, 502);
+      }
+    }
+    return json(res, { ...controlsCache.value, age_ms: Date.now() - controlsCache.at });
+  }
+
+  // The write half. Returns the READBACK of what the device actually is now,
+  // never an echo of the request — and drops the read cache so the next poll
+  // cannot serve a pre-tap snapshot back to the panel that just tapped.
+  if (url.pathname === "/controls/set" && req.method === "POST") {
+    try {
+      const b = await readBody(req);
+      const { setControl } = await import("./controls.mjs");
+      // on is optional now: a brightness or colour change on an already-on lamp
+      // must not be forced through Boolean(undefined) === false and switch it off.
+      const wantOn = b?.on === undefined ? undefined : Boolean(b.on);
+      const out = await setControl(b?.id, wantOn, {
+        brightness: b?.brightness, xy: b?.xy, mirek: b?.mirek,
+      });
+      controlsCache = { at: 0, value: null };
+      return json(res, out, out.ok ? 200 : 400);
+    } catch (e) {
+      return json(res, { ok: false, error: String(e.message || e).slice(0, 200) }, 500);
+    }
+  }
+
+  if (url.pathname === "/devices") {
+    const age = Date.now() - devicesCache.at;
+    if (!devicesCache.value || age > 10_000) {
+      try {
+        const { stdout } = await execFileAsync(
+          join(CONFIG.home, ".config/meross/venv/bin/python"),
+          [join(CONFIG.home, ".config/meross/ctl.py"), "json"],
+          { timeout: 30_000 });
+        // Same stray-output hazard as controls.mjs: take the JSON line, not
+        // the whole stream, or an occasional trailing warning empties the panel.
+        const line = stdout.split("\n").map((l) => l.trim()).find((l) => l.startsWith("{"));
+        devicesCache = { at: Date.now(), value: JSON.parse(line) };
+      } catch (e) {
+        // Report the failure rather than the last good snapshot dressed up as
+        // fresh. If a previous snapshot exists it is still returned, but marked.
+        const stale = devicesCache.value
+          ? { ...devicesCache.value, stale: true, error: String(e.message || e).slice(0, 200) }
+          : { ok: false, devices: [], error: String(e.message || e).slice(0, 200) };
+        return json(res, { ...stale, age_ms: devicesCache.at ? Date.now() - devicesCache.at : null });
+      }
+    }
+    return json(res, { ...devicesCache.value, age_ms: Date.now() - devicesCache.at });
+  }
+
   // ── Who is actually in the room, from the eye that can tell ──
   //
   // /room answers honestly that the WiFi sensing cannot say. That is correct and
@@ -639,6 +738,42 @@ async function handle(req, res) {
   // neither failure appears anywhere except the browser console, which is why
   // /ruview has been showing "No route from here" while the server sat there
   // answering every request put to it on the command line.
+  // The room BY ZONE, and what each zone can honestly say. Deliberately not a
+  // passthrough: the sensing server has no idea where the bed is, and its own
+  // localisation output is fabricated (pose/stats total_detections 0 while
+  // pose/current streams confident skeletons). The geometry is the only thing
+  // that knows which links can see which zone, so the verdict is computed here
+  // from the saved layout and the live per-node readings together.
+  if (url.pathname === "/ruview-zones") {
+    try {
+      const { g, savedAt } = await loadGeometry();
+      const nodes = await ruviewPassthrough("api/v1/nodes");
+      const edge = await ruviewPassthrough("api/v1/edge-vitals");
+      const byNode = {};
+      try {
+        for (const n of (JSON.parse(nodes.body).nodes || []))
+          byNode[n.node_id] = { status: n.status, rssi_dbm: n.rssi_dbm,
+                                motion_level: n.motion_level, person_count: n.person_count };
+      } catch {}
+      let edgeRaw = null; try { edgeRaw = JSON.parse(edge.body); } catch {}
+      return json(res, {
+        saved_at: savedAt,
+        solved: g.solve || null,
+        points: g.points,
+        zones: zoneStates(g, { byNode }),
+        edge: edgeRaw,
+        // Carried so the viewer can show WHY it is refused rather than hiding it.
+        rejected: {
+          endpoint: "/api/v1/pose/current",
+          reason: "pose/stats reports total_detections 0 while pose/current streams "
+                + "confident persons with every keypoint at 0.0. Never render it as position.",
+        },
+      });
+    } catch (e) {
+      return json(res, { error: e.message }, 500);
+    }
+  }
+
   if (url.pathname.startsWith("/ruview/")) {
     const r = await ruviewPassthrough(url.pathname.slice("/ruview/".length), url.search);
     if (res.headersSent) return res.end();
@@ -946,3 +1081,19 @@ server.listen(CONFIG.port, CONFIG.host, () => {
   console.log(`  shell  ${CONFIG.shellEnabled ? "enabled" : "OFF"}`);
   console.log(`  auth   ${CONFIG.token ? "bearer required" : "NONE (loopback only)"}`);
 });
+
+// The wired Pi link (see CONFIG.extraHosts). The interface may not exist yet
+// at login -- Internet Sharing brings bridge100 up late -- and EADDRNOTAVAIL
+// must not take the daemon down with it, so a failed bind is retried rather
+// than fatal. The token check makes this refuse to listen without a bearer:
+// an extra interface with no token would be an open shell on that link.
+for (const host of CONFIG.extraHosts) {
+  if (!CONFIG.token) { console.error(`[cleetusd] refusing to listen on ${host}: no CLEETUSD_TOKEN`); continue; }
+  const extra = createServer(onRequest);
+  const bind = () => extra.listen(CONFIG.port, host, () => console.log(`cleetusd also on http://${host}:${CONFIG.port} (bearer only)`));
+  extra.on("error", (e) => {
+    console.error(`[cleetusd] listen on ${host} failed (${e.code}); retrying in 30s`);
+    setTimeout(bind, 30_000).unref();
+  });
+  bind();
+}

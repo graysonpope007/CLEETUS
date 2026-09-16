@@ -27,10 +27,13 @@ import { keyringTools } from "./keyring.mjs";
 import { recallTools } from "./recall.mjs";
 import { workTools } from "./work.mjs";
 import { securityTools } from "./security.mjs";
+import { bleTools } from "./ble.mjs";
+import { guard } from "../facegate.mjs";
 import { mediaTools } from "./media.mjs";
 import { piTools } from "./pi.mjs";
 import { ruviewTools } from "./ruview.mjs";
 import { hueTools } from "./hue.mjs";
+import { merossTools } from "./meross.mjs";
 import { roomwatchTools } from "./roomwatch.mjs";
 
 // ── The vault ───────────────────────────────────────────────────────────────
@@ -221,7 +224,7 @@ const bridgeTools = {
   cloud_api: {
     schema: {
       description:
-        "Call the deployed Cleetus API for data that lives in the cloud: money (/api/plaid/accounts, /api/schwab/balances, /api/ledger/pnl), calendar (/api/google/calendar), training (/api/fitness/history, /api/fitness/workout), food (/api/nutrition/diary, /api/nutrition/targets), weather+outfit (/api/outfit), health of the stack (/api/health), tasks (/api/tasks). GET unless you know it takes a POST.",
+        "Call the deployed Cleetus API for data that lives in the cloud: money (/api/schwab/balances, /api/ledger/pnl, /api/snapshots; bank feeds are disconnected since Plaid was removed Sep 2026), calendar (/api/google/calendar), training (/api/fitness/history, /api/fitness/workout), food (/api/nutrition/diary, /api/nutrition/targets), weather+outfit (/api/outfit), health of the stack (/api/health), tasks (/api/tasks). GET unless you know it takes a POST.",
       parameters: {
         type: "object",
         properties: {
@@ -248,7 +251,7 @@ const bridgeTools = {
 
 // ── Registry ────────────────────────────────────────────────────────────────
 
-export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...mediaTools, ...piTools, ...ruviewTools, ...hueTools, ...roomwatchTools };
+export const TOOLS = { ...fileTools, ...vaultTools, ...accessTools, ...bridgeTools, ...deviceTools, ...webTools, ...mailTools, ...visionTools, ...faceTools, ...trackTools, ...repoTools, ...keyringTools, ...recallTools, ...workTools, ...securityTools, ...bleTools, ...mediaTools, ...piTools, ...ruviewTools, ...hueTools, ...merossTools, ...roomwatchTools };
 
 /** Ollama's native tool format. */
 export function toolSchemas(names = Object.keys(TOOLS)) {
@@ -390,6 +393,11 @@ export async function callTool(name, args, ctx) {
       `. Nothing was done — call it again with ${missing.join(" and ")}.`
     );
   }
+  // Money needs a face. The gate decides from the tool name and its args, so
+  // it sits here — on the one path every tool call takes — rather than inside
+  // cloud_api, where a second money-capable tool would silently bypass it.
+  const refused = await guard(name, args || {});
+  if (refused) return refused;
   try {
     return coerceResult(name, await tool.run(args || {}, ctx));
   } catch (e) {
