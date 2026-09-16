@@ -1,0 +1,15 @@
+[Unit]
+Description=Room devices panel (Meross strips + diffuser)
+After=network-online.target
+
+[Service]
+# A --user unit on purpose: the Pi's sudo needs a password, so nothing here may
+# touch /etc/systemd/system. enable-linger is already on for gpope04, so this
+# starts at boot with nobody logged in.
+ExecStart=/usr/bin/node %h/devices-dash/server.mjs
+Restart=always
+RestartSec=3
+Environment=PORT=8791
+
+[Install]
+WantedBy=default.target

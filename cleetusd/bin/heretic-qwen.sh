@@ -54,11 +54,11 @@
 #   ./heretic-laguna.sh activate   point cleetusd at the result
 set -euo pipefail
 
-MODEL_ID=${MODEL_ID:-Qwen/Qwen3-32B}
-BASE=${BASE:-$HOME/models/Qwen3-32B}
-ADAPTER=${ADAPTER:-$HOME/models/Qwen3-32B-heretic-adapter}
-MERGED=${MERGED:-$HOME/models/Qwen3-32B-heretic}
-OLLAMA_NAME=${OLLAMA_NAME:-qwen3-32b-heretic:q8_0}
+MODEL_ID=${MODEL_ID:-Qwen/Qwen2.5-14B-Instruct}
+BASE=${BASE:-$HOME/models/Qwen2.5-14B-Instruct}
+ADAPTER=${ADAPTER:-$HOME/models/Qwen2.5-14B-Instruct-heretic-adapter}
+MERGED=${MERGED:-$HOME/models/Qwen2.5-14B-Instruct-heretic}
+OLLAMA_NAME=${OLLAMA_NAME:-qwen2.5-14b-heretic:q8_0}
 WORK=${WORK:-$HOME/models/heretic-work-qwen}
 HERETIC=${HERETIC:-$HOME/heretic/.venv/bin/heretic}
 PY=${PY:-$HOME/heretic/.venv/bin/python}
@@ -78,10 +78,10 @@ preflight() {
 
 stage_download() {
   if [[ -f $BASE/model.safetensors.index.json ]] && \
-     [[ $(ls "$BASE"/model-*.safetensors 2>/dev/null | wc -l) -ge 14 ]]; then
+     [[ $(ls "$BASE"/model-*.safetensors 2>/dev/null | wc -l) -ge 5 ]]; then
     say "weights already present in $BASE"; return
   fi
-  say "downloading $MODEL_ID (~65 GB bf16) -> $BASE"
+  say "downloading $MODEL_ID (~28 GB bf16) -> $BASE"
   "$HOME/heretic/.venv/bin/hf" download "$MODEL_ID" --local-dir "$BASE"
 }
 
@@ -107,7 +107,7 @@ stage_abliterate() {
   ollama stop laguna-xs-2.1:q8_0 >/dev/null 2>&1 || true
   ollama stop lfm2.5:8b >/dev/null 2>&1 || true
 
-  say "running Heretic (4-bit, MPS). This is the long one."
+  say "running Heretic (bf16, MPS). This is the long one."
   cd "$WORK"
   # transformers 5.15 warns that this tokenizer uses "an incorrect regex
   # pattern" and offers fix_mistral_regex=True. DO NOT TAKE IT. The pattern is
@@ -136,7 +136,7 @@ stage_abliterate() {
   # first — it does not change correctness, it changes whether the machine swaps.
   script -q /dev/null "$HERETIC" \
     --model "$BASE" \
-    --quantization BNB_4BIT \
+    --quantization NONE \
     --device-map mps \
     --export-strategy ADAPTER \
     --checkpoint-action resume \

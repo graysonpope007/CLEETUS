@@ -32,7 +32,7 @@ const DOSSIERS = {
 const LIVE_HINTS = {
   training: "Your real lifting history is at /api/fitness/history and today's session at /api/fitness/workout via cloud_api. Never guess a number he can look up.",
   nutrition: "His targets are at /api/nutrition/targets and today's food at /api/nutrition/diary via cloud_api.",
-  finance: "His live accounts are at /api/plaid/accounts, investments at /api/schwab/balances, business P&L at /api/ledger/pnl via cloud_api.",
+  finance: "His investments are at /api/schwab/balances, net-worth history at /api/snapshots, business P&L at /api/ledger/pnl via cloud_api. Bank and card feeds are disconnected (Plaid was removed Sep 2026), so cash and debt are carried forward, not live.",
   weather: "Today's weather where he actually is comes back with /api/outfit via cloud_api.",
 };
 

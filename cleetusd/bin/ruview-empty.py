@@ -25,7 +25,9 @@ import json, pathlib, sys
 import numpy as np
 
 ROOT = pathlib.Path.home() / "cleetusd/roomwatch"
-TRUTH, FEATS_F = ROOT / "ruview-truth.jsonl", ROOT / "ruview-labeled.jsonl"
+TRUTH = ROOT / "ruview-truth.jsonl"
+# Every rotated part, not just the live file - see the note in ruview-verdict.py.
+FEATS_FILES = sorted(ROOT.glob("ruview-labeled*.jsonl"))
 VERDICTS, EVENTS = ROOT / "ruview-verdicts.jsonl", ROOT / "events.jsonl"
 FEATS = ["mbp", "bbp", "var", "spec", "dom", "chg", "rssi"]
 NODES = ["1", "2", "3"]
@@ -75,7 +77,10 @@ def main():
         print(f"  {state:8} {(hi-lo)/60:7.1f} min   {note}")
 
     verdicts = jsonl(VERDICTS)
-    feats = jsonl(FEATS_F)
+    # Rotated parts do not sort chronologically by filename (the live
+    # ruview-labeled.jsonl sorts BEFORE ruview-labeled.part1.jsonl), so order
+    # by timestamp, not by file.
+    feats = sorted((r for f in FEATS_FILES for r in jsonl(f)), key=lambda r: r["t"])
 
     # ── 0. Does the CAMERA agree the room was empty? ──────────────────────
     # A human label nobody corroborates is how this project got a negative
@@ -91,7 +96,8 @@ def main():
             ts = dt.datetime.fromisoformat(r["at"].replace("Z", "+00:00")).timestamp()
         except ValueError:
             continue
-        cam.append({"t": ts, "pct": float(r["changed_pct"]), "kind": r.get("kind")})
+        cam.append({"t": ts, "pct": float(r["changed_pct"]), "kind": r.get("kind"),
+                    "lum": r.get("brightness")})
 
     PERSON_PCT = 3.0        # roomwatch measured a person at 3 to 98 percent
     for state, lo, hi, _ in wins:
@@ -102,13 +108,38 @@ def main():
         big = [x for x in c if x["pct"] >= PERSON_PCT]
         print(f"\nCAMERA CHECK on the verified {state.upper()} window ({len(c)} heartbeats)")
         print(f"    changed_pct: median {np.median(pcts):.3f}, p95 {np.percentile(pcts,95):.3f}, max {pcts.max():.3f}")
+        # A BLACK FRAME ALSO SCORES ZERO. Measured 2026-08-27: mean luminance is
+        # 136-151 by day, 37 at 23:00, 3.1 at 02:00 and 0.0 from 03:00 to 07:00.
+        # So between roughly 02:00 and 07:00 the camera corroborates whatever it
+        # is asked to corroborate, and "camera agrees" is a check that cannot
+        # fail. Say so instead.
+        lums = [x["lum"] for x in c if x["lum"] is not None]
+        if lums:
+            blind = sum(1 for v in lums if v < 8.0)
+            dim = sum(1 for v in lums if 8.0 <= v < 40.0)
+            print(f"    brightness: median {np.median(lums):.1f}/255 over {len(lums)} of {len(c)} heartbeats")
+            if blind:
+                print(f"    !! CAMERA BLIND for {blind} heartbeat(s) ({100*blind/len(lums):.0f}%): frames below 8/255.")
+                print(f"       changed_pct is 0 there because there is no image, not because the")
+                print(f"       room was still. Those minutes are NOT camera-corroborated.")
+            elif dim:
+                print(f"    camera dim for {dim} heartbeat(s) ({100*dim/len(lums):.0f}%) - corroboration is weak there.")
+        else:
+            print(f"    brightness: NOT RECORDED on these heartbeats, so it is unknown whether the")
+            print(f"       camera could see. Rows written after 2026-08-27 carry it.")
+
         if state == "empty" and big:
             print(f"    !! {len(big)} heartbeat(s) at or above {PERSON_PCT}%, which is the range a")
             print(f"       PERSON produces. This window may not be empty throughout:")
             for x in big[:5]:
                 print(f"         {dt.datetime.fromtimestamp(x['t']).strftime('%H:%M:%S')}  {x['pct']:.2f}%")
         elif state == "empty":
-            print(f"    camera agrees: nothing reached the {PERSON_PCT}% a person produces.")
+            blindish = lums and (sum(1 for v in lums if v < 8.0) / len(lums)) > 0.2
+            if blindish:
+                print(f"    NOT corroborated: nothing reached {PERSON_PCT}%, but the camera was blind")
+                print(f"    for much of this window, so that is not evidence of an empty room.")
+            else:
+                print(f"    camera agrees: nothing reached the {PERSON_PCT}% a person produces.")
             trips = [x for x in c if x["kind"] == "motion_confirmed"]
             if trips:
                 print(f"    ({len(trips)} tripped roomwatch's own 0.5% gate, all far below a person:")

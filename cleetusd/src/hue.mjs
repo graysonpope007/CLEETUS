@@ -127,6 +127,62 @@ export async function setGroup(groupId, { on, brightness, color } = {}) {
   return call("PUT", `/clip/v2/resource/grouped_light/${groupId}`, body);
 }
 
+/**
+ * Set ONE lamp, by its v2 light-service id.
+ *
+ * setGroup drives a whole room, which is the right shape for an alert and the
+ * wrong shape for a wall panel where the point is tapping one lamp. Same body
+ * schema, different resource.
+ */
+export async function setLight(lightId, { on, brightness, xy, mirek } = {}) {
+  const body = {};
+  if (on !== undefined) body.on = { on: Boolean(on) };
+  if (brightness != null) {
+    // min_dim_level on these lamps is 2%. Sending 0 does NOT switch a lamp off —
+    // it clamps to the floor and leaves it glowing, which looks like a failed tap.
+    body.dimming = { brightness: Math.max(2, Math.min(100, brightness)) };
+  }
+  // xy and mirek are mutually exclusive on the wire: sending both makes the
+  // bridge pick one and the lamp lands somewhere neither asked for.
+  if (xy) body.color = { xy: { x: xy[0], y: xy[1] } };
+  else if (mirek != null) body.color_temperature = { mirek: Math.max(153, Math.min(447, Math.round(mirek))) };
+  return call("PUT", `/clip/v2/resource/light/${lightId}`, body);
+}
+
+/**
+ * Every lamp with the id Apple Home knows it by.
+ *
+ * HomeKit stores a Hue lamp's DEVICE id as its serial number, while lights()
+ * returns the LIGHT-SERVICE id — different UUIDs for the same bulb, which is why
+ * a naive join finds nothing. /resource/device carries both, so it is the only
+ * honest bridge between "Turtle bulb" as named in Home and the thing this can set.
+ */
+/** Per-lamp capabilities and current colour, for a panel that offers them. */
+export async function lightDetail() {
+  const d = await call("GET", "/clip/v2/resource/light");
+  return (d.data || []).map((l) => ({
+    id: l.id,
+    name: l.metadata?.name || "",
+    on: Boolean(l.on?.on),
+    brightness: l.dimming?.brightness ?? null,
+    minDim: l.dimming?.min_dim_level ?? 2,
+    color: l.color ? { xy: [l.color.xy.x, l.color.xy.y], gamut: l.color.gamut_type } : null,
+    ct: l.color_temperature
+      ? { mirek: l.color_temperature.mirek,
+          min: l.color_temperature.mirek_schema?.mirek_minimum ?? 153,
+          max: l.color_temperature.mirek_schema?.mirek_maximum ?? 447 }
+      : null,
+  }));
+}
+
+export async function lightDevices() {
+  const d = await call("GET", "/clip/v2/resource/device");
+  return (d.data || []).flatMap((dev) => {
+    const svc = (dev.services || []).find((s) => s.rtype === "light");
+    return svc ? [{ deviceId: dev.id, lightId: svc.rid, hueName: dev.metadata?.name || "" }] : [];
+  });
+}
+
 // CIE xy for a saturated red. Hue takes xy, not RGB, and a "red" guessed as
 // {0.7,0.3} lands outside some lamps' gamut and is silently clamped to orange.
 export const ALERT_RED = [0.6915, 0.3083];

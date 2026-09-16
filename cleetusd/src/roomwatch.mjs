@@ -641,7 +641,13 @@ export async function runWatch({ log = console.error, ...opts } = {}) {
       const state = await readState();
 
       if (!moved) {
-        logEvent({ kind: "cleared", why, detail, changed_pct: probe.max_changed_pct, cam_trip: camTrip });
+        logEvent({ kind: "cleared", why, detail, changed_pct: probe.max_changed_pct, cam_trip: camTrip,
+                  // A DARK frame also scores 0. Without brightness on the row there is no
+                  // way, later, to tell "the room was still" from "the camera could not
+                  // see". Measured 2026-08-27: mean luminance is 140+ by day and 0.0
+                  // between 02:00 and 07:00, so every night heartbeat corroborates
+                  // whatever it is asked to unless this field is here.
+                  brightness: probe.mean_brightness });
         return;
       }
 
@@ -651,6 +657,7 @@ export async function runWatch({ log = console.error, ...opts } = {}) {
       const event = {
         kind: "motion_confirmed", why, detail,
         changed_pct: probe.max_changed_pct, max_diff: probe.max_diff, cam_trip: camTrip,
+        brightness: probe.mean_brightness,
         who: known, unknown_faces: who.ok ? who.unknown : null,
         frames: probe.saved, armed: state.armed,
       };

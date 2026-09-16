@@ -1,0 +1,257 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=1024,height=600,initial-scale=1,user-scalable=no">
+<title>Room</title>
+<style>
+  :root{
+    --bg:#07090c; --card:#10141b; --edge:#1e2530; --fg:#e8edf5; --dim:#7d8899;
+    --on:#3ddc84; --onbg:#122b1e; --off:#39414f; --warn:#ffb020; --bad:#ff5c5c;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden;touch-action:manipulation}
+  body{background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:15px;user-select:none}
+  header{display:flex;align-items:baseline;gap:14px;padding:8px 14px 6px}
+  h1{font-size:16px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+  .age{margin-left:auto;font-size:13px;color:var(--dim)}
+  .age.warn{color:var(--warn)} .age.bad{color:var(--bad)}
+  main{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:0 14px 10px;height:calc(100% - 38px)}
+  .card{background:var(--card);border:1px solid var(--edge);border-radius:10px;min-width:0;
+        padding:8px 9px;display:flex;flex-direction:column;min-height:0}
+  .card h2{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);
+           font-weight:600;padding:2px 3px 6px;display:flex;gap:6px;align-items:center}
+  .card h2 .tag{margin-left:auto;font-size:9px;opacity:.55;letter-spacing:0}
+  ul{list-style:none;display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;justify-content:flex-start}
+  /* Finger targets. 62px is the floor that stops a thumb hitting two rows. */
+  li{flex:1 1 0;min-height:56px;max-height:104px;min-width:0;display:flex;align-items:center;gap:10px;
+     padding:0 11px;border-radius:8px;background:#151a22;border:1px solid #202836;
+     transition:background .15s,border-color .15s}
+  li.on{background:var(--onbg);border-color:#1f7a4d}
+  li.tappable:active{transform:scale(.975)}
+  .dot{width:13px;height:13px;border-radius:50%;background:var(--off);flex:0 0 auto}
+  li.on .dot{background:var(--on);box-shadow:0 0 11px rgba(61,220,132,.7)}
+  /* Wrap rather than truncate. On a wall the whole name is the point:
+     'Right Main Mo…' and 'Left Main Mon…' are the same string to a
+     glance from across the room. */
+  .nm{flex:1;min-width:0;font-size:16px;line-height:1.12;overflow:hidden;
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .st{font-size:12px;color:var(--dim);letter-spacing:.08em}
+  li.on .st{color:var(--on)}
+  /* An outlet with no name in Home keeps its Meross default; dimmed, because
+     showing "Switch 2" at full weight implies we know what is plugged in. */
+  li.unnamed .nm{color:var(--dim);font-style:italic}
+  /* Protected rows are visibly not buttons. The server refuses them too — this
+     is the label, not the lock. */
+  li.locked{opacity:.42;border-style:dashed}
+  li.locked .nm{font-size:15px}
+  .lock{font-size:12px;color:var(--warn)}
+  /* A tap is in flight. The row must not read as its old state, and must not
+     read as the new one either until the device says so. */
+  li.pending{border-color:var(--warn);animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.55}}
+  li.failed{border-color:var(--bad)}
+  body.stale main{opacity:.32;filter:saturate(.25)}
+  .banner{display:none;position:fixed;left:0;right:0;bottom:0;padding:6px 14px;
+          background:var(--bad);color:#1a0505;font-size:13px;font-weight:600;letter-spacing:.05em}
+  body.stale .banner,body.errored .banner{display:block}
+  /* The colour/brightness sheet. Full-bleed because a wall panel is touched with
+     a thumb, not a mouse: a small popover would be a dartboard. */
+  .sheet{position:fixed;inset:0;z-index:10;background:#04060a;
+         display:none;flex-direction:column;padding:16px 20px 18px;gap:12px}
+  .sheet.open{display:flex}
+  .sheet h3{font-size:20px;letter-spacing:.06em;display:flex;align-items:center;gap:14px}
+  .sheet h3 .now{margin-left:auto;font-size:15px;color:var(--dim)}
+  .pwr{padding:9px 20px;border-radius:9px;border:1px solid var(--edge);
+       background:#151a22;font:inherit;font-size:15px;color:var(--fg);letter-spacing:.08em}
+  .pwr.on{background:var(--onbg);border-color:#1f7a4d;color:var(--on)}
+  .lab{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  input[type=range]{-webkit-appearance:none;width:100%;height:46px;background:transparent;margin:0}
+  input[type=range]::-webkit-slider-runnable-track{height:46px;border-radius:10px;border:1px solid var(--edge)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:34px;height:44px;
+        border-radius:8px;background:#e8edf5;border:1px solid #46506080;margin-top:0}
+  #bri::-webkit-slider-runnable-track{background:linear-gradient(90deg,#2a3038,#fff)}
+  #ct::-webkit-slider-runnable-track{background:linear-gradient(90deg,#ffb45c,#fff5e8,#cfe4ff)}
+  .swatches{display:grid;grid-template-columns:repeat(10,1fr);gap:9px}
+  .sw{height:58px;border-radius:10px;border:2px solid #2a3340}
+  .sw:active{transform:scale(.94)}
+  .sheet .close{margin-top:auto;align-self:flex-end;padding:12px 30px;border-radius:10px;
+        border:1px solid var(--edge);background:#151a22;color:var(--fg);font:inherit;font-size:16px}
+  /* The chip on a Hue row that opens the sheet. Big enough to hit deliberately,
+     separate enough that it is not hit by accident when toggling. */
+  .more{min-width:62px;text-align:right;padding:12px 4px 12px 12px;font-size:13px;color:var(--dim)}
+  li.on .more{color:var(--on)}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:5;
+         background:#1d2430;border:1px solid var(--warn);color:var(--fg);
+         padding:9px 16px;border-radius:8px;font-size:14px;display:none}
+  .toast.show{display:block}
+</style></head><body>
+<header><h1>Room</h1><span id="age" class="age">connecting</span></header>
+<main id="board"></main>
+<section class="sheet" id="sheet">
+  <h3><span id="sName">Lamp</span><button class="pwr" id="sPwr">ON</button><span class="now" id="sNow"></span></h3>
+  <div class="lab">Brightness</div>
+  <input type="range" id="bri" min="2" max="100" step="1" value="50">
+  <div class="lab" id="ctLab">White temperature</div>
+  <input type="range" id="ct" min="153" max="447" step="1" value="300">
+  <div class="lab" id="swLab">Colour</div>
+  <div class="swatches" id="sw"></div>
+  <button class="close" id="sClose">Done</button>
+</section>
+<div class="toast" id="toast"></div>
+<div class="banner" id="banner"></div>
+<script>
+const board=document.getElementById("board"), ageEl=document.getElementById("age"),
+      banner=document.getElementById("banner"), toast=document.getElementById("toast");
+let lastGood=0, pending=new Map(), pausedUntil=0;
+
+function say(msg){ toast.textContent=msg; toast.classList.add("show");
+  clearTimeout(say._t); say._t=setTimeout(()=>toast.classList.remove("show"), 4000); }
+
+async function tap(item, li){
+  if(item.protected) { say(item.protected); return; }
+  if(pending.has(item.id)) return;
+  const want = !item.on;
+  pending.set(item.id, want);
+  li.classList.add("pending"); li.classList.remove("failed");
+  // Hold off polling: a Meross write takes ~2 s and the read cache could
+  // otherwise hand back the PRE-tap state and make the row snap back.
+  pausedUntil = Date.now() + 3000;
+  try{
+    const r = await fetch("/controls/set", {method:"POST",
+      headers:{"content-type":"application/json"}, body:JSON.stringify({id:item.id, on:want})});
+    const d = await r.json();
+    if(!d.ok) { li.classList.add("failed"); say(d.error || "did not switch"); }
+    else { item.on = d.on; item.detail = d.detail ?? item.detail; }
+  }catch(e){ li.classList.add("failed"); say("no reply: " + e.message); }
+  finally{ pending.delete(item.id); li.classList.remove("pending"); pausedUntil = Date.now()+600; render(); }
+}
+
+// ── The brightness / colour sheet ────────────────────────────────────────────
+// Gamut C xy pairs. These are DEVICE coordinates, not RGB: a "red" guessed as
+// {0.7,0.3} lands outside the lamp's gamut and is silently clamped to orange,
+// so the swatch you tapped and the colour you get disagree.
+const SWATCHES = [
+  ["#ff2d2d",[0.6915,0.3083]], ["#ff7a18",[0.5825,0.3901]], ["#ffb020",[0.5269,0.4133]],
+  ["#ffe94d",[0.4432,0.5154]], ["#7cff4d",[0.2100,0.6800]], ["#22d17a",[0.1700,0.7000]],
+  ["#25d6d6",[0.1600,0.3200]], ["#3aa0ff",[0.1500,0.1000]], ["#7a5cff",[0.2000,0.0800]],
+  ["#ff5cc8",[0.3800,0.1600]],
+];
+const sheet=document.getElementById("sheet"), sName=document.getElementById("sName"),
+      sNow=document.getElementById("sNow"), sPwr=document.getElementById("sPwr"),
+      briEl=document.getElementById("bri"), ctEl=document.getElementById("ct"),
+      swEl=document.getElementById("sw");
+let cur=null, sendTimer=null;
+
+function paintSheet(){
+  if(!cur) return;
+  sName.textContent=cur.name;
+  sPwr.textContent=cur.on?"ON":"OFF"; sPwr.className="pwr"+(cur.on?" on":"");
+  sNow.textContent=cur.on?`${Math.round(briEl.value)}%`:"off";
+}
+// Throttle while dragging: a lamp should follow your thumb, but one PUT per
+// pixel floods the bridge and the lamp ends up chasing a queue.
+function push(patch, now){
+  const send=async()=>{
+    try{
+      const r=await fetch("/controls/set",{method:"POST",headers:{"content-type":"application/json"},
+        body:JSON.stringify({id:cur.id, ...patch})});
+      const d=await r.json();
+      if(!d.ok) say(d.error||"did not apply");
+      else { cur.on=d.on; if(d.brightness!=null) cur.brightness=d.brightness; cur.detail=d.detail??cur.detail; paintSheet(); }
+    }catch(e){ say("no reply: "+e.message); }
+    pausedUntil=Date.now()+1500;
+  };
+  clearTimeout(sendTimer);
+  if(now) send(); else sendTimer=setTimeout(send, 220);
+}
+function openSheet(item){
+  cur=item;
+  briEl.value=Math.round(item.brightness ?? 50);
+  ctEl.value=item.mirek ?? 320;
+  const showCT=Boolean(item.ctCapable), showColor=Boolean(item.colorCapable);
+  ctEl.style.display=showCT?"":"none";
+  document.getElementById("ctLab").style.display=showCT?"":"none";
+  swEl.style.display=showColor?"":"none";
+  document.getElementById("swLab").style.display=showColor?"":"none";
+  briEl.style.display=item.dimmable?"":"none";
+  paintSheet(); sheet.classList.add("open");
+}
+swEl.replaceChildren(...SWATCHES.map(([css,xy])=>{
+  const b=document.createElement("div"); b.className="sw"; b.style.background=css;
+  b.addEventListener("click", ()=>push({xy, on:true}, true));
+  return b;
+}));
+briEl.addEventListener("input", ()=>{ sNow.textContent=`${briEl.value}%`; push({brightness:Number(briEl.value), on:true}); });
+briEl.addEventListener("change", ()=>push({brightness:Number(briEl.value), on:true}, true));
+ctEl.addEventListener("change", ()=>push({mirek:Number(ctEl.value), on:true}, true));
+sPwr.addEventListener("click", ()=>push({on:!cur.on}, true));
+document.getElementById("sClose").addEventListener("click", ()=>{ sheet.classList.remove("open"); cur=null; });
+
+let model=null;
+function row(item){
+  const li=document.createElement("li");
+  const tappable = !item.protected;
+  li.className = (item.on?"on ":"") + (item.named_in_home===false?"unnamed ":"") +
+                 (item.protected?"locked ":"") + (tappable?"tappable":"");
+  if(pending.has(item.id)) li.classList.add("pending");
+  const d=document.createElement("span"); d.className="dot";
+  const n=document.createElement("span"); n.className="nm"; n.textContent=item.name;
+  const s=document.createElement("span");
+  if(item.protected){ s.className="lock"; s.textContent="LOCKED"; }
+  else { s.className="st"; s.textContent=(item.detail && item.on)?item.detail:(item.on?"ON":"off"); }
+  li.append(d,n,s);
+  // A lamp gets a second target. Tapping the row still toggles -- that is the
+  // common action and must stay one tap -- while the chip opens brightness and
+  // colour. Two targets on one row, deliberately far apart.
+  if(item.dimmable || item.colorCapable){
+    const m=document.createElement("span"); m.className="more"; m.textContent="EDIT";
+    m.addEventListener("click", (e)=>{ e.stopPropagation(); openSheet(item); });
+    li.append(m);
+  }
+  // Listen on locked rows TOO. Refusing silently reads as a dead panel; the
+  // tap is still refused, it just says why. tap() re-checks protection, so
+  // the guard does not depend on this listener being right.
+  li.addEventListener("click", ()=>tap(item, li));
+  return li;
+}
+function render(){
+  if(!model) return;
+  board.replaceChildren(...model.groups.map(g=>{
+    const el=document.createElement("section"); el.className="card";
+    const h=document.createElement("h2"); h.textContent=g.name;
+    const t=document.createElement("span"); t.className="tag";
+    t.textContent=g.online===false?"OFFLINE":g.kind; h.append(t); el.append(h);
+    const ul=document.createElement("ul");
+    g.items.forEach(i=>ul.append(row(i)));
+    el.append(ul); return el;
+  }));
+}
+async function tick(){
+  if(Date.now() < pausedUntil) { paint(); return; }
+  try{
+    const r=await fetch("/controls",{cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const d=await r.json();
+    if(d.groups && d.groups.length){
+      // Sort groups and items so nothing swaps places between polls -- Meross
+      // returns devices in whatever order discovery finished.
+      d.groups.sort((a,b)=>a.name.localeCompare(b.name));
+      model=d; lastGood=Date.now(); banner.textContent="";
+      document.body.classList.remove("errored");
+      render();
+    }
+    if(d.error) throw new Error(d.error);
+  }catch(e){
+    banner.textContent="NOT UPDATING — "+e.message;
+    document.body.classList.add("errored");
+  }
+  paint();
+}
+function paint(){
+  const age=lastGood?Date.now()-lastGood:Infinity;
+  ageEl.textContent=lastGood?Math.round(age/1000)+"s ago":"no data";
+  ageEl.className="age"+(age>60000?" bad":age>25000?" warn":"");
+  document.body.classList.toggle("stale", age>60000);
+  if(age>60000 && !banner.textContent) banner.textContent="NOT UPDATING";
+}
+tick(); setInterval(tick, 5000);
+</script></body></html>

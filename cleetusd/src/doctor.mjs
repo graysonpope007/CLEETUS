@@ -791,6 +791,33 @@ export async function runDoctor() {
     check("ruview", "sensing server answers", false, e.message);
   }
 
+  // ── a collector that is RUNNING is not a collector that is COLLECTING ──────
+  //
+  // ruview-collect caps its output at 200 MB and then stops appending, but the
+  // process stays alive and launchctl keeps reporting PID present and
+  // LastExitStatus 0. On 2026-08-26 it had been writing nothing for 16.7 hours
+  // and every liveness check said it was fine; it was caught only because a
+  // verified empty-room window was about to be recorded on top of it. Liveness
+  // is the wrong question. Ask when a row was last written.
+  try {
+    const room = join(CONFIG.home, "cleetusd/roomwatch");
+    const parts = (await readdir(room)).filter((f) => /^ruview-labeled.*\.jsonl$/.test(f));
+    const live = join(room, "ruview-labeled.jsonl");
+    const st = await stat(live).catch(() => null);
+    const ageMin = st ? (Date.now() - st.mtimeMs) / 60000 : Infinity;
+    // The collector writes every few seconds, so anything past 10 minutes is
+    // stalled, not merely quiet.
+    check("ruview", "the feature collector is still writing rows", ageMin < 10,
+      st ? `last row ${ageMin.toFixed(0)} min ago (${parts.length} file(s) on disk)`
+         : "ruview-labeled.jsonl does not exist",
+      "the 200 MB cap has probably been hit — the process stays alive and silent. " +
+      "Rotate it and restart:  mv ~/cleetusd/roomwatch/ruview-labeled.jsonl " +
+      "~/cleetusd/roomwatch/ruview-labeled.partN.jsonl && " +
+      "launchctl kickstart -k gui/$(id -u)/com.cleetus.ruview-collect");
+  } catch (e) {
+    check("ruview", "the feature collector is still writing rows", false, e.message);
+  }
+
   // ── the dashboard may only name ports the pages actually open ──────────────
   //
   // /ruview's websocket was blocked for weeks by our OWN Content-Security-Policy

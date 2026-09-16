@@ -64,7 +64,7 @@ const TOOLS = [
   "vault_search, vault_read — his Obsidian brain",
   "remember_fact — durable memory, scope 'shared' or 'mine'",
   "save_skill — write down a repeatable procedure",
-  "cloud_api — the deployed app: Plaid, Schwab, Google Calendar, /api/fitness/*, /api/nutrition/*, /api/outfit, /api/ledger/pnl",
+  "cloud_api — the deployed app: Schwab, Google Calendar, /api/fitness/*, /api/nutrition/*, /api/outfit, /api/ledger/pnl",
   "browse — a real browser; reads execute, purchases queue for his approval",
   "check_access — what of the disk is reachable right now",
 ].join("\n");

@@ -48,27 +48,90 @@ const ft = (m) => {
 };
 
 // A path only senses a body it passes THROUGH, so the useful output is not the
-// coordinates, it is which transmitter-to-node lines cross the seat and at what
-// height. Duplicated from the page deliberately: this has to be checkable from
-// a terminal with the browser shut.
-function paths(g) {
-  const seat = g.points.find((p) => p.kind === "seat");
+// coordinates, it is which transmitter-to-node lines cross a body and at what
+// height. Ported from the page deliberately: this has to be checkable from a
+// terminal with the browser shut, and it has to give the SAME answer.
+//
+// It reads EVERY zone. The version this replaced took the first point of kind
+// "seat" and silently ignored every other one, so a room measured with a desk
+// chair, a keys stool and a bed reported on one third of itself and said
+// nothing about the rest.
+const ZONE_KINDS = ["seat", "bed"];
+const isZone = (p) => ZONE_KINDS.includes(p.kind);
+
+// A body is a SEGMENT with a radius, which covers both postures with one piece
+// of maths. Seated, the segment is vertical: chest above knees at one spot.
+// Lying, it is horizontal at mattress height and about two metres long, so it
+// needs a heading. Treating a bed as a seated cylinder is wrong in both
+// directions at once: too wide across the mattress, and far too tall.
+function bodyOf(p, g) {
+  const D = g.body || { radius_m: 0.2, z_low_m: 0.45, z_high_m: 1.3 };
+  const b = p.body || {};
+  const post = p.posture || (p.kind === "bed" ? "lying" : "seated");
+  const r = b.radius_m || (post === "lying" ? 0.22 : D.radius_m);
+  if (post === "lying") {
+    const L = b.length_m || 1.80, h = (p.heading_deg || 0) * Math.PI / 180;
+    const zc = p.z ?? 0.55, hx = Math.cos(h) * L / 2, hy = Math.sin(h) * L / 2;
+    return { a: [p.x - hx, p.y - hy, zc], b: [p.x + hx, p.y + hy, zc], r, post,
+             label: `lying, ${L.toFixed(2)} m long` };
+  }
+  const lo = b.z_low_m ?? (post === "standing" ? 0.10 : D.z_low_m);
+  const hi = b.z_high_m ?? (post === "standing" ? 1.75 : D.z_high_m);
+  return { a: [p.x, p.y, lo], b: [p.x, p.y, hi], r, post,
+           label: `${post}, ${lo.toFixed(2)} to ${hi.toFixed(2)} m` };
+}
+
+// Closest approach between two 3D segments. Comparing the path to a vertical
+// LINE and range-checking the height separately, as the old code did, cannot
+// express a horizontal body at all.
+function segSeg(p1, q1, p2, q2) {
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const d1 = sub(q1, p1), d2 = sub(q2, p2), r = sub(p1, p2);
+  const a = dot(d1, d1), e = dot(d2, d2), f = dot(d2, r);
+  const EPS = 1e-9;
+  let s, t;
+  if (a <= EPS && e <= EPS) return { dist: Math.hypot(...r), s: 0, t: 0, height: p1[2] };
+  if (a <= EPS) { s = 0; t = Math.max(0, Math.min(1, f / e)); }
+  else {
+    const c = dot(d1, r);
+    if (e <= EPS) { t = 0; s = Math.max(0, Math.min(1, -c / a)); }
+    else {
+      const b = dot(d1, d2), den = a * e - b * b;
+      s = den !== 0 ? Math.max(0, Math.min(1, (b * f - c * e) / den)) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) { t = 0; s = Math.max(0, Math.min(1, -c / a)); }
+      else if (t > 1) { t = 1; s = Math.max(0, Math.min(1, (b - c) / a)); }
+    }
+  }
+  const c1 = [p1[0] + d1[0] * s, p1[1] + d1[1] * s, p1[2] + d1[2] * s];
+  const c2 = [p2[0] + d2[0] * t, p2[1] + d2[1] * t, p2[2] + d2[2] * t];
+  return { dist: Math.hypot(c1[0] - c2[0], c1[1] - c2[1], c1[2] - c2[2]), s, t, height: c1[2] };
+}
+
+// Every zone, not just the first one found.
+function pathAnalysis(g) {
+  const zones = g.points.filter(isZone);
   const txs = g.points.filter((p) => p.kind === "transmitter");
   const nodes = g.points.filter((p) => p.kind === "node");
-  if (!seat || !txs.length || !nodes.length) return [];
-  const B = g.body || { radius_m: 0.2, z_low_m: 0.45, z_high_m: 1.3 };
-  const out = [];
-  for (const tx of txs) for (const n of nodes) {
-    const dx = n.x - tx.x, dy = n.y - tx.y, L2 = dx * dx + dy * dy;
-    const t = L2 < 1e-9 ? 0 : ((seat.x - tx.x) * dx + (seat.y - tx.y) * dy) / L2;
-    const tc = Math.max(0, Math.min(1, t));
-    const px = tx.x + dx * tc, py = tx.y + dy * tc, pz = tx.z + (n.z - tx.z) * tc;
-    const off = Math.hypot(px - seat.x, py - seat.y);
-    const span = Math.hypot(dx, dy, n.z - tx.z);
-    out.push({ tx: tx.name, node: n.name, node_id: n.node_id, span, off, height: pz,
-      through: off <= B.radius_m && pz >= B.z_low_m && pz <= B.z_high_m && t > 0.08 && t < 0.92 && span > 1.0 });
-  }
-  return out.sort((a, b) => (b.through - a.through) || (a.off - b.off));
+  if (!zones.length || !txs.length || !nodes.length) return [];
+  return zones.map((z) => {
+    const B = bodyOf(z, g), out = [];
+    for (const tx of txs) for (const n of nodes) {
+      const A = [tx.x, tx.y, tx.z], C = [n.x, n.y, n.z];
+      const { dist, s, height } = segSeg(A, C, B.a, B.b);
+      const span = Math.hypot(C[0] - A[0], C[1] - A[1], C[2] - A[2]);
+      const ends = s > 0.08 && s < 0.92 && span > 1.0;
+      const through = dist <= B.r && ends;
+      const grazes = !through && dist <= B.r * 2.2 && ends;
+      out.push({ tx: tx.name, node: n.name, node_id: n.node_id, span, off: dist,
+                 height, t: s, through, grazes, tooClose: span <= 1.0 });
+    }
+    out.sort((a, b) => (b.through - a.through) || (a.off - b.off));
+    return { zone: z, body: B, paths: out,
+             hits: out.filter((p) => p.through).length,
+             ctrl: out.filter((p) => !p.through && !p.grazes && !p.tooClose).length };
+  });
 }
 
 const { g, at } = await load();
@@ -101,21 +164,37 @@ const unnumbered = g.points.filter((p) => p.kind === "node" && p.node_id == null
 for (const p of unnumbered)
   console.log(`  ?  ${p.name.padEnd(18)} NO NODE ID, so it is missing from the flag below`);
 
-const P = paths(g);
-if (P.length) {
-  console.log(`\nRADIO PATHS THROUGH THE SEAT`);
-  for (const p of P)
+const Z = pathAnalysis(g);
+for (const z of Z) {
+  console.log(`\nRADIO PATHS THROUGH ${z.zone.name.toUpperCase()}  (${z.body.label})`);
+  for (const p of z.paths) {
+    const verdict = p.tooClose ? "too short to judge"
+                  : p.through  ? "THROUGH YOU"
+                  : p.grazes   ? "grazes you"
+                  : "clear of you";
     console.log(`  ${p.tx} to ${p.node.padEnd(16)} ${p.span.toFixed(2)} m (${ft(p.span)}), `
-      + `${(p.off * 100).toFixed(0)} cm off you at ${p.height.toFixed(2)} m   ${p.through ? "THROUGH YOU" : "clear of you"}`);
-  const hits = P.filter((p) => p.through);
+      + `${(p.off * 100).toFixed(0)} cm off you at ${p.height.toFixed(2)} m   ${verdict}`);
+  }
+  const hits = z.paths.filter((p) => p.through);
   if (hits.length) {
-    console.log(`\n  Point these nodes at the transmitter and leave the rest as controls:`);
-    for (const h of hits) console.log(`    node ${h.node_id ?? "?"} (${h.node}):  --filter-mac <the transmitter BSSID>  --channel 1`);
-    console.log(`  Then power-cycle and LEAVE THE ROOM for 90 s: the per-node presence\n`
-              + `  threshold is learned from the first 1200 frames after boot.`);
+    console.log(`  ${hits.length} through, ${z.ctrl} clean controls.`);
+    for (const h of hits)
+      console.log(`    node ${h.node_id ?? "?"} (${h.node}):  --filter-mac <the transmitter BSSID>`);
   } else {
-    console.log(`\n  Nothing crosses you, so nothing here will sense you. Move the transmitter\n`
-              + `  until your seat lies between it and at least one node.`);
+    console.log(`  NOTHING crosses this one, so nothing here will sense it.`);
+  }
+}
+if (Z.length) {
+  const anyHit = Z.some((z) => z.hits > 0);
+  if (anyHit) {
+    console.log(`\n  Provision the listed nodes against the transmitter and leave the rest as`);
+    console.log(`  controls. Do NOT pin --channel: the node auto-detects the AP's channel and`);
+    console.log(`  a pin goes silently dead if the router ever moves.`);
+    console.log(`  Then power-cycle and LEAVE THE ROOM for 90 s: the per-node presence`);
+    console.log(`  threshold is learned from the first 1200 frames after boot.`);
+  } else {
+    console.log(`\n  Nothing crosses any zone, so nothing here will sense anybody. Move the`);
+    console.log(`  transmitter until a body lies between it and at least one node.`);
   }
 }
 
@@ -163,10 +242,21 @@ if (has("--write")) {
       x: +p.x.toFixed(4), y: +p.y.toFixed(4), z: +p.z.toFixed(3), where: p.note || undefined,
     })),
     body: g.body,
-    paths_through_seat: P.map((p) => ({
-      from: p.tx, to: p.node, node_id: p.node_id,
-      span_m: +p.span.toFixed(3), off_seat_m: +p.off.toFixed(3),
-      crosses_at_height_m: +p.height.toFixed(3), through: p.through,
+    // Keyed BY ZONE. The old shape was a flat list called paths_through_seat and
+    // it described one zone while claiming to describe the room.
+    paths_by_zone: Z.map((z) => ({
+      zone: z.zone.name,
+      kind: z.zone.kind,
+      posture: z.body.post,
+      body: z.body.label,
+      through: z.hits,
+      clean_controls: z.ctrl,
+      paths: z.paths.map((p) => ({
+        from: p.tx, to: p.node, node_id: p.node_id,
+        span_m: +p.span.toFixed(3), off_body_m: +p.off.toFixed(3),
+        crosses_at_height_m: +p.height.toFixed(3),
+        through: p.through, grazes: p.grazes, too_short_to_judge: p.tooClose,
+      })),
     })),
     server_flag: `--node-positions ${flag}`,
   };

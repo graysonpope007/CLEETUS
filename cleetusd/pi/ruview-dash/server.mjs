@@ -35,7 +35,14 @@ const HOST = process.env.RUVIEW_DASH_HOST || "0.0.0.0";
 const TOKEN_FILE = process.env.RUVIEW_TOKEN_FILE ||
   join(homedir(), "..", "..", "opt", "protocol-pi", "secrets", "ruview.token");
 const TOKEN = existsSync(TOKEN_FILE) ? readFileSync(TOKEN_FILE, "utf8").trim() : "";
-const UPSTREAM = (process.env.RUVIEW_UPSTREAM || "https://me.cleetusai.com").replace(/\/+$/, "");
+// THE WIRED LINK FIRST, THE TUNNEL SECOND, same as devices-dash. Measured from
+// the Pi on 16 Sep: edge-vitals is 4 ms over 192.168.2.1 and 5.4 s through
+// me.cleetusai.com. This file polled the tunnel every second with an 8 s
+// timeout, so five or six requests were always in flight and most of them
+// ended in a timeout. Six days of that is where the 2.9 GB went.
+const UPSTREAMS = (process.env.RUVIEW_UPSTREAM || "http://192.168.2.1:8767,https://me.cleetusai.com")
+  .split(",").map((s) => s.trim().replace(/\/+$/, "")).filter(Boolean);
+let UPSTREAM = UPSTREAMS[0];
 
 const HISTORY = 72;          // samples kept per node, ~1 per second
 const state = {
@@ -50,12 +57,35 @@ const state = {
 
 async function up(path) {
   if (!TOKEN) throw new Error("no token");
-  const r = await fetch(`${UPSTREAM}${path}`, {
-    headers: { Authorization: `Bearer ${TOKEN}` },
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!r.ok) throw new Error(`http ${r.status}`);
-  return r.json();
+  let lastErr;
+  for (const base of UPSTREAMS) {          // fixed order: a dead wired link fails instantly
+    try {
+      const r = await fetch(`${base}${path}`, {
+        headers: { Authorization: `Bearer ${TOKEN}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!r.ok) throw new Error(`http ${r.status}`);
+      UPSTREAM = base;
+      return await r.json();
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
+}
+
+// One request per poller at a time. setInterval fires whether or not the last
+// call came back, and a slow upstream turns three pollers into a pile of
+// concurrent fetches that each hold a body, a timer and an abort signal until
+// the timeout frees them. Skipping a tick is a gap in a trace; stacking ticks
+// is how the Pi ran out of memory.
+function serial(fn) {
+  let busy = false;
+  return async () => {
+    if (busy) return;
+    busy = true;
+    try { await fn(); } finally { busy = false; }
+  };
 }
 
 // Who is in the room, from the camera — the one sensor here that can answer it.
@@ -187,7 +217,16 @@ createServer(async (req, res) => {
         "Cache-Control": "no-store",
       });
       for await (const chunk of r.body) {
-        if (!res.write(chunk)) await new Promise((go) => res.once("drain", go));
+        if (res.destroyed) break;
+        if (!res.write(chunk)) {
+          // Wait for drain OR the client going away. A response that closes
+          // while this waits on "drain" alone never drains, and the loop sits
+          // here forever holding the upstream body and every buffered frame.
+          await new Promise((go) => {
+            const done = () => { res.off("drain", done); res.off("close", done); go(); };
+            res.once("drain", done); res.once("close", done);
+          });
+        }
       }
       res.end();
     } catch {
@@ -200,7 +239,11 @@ createServer(async (req, res) => {
   }
 
   if (path === "/healthz") {
-    return send(res, 200, JSON.stringify({ ok: true, token: !!TOKEN, upstream: UPSTREAM }), "application/json");
+    const m = process.memoryUsage();
+    return send(res, 200, JSON.stringify({
+      ok: true, token: !!TOKEN, upstream: UPSTREAM,
+      rss_mb: Math.round(m.rss / 1048576), heap_mb: Math.round(m.heapUsed / 1048576),
+    }), "application/json");
   }
   if (path === "/" || path === "/index.html") {
     const html = await readFile(join(HERE, "public", "index.html"), "utf8").catch(() => null);
@@ -212,8 +255,10 @@ createServer(async (req, res) => {
   console.log(`ruview-dash on http://${HOST}:${PORT} -> ${UPSTREAM} (token: ${TOKEN ? "loaded" : "MISSING"})`);
 });
 
-pollRoom(); pollMotion();
-setInterval(pollRoom, 2000);
-setInterval(pollPresence, 5000);
-pollPresence();
-setInterval(pollMotion, 1000);
+const tickRoom = serial(pollRoom);
+const tickPresence = serial(pollPresence);
+const tickMotion = serial(pollMotion);
+tickRoom(); tickMotion(); tickPresence();
+setInterval(tickRoom, 2000);
+setInterval(tickPresence, 5000);
+setInterval(tickMotion, 1000);

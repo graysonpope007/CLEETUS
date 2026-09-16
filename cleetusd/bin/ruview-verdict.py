@@ -33,7 +33,13 @@ one worth checking before concluding the hardware is useless.
 import json, pathlib, sys, time
 import numpy as np
 
-SRC = pathlib.Path.home() / "cleetusd/roomwatch/ruview-labeled.jsonl"
+# The collector caps each file at 200 MB and stops. Rotated parts are named
+# ruview-labeled.partN.jsonl, so read EVERY part: pointing at the live file
+# alone silently analyses only whatever has accumulated since the last rotation,
+# which looks like a successful run over a fraction of the data.
+_ROOM = pathlib.Path.home() / "cleetusd/roomwatch"
+SRCS = sorted(_ROOM.glob("ruview-labeled*.jsonl"))
+SRC = _ROOM / "ruview-labeled.jsonl"
 FEATS = ["mbp", "bbp", "var", "spec", "dom", "chg", "rssi"]
 NODES = ["1", "2", "3"]
 NAMES = [f"{n}.{f}" for n in NODES for f in FEATS]
@@ -44,10 +50,11 @@ MIN_DEV, MIN_CONS = 0.10, 0.80
 
 
 def load():
-    if not SRC.exists():
-        sys.exit(f"no data at {SRC}: run ruview-collect.mjs first")
+    if not SRCS:
+        sys.exit(f"no data in {_ROOM}: run ruview-collect.mjs first")
     rows = []
-    for line in SRC.read_text().splitlines():
+    for _src in SRCS:
+      for line in _src.read_text().splitlines():
         line = line.strip()
         if line:
             try:

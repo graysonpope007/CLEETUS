@@ -50,7 +50,7 @@ node test/guards.test.mjs     # 7 checks on the self-improvement guards
 | `run_shell` | zsh, 120s timeout. `CLEETUSD_NO_SHELL=1` takes it away. |
 | `vault_search` `vault_read` | The Obsidian brain. |
 | `remember_fact` `save_skill` | His own memory, as markdown. |
-| `cloud_api` | Plaid, Schwab, calendar, training, food — via the deployed app. |
+| `cloud_api` | Schwab, calendar, training, food — via the deployed app. (Plaid removed Sep 2026.) |
 | `browse` | cleetus-web. Reads execute, commits queue for approval. |
 | `look` | Describes what a camera can see. Does not know whose face it is. |
 | `who_is_there` `learn_face` `known_faces` | Names the face. See below. |
