@@ -35,6 +35,23 @@ REPOS=(
   NordicPlayground/nRF52-Bluetooth-Course
   darkmentorllc/bt-re-mad-skillz
   SnailSploit/Claude-Red
+  # The Bluetooth-Devices org (github.com/Bluetooth-Devices): the Python BLE
+  # device ecosystem that powers Home Assistant's Bluetooth stack. Its members
+  # are separate repos, added here by slug — the org page itself is not clonable.
+  Bluetooth-Devices/bleak-retry-connector
+  Bluetooth-Devices/bluetooth-data-tools
+  Bluetooth-Devices/bluetooth-adapters
+  Bluetooth-Devices/bluetooth-auto-recovery
+  # bleak: the cross-platform Python BLE library everything above builds on, and
+  # the one Cleetus writes BLE code against. Its README/docs are the API reference.
+  hbldh/bleak
+  # The Anthropic cybersecurity skills repo is ALSO cloned next door at
+  # vendor/cybersecurity-skills for find_security_skill. Cloning it here too means
+  # its two Bluetooth SKILLs (detecting-bluetooth-low-energy-attacks,
+  # performing-bluetooth-security-assessment) surface on a find_ble_skill search,
+  # which is where the agent looks first for anything Bluetooth. The indexer's
+  # relevance filter keeps only the Bluetooth-relevant docs from it.
+  mukul975/Anthropic-Cybersecurity-Skills
 )
 
 fetch() {

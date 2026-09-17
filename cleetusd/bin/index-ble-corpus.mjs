@@ -72,11 +72,21 @@ function slug(repo, rel) {
 const DEDICATED = new Set([
   "bluetooth-mcp-server", "awesome-ble", "awesome-bluetooth-security",
   "awesome-web-bluetooth", "nRF52-Bluetooth-Course", "bt-re-mad-skillz",
+  // The Bluetooth-Devices org libs and bleak are entirely Bluetooth: index every doc.
+  "bleak", "bleak-retry-connector", "bluetooth-data-tools",
+  "bluetooth-adapters", "bluetooth-auto-recovery",
 ]);
+// Repos that are NOT Bluetooth-dedicated but are cloned here for a few Bluetooth
+// docs: keep only the docs whose PATH names Bluetooth, so the general contents
+// (e.g. the Anthropic repo's 800+ non-Bluetooth skills, already served by
+// find_security_skill) do not leak into a BLE search.
+const STRICT_BT = new Set(["Anthropic-Cybersecurity-Skills"]);
+const STRICT_BT_PATH = /bluetooth|\bble\b/i;
 const BT_PATH = /bluetooth|\bble\b|wireless|gatt|\bhci\b|l2cap|rfcomm/i;
 const BT_TEXT = /bluetooth|\bble\b|gatt|gatttool|\bhci\b|l2cap|advertis|nrf|bleak|smp pairing/i;
 function relevant(repo, rel, text) {
   if (DEDICATED.has(repo)) return true;
+  if (STRICT_BT.has(repo)) return STRICT_BT_PATH.test(rel);
   if (BT_PATH.test(rel)) return true;
   return BT_TEXT.test(text.slice(0, 4000));
 }
