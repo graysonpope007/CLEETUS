@@ -30,6 +30,18 @@
 # Documents/Claude/Projects/Cleetus V2/cleetus.env, which this repo never sees.
 !/cleetusd/
 
+# Desktop/Cleetus/CLEETUS-HANDOFF.html — the Cleetus handoff doc, carved out of
+# the Desktop deny so its history lives in git. Each parent dir is un-ignored,
+# then its OTHER contents re-ignored, because git will not descend into an
+# excluded directory to find a negation inside it. Only the handoff itself is
+# tracked; the .bak.<ts> local safety copies stay ignored (git is the history
+# now), and the rest of ~/Desktop stays invisible.
+!/Desktop/
+/Desktop/*
+!/Desktop/Cleetus/
+/Desktop/Cleetus/*
+!/Desktop/Cleetus/CLEETUS-HANDOFF.html
+
 # 3. Junk that should never be committed even inside an allowlisted project.
 .DS_Store
 *.swp
