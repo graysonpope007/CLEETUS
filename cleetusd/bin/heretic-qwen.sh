@@ -1,13 +1,22 @@
 #!/bin/zsh
-# heretic-qwen.sh — decensor the Qwen model Cleetus runs on.
+# heretic-qwen.sh — put Cleetus on a decensored Qwen.
 #
-# Adapted 2026-09-15 from heretic-laguna.sh to swap Laguna for Qwen3-32B, the
-# most capable Qwen that (a) runs on this 64 GB box and (b) Heretic can
-# manipulate COMPLETELY. Qwen3-32B is DENSE: every targeted module (o_proj,
-# down_proj) is a plain nn.Linear, so unlike Laguna's MoE (whose 256 routed
-# experts per layer bitsandbytes never touched, see the laguna memory note) the
-# abliteration reaches the whole model. 4-bit it is ~18 GB, so it fits with room
-# for the forward passes Heretic runs hundreds of times.
+# 2026-09-17: THE ABLITERATION IS NO LONGER DONE HERE. Heretic hung on MPS
+# partway through the optimisation on three models over ~16 h (see the handoff,
+# s145). It turned out not to matter: the Heretic project's own org publishes
+# heretic-org/Qwen3.8-27B-heretic-ara (15 Aug 2026), refusals 99/100 -> 0/100,
+# KL 0.0535 from the original, tool-calling and vision intact, Apache 2.0, with
+# the exact reproduce/ config in the repo. Renting a GPU would rebuild that
+# artifact byte for byte. So the default path is now download -> package ->
+# verify -> activate, and `abliterate`/`merge` stay in the file for the day a
+# model needs a local run (they still work; they just will not finish on MPS).
+#
+# WHY Qwen3.8-27B. It is the strongest DENSE Qwen (Artificial Analysis index
+# 52 vs 38 for Qwen3.6-27B on the same architecture). Everything above it is
+# MoE, and MoE is exactly what defeated Heretic on Laguna: the routed experts
+# are not nn.Linear, so the ablation never reaches them. It is also the
+# strongest Qwen that fits this 64 GB box: q8_0 is ~29 GB, less than Laguna's
+# 35 GB, with room to keep qwen2.5vl loaded beside it.
 #
 # WHAT THIS IS FOR
 # cleetusd's own source is full of comments about the same failure: the model
@@ -54,11 +63,15 @@
 #   ./heretic-laguna.sh activate   point cleetusd at the result
 set -euo pipefail
 
-MODEL_ID=${MODEL_ID:-Qwen/Qwen2.5-14B-Instruct}
-BASE=${BASE:-$HOME/models/Qwen2.5-14B-Instruct}
-ADAPTER=${ADAPTER:-$HOME/models/Qwen2.5-14B-Instruct-heretic-adapter}
-MERGED=${MERGED:-$HOME/models/Qwen2.5-14B-Instruct-heretic}
-OLLAMA_NAME=${OLLAMA_NAME:-qwen2.5-14b-heretic:q8_0}
+# MODEL_ID is the repo that gets downloaded. With the published Heretic build
+# it is ALREADY decensored, so BASE and MERGED are the same directory and the
+# abliterate/merge stages are skipped. To do a local run instead, point
+# MODEL_ID at the plain base model and set MERGED somewhere else.
+MODEL_ID=${MODEL_ID:-heretic-org/Qwen3.8-27B-heretic-ara}
+BASE=${BASE:-$HOME/models/Qwen3.8-27B-heretic-ara}
+ADAPTER=${ADAPTER:-$HOME/models/Qwen3.8-27B-heretic-adapter}
+MERGED=${MERGED:-$BASE}
+OLLAMA_NAME=${OLLAMA_NAME:-qwen3.8-27b-heretic:q8_0}
 WORK=${WORK:-$HOME/models/heretic-work-qwen}
 HERETIC=${HERETIC:-$HOME/heretic/.venv/bin/heretic}
 PY=${PY:-$HOME/heretic/.venv/bin/python}
@@ -66,22 +79,27 @@ PY=${PY:-$HOME/heretic/.venv/bin/python}
 say() { print -P "%F{yellow}==>%f $*"; }
 
 preflight() {
-  [[ -x $HERETIC ]] || { print "Heretic is not installed at $HERETIC (cd ~/heretic && uv sync)"; exit 1; }
   command -v ollama >/dev/null || { print "ollama is not on PATH"; exit 1; }
-  # 67 GB in, 67 GB out, and the Ollama blob on top. Checked up front because
-  # discovering it three hours in means doing the three hours again.
+  # 54 GB of bf16 in and a ~29 GB q8_0 blob out. Checked up front because
+  # discovering it an hour in means doing the hour again.
   local free_gb=$(df -g "$HOME" | tail -1 | awk '{print $4}')
   say "free disk: ${free_gb} GB"
-  (( free_gb > 150 )) || { print "Need >150 GB free; have ${free_gb} GB."; exit 1; }
+  (( free_gb > 100 )) || { print "Need >100 GB free; have ${free_gb} GB."; exit 1; }
   mkdir -p "$WORK"
+}
+# Heretic itself is only needed for a local abliteration.
+need_heretic() {
+  [[ -x $HERETIC ]] || { print "Heretic is not installed at $HERETIC (cd ~/heretic && uv sync)"; exit 1; }
 }
 
 stage_download() {
   if [[ -f $BASE/model.safetensors.index.json ]] && \
-     [[ $(ls "$BASE"/model-*.safetensors 2>/dev/null | wc -l) -ge 5 ]]; then
+     [[ $(ls "$BASE"/model-*.safetensors 2>/dev/null | wc -l) -ge 6 ]] && \
+     [[ ! -d $BASE/.cache/huggingface/download || -z $(ls "$BASE"/.cache/huggingface/download/*.incomplete 2>/dev/null) ]]; then
     say "weights already present in $BASE"; return
   fi
-  say "downloading $MODEL_ID (~28 GB bf16) -> $BASE"
+  say "downloading $MODEL_ID (~54 GB bf16, 6 shards) -> $BASE"
+  # hf resumes: a shard that finished is not fetched again.
   "$HOME/heretic/.venv/bin/hf" download "$MODEL_ID" --local-dir "$BASE"
 }
 
@@ -160,11 +178,11 @@ stage_package() {
     say "$OLLAMA_NAME already exists in ollama"; return
   fi
   say "importing into ollama as $OLLAMA_NAME"
-  # Qwen3 is a first-class Ollama architecture, so importing the safetensors
-  # directory is enough: Ollama applies its built-in Qwen3 chat template, which
-  # already carries tool-calling and the think switch cleetusd relies on. This
-  # is the opposite of Laguna, whose poolside format had to be copied by hand.
-  # Tool-calling is VERIFIED by stage_verify before activate is allowed to run.
+  # Qwen3.8 is in the Ollama library (qwen3.8:27b), so importing the
+  # safetensors directory is enough: Ollama applies its built-in chat template,
+  # which already carries tool-calling and the think switch cleetusd relies on.
+  # This is the opposite of Laguna, whose poolside format had to be copied by
+  # hand. Tool-calling is VERIFIED by stage_verify before activate can run.
   print "FROM $MERGED" > "$WORK/Modelfile"
   ollama create "$OLLAMA_NAME" -f "$WORK/Modelfile" --quantize q8_0
 }
@@ -213,14 +231,16 @@ stage_activate() {
 
 case ${1:-all} in
   download)   preflight; stage_download ;;
-  abliterate) preflight; stage_abliterate ;;
-  merge)      preflight; stage_merge ;;
+  abliterate) preflight; need_heretic; stage_abliterate ;;
+  merge)      preflight; need_heretic; stage_merge ;;
   package)    preflight; stage_package ;;
   verify)     stage_verify ;;
   activate)   stage_verify && stage_activate ;;
-  all)        preflight; stage_download; stage_abliterate; stage_merge; stage_package
+  # all/build: the published Heretic weights, so no local abliteration.
+  all|build)  preflight; stage_download; stage_package
               say "built. Run '$0 verify' then '$0 activate' to switch cleetusd over." ;;
-  build)      preflight; stage_download; stage_abliterate; stage_merge; stage_package
+  # local: the full pipeline against a plain base model (will not finish on MPS).
+  local)      preflight; need_heretic; stage_download; stage_abliterate; stage_merge; stage_package
               say "built. Run '$0 verify' then '$0 activate' to switch cleetusd over." ;;
-  *) print "usage: $0 [all|download|abliterate|merge|package|verify|activate]"; exit 1 ;;
+  *) print "usage: $0 [all|download|package|verify|activate|abliterate|merge|local]"; exit 1 ;;
 esac
