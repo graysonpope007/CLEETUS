@@ -399,7 +399,9 @@ export async function runDoctor() {
   // The tracker runs on its own thread. When it died, everything downstream
   // kept serving the last annotated frame and looked healthy for hours.
   check("airpad", "tracker thread alive", p.live !== false && !p.tracker_error,
-    p.tracker_error ? String(p.tracker_error).slice(0, 90) : `live, ${p.errors ?? 0} errors`,
+    p.tracker_error ? String(p.tracker_error).slice(0, 90)
+      : p.live === false ? `not live (mode: ${p.mode || "?"}, fps ${p.fps ?? 0}) — the camera has produced nothing yet`
+      : `live, ${p.errors ?? 0} errors`,
     "MediaPipe raises on a non-increasing timestamp; the loop is supervised now");
   check("airpad", "can move the cursor", p.accessibility !== false,
     p.accessibility === false ? "Accessibility permission missing" : "accessibility granted",
