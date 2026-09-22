@@ -232,6 +232,16 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
   <li><a href="#s138"><span>138</span>The robot answers every command and does not move</a></li>
   <li><a href="#s139"><span>139</span>Nine hubs on one port</a></li>
   <li><a href="#s140"><span>140</span>Plaid billed by the request, then Plaid was removed</a></li>
+  <li><a href="#s141"><span>141</span>The stolen mouse, the money face gate, and the Room&hellip;</a></li>
+  <li><a href="#s142"><span>142</span>Swapping Laguna for Qwen3-32B + Heretic, a Bluetoot&hellip;</a></li>
+  <li><a href="#s143"><span>143</span>Laguna removed, keys screens on the panel, the Here&hellip;</a></li>
+  <li><a href="#s144"><span>144</span>Pi panel back up, and the keys screen is a WeMo (15&hellip;</a></li>
+  <li><a href="#s145"><span>145</span>Plain summary: the Pi freeze and the model-decensor&hellip;</a></li>
+  <li><a href="#s146"><span>146</span>The Pi&#x27;s memory cap was never enforced, and the pan&hellip;</a></li>
+  <li><a href="#s147"><span>147</span>Cleetus is on the uncensored Qwen3.8-27B now (17 Se&hellip;</a></li>
+  <li><a href="#s148"><span>148</span>The Bluetooth/BLE shelf, expanded to the full sourc&hellip;</a></li>
+  <li><a href="#s149"><span>149</span>The web app has been on Claude since the 17th and s&hellip;</a></li>
+  <li><a href="#s150"><span>150</span>Node 2 was never dead, and four ways onto the mango&hellip;</a></li>
 </ol></div></nav>
 
 <section id="state"><div class="wrap">
@@ -8561,6 +8571,119 @@ in that form is invented.</pre>
     <li>Ollama <code>OLLAMA_KEEP_ALIVE</code> is 5m in the plist, so a one-line question after a quiet
       spell paid a 29 GB reload (111 s for &ldquo;17*23&rdquo;). Set it to <code>-1</code> or <code>24h</code>
       and restart the agent if Qwen should stay resident.</li>
+  </ul>
+</section>
+
+<section id="s150">
+  <h2>Node 2 was never dead, and four ways onto the mango&rsquo;s network are closed (22 Sep 2026)</h2>
+
+  <h3>What this file got wrong</h3>
+  <p>Node 2 had been off the RuView roster since about 1 Sep, and the note here said a board
+  &ldquo;drops out silently when it loses power&rdquo;. It never lost power. It is plugged into the Mac
+  Studio&rsquo;s USB and was healthy the whole time. Rebooting it over the serial line proved it:
+  <strong>RTS pulses EN, and DTR must stay false</strong> or the chip comes up in the bootloader instead
+  of the firmware. It booted clean, joined <code>ruview-tx</code>, took <code>192.168.8.150</code>,
+  and resumed CSI at about 30 pps with <code>HEALTH sent</code> every 30 s.</p>
+
+  <h3>The real break, and the one command that finds it</h3>
+  <p>Per section 46 the design is: node 2 associates with the mango, and its UDP is NAT&rsquo;d to the
+  server as <code>192.168.1.204</code>, the mango&rsquo;s house-LAN address from repeater mode, which sits
+  inside <code>--udp-allow 192.168.1.0/24</code>. That address now answers nothing and sits
+  <code>(incomplete)</code> in ARP, and a full sweep of 192.168.1.2-254 finds no <code>94:83:c4</code>
+  device at all. <strong>The mango&rsquo;s repeater uplink is down.</strong> Its AP and DHCP still run,
+  which is exactly why the node looks perfectly healthy while its packets have nowhere to go.
+  <code>c6_espnow rx#0</code> says the mesh is split too, since nodes 1 and 3 are on the house AP.</p>
+  <p><strong>The test is <code>ping 192.168.1.204</code>.</strong> Alive means the mango is repeating.
+  Silent means node 2 is stranded no matter how healthy the board looks.</p>
+
+  <h3>The labelled dataset had been dead for three weeks</h3>
+  <p><code>ruview-collect</code> only writes a row when all three nodes report unstale. So the 1 Sep
+  migration of node 2 onto the mango silently stopped the dataset the loop exists to build: zero rows
+  from 1 Sep to 22 Sep. The collector was not stuck on its 200 MB cap; the file was 3.2 MB.</p>
+
+  <h3>Node 2 is back on the house Wi-Fi as a stopgap</h3>
+  <p><code>provision.py</code> is <strong>additive now</strong> (issues #391 and #574): it merges CLI
+  flags with per-port state under <code>~/.config/wifi-densepose/esp32-provision-state/</code> rather
+  than wiping keys you did not pass. Three keys changed and everything else carried over:</p>
+  <pre>~/ruview-venv/bin/python ~/RuView/firmware/esp32-csi-node/provision.py \
+  --port /dev/cu.usbmodem5B790201681 \
+  --ssid 'Not a meth lab' --password &lt;HOUSE_WIFI_KEY&gt; \
+  --filter-mac 38:17:b1:34:e7:5e</pre>
+  <p>Result: roster 3 of 3, node 2 at <code>192.168.1.214</code> on channel 1, mesh sees 1/2/3, and the
+  collector is writing again. RSSI is -54 against -45 on the mango, as expected with the house AP
+  downstairs. <strong>The state file is keyed per PORT</strong> and this board enumerates on two, so use
+  <code>usbmodem5B790201681</code>; the other port has older, different state. To revert once the mango
+  is back, same command with <code>--ssid ruview-tx</code>, <code>--password &lt;MANGO_WIFI_KEY&gt;</code>,
+  <code>--filter-mac 94:83:C4:92:F6:C7</code>.</p>
+
+  <h3>Four routes onto the mango&rsquo;s network, all closed</h3>
+  <ul>
+    <li><strong>Join by name.</strong> <code>networksetup -setairportnetwork</code> answers
+      <code>Could not find network ruview-tx.</code> and <strong>exits 0</strong>. Scanning works fine;
+      Location permission only <em>redacts the SSIDs</em>, and a join by name cannot match a name the
+      process is not allowed to read.</li>
+    <li><strong>Add it as preferred at index 0, cycle the radio.</strong> The Mac rejoined the house
+      network anyway. macOS scores networks itself and will not switch to an AP with no internet, which
+      is precisely what a mango with a dead uplink looks like. The index is not obeyed.</li>
+    <li><strong>Remove the house network so the mango is unopposed.</strong> macOS still held the working
+      association and never dropped it.</li>
+    <li><strong>Wired.</strong> Every ethernet port reads <code>status: inactive</code> except
+      <code>en13</code>, the USB adapter bridged to the Pi at 192.168.2.1.</li>
+  </ul>
+  <p>Do not repeat the first three. They fail for structural macOS reasons, cost several minutes of
+  Wi-Fi churn each, and every failed join silently adds the SSID to the preferred list, which can later
+  strand the Mac on the isolated 192.168.8.x net. Remove it with
+  <code>networksetup -removepreferredwirelessnetwork en1 ruview-tx</code>.</p>
+
+  <h3>The outlet that was not cut</h3>
+  <p>The tempting shortcut was power-cycling the mango through Meross. The only candidate is Nightstand
+  channel 5, <code>Phone And Pi</code>. Section 145 calls that name misleading and says it does not power
+  the Pi, but the device notes list it as a live load and the room panel marks it
+  <code>[locked]</code>. The Pi had 5 d 23 h uptime and a hard power-off risks the SD card, so it was
+  left alone. Two notes disagreeing about a live load is a reason to stop, not to guess.</p>
+
+  <h3>The reset did not fix it, and the way in is a cable</h3>
+  <p>Grayson reset the mango. It still never appeared on the house LAN after about two minutes of polling
+  and another full sweep. A power cycle restores a repeater whose config is intact, so
+  <strong>the repeater config itself is gone or broken</strong>. If the reset was the button rather than
+  the power, the SSID, the password and the installed SSH key are gone too and it needs re-onboarding.</p>
+  <p><strong>Use a cable, not Wi-Fi.</strong> The August setup was done over a direct Mac-en0 to
+  mango-LAN cable and that is still the move: plug en0 into the mango&rsquo;s LAN port, take a
+  192.168.8.x lease there, and the whole box is reachable over SSH with zero Wi-Fi disruption. The key
+  is already installed and <code>known_hosts</code> already has 192.168.8.1.</p>
+
+  <h3>The presence baseline, poisoned and then fixed</h3>
+  <p>A node learns its presence threshold from the first 1200 frames after boot, so booting with a person
+  in the room teaches it that a person is the ambient state. The 12:52 reboot learned a clean one; the
+  16:37 re-flash destroyed it, because Grayson had come back to the desk at 16:31. A third reset at
+  <strong>18:24:47 with HID idle at 196 s</strong> fixed it for real: the first 13 s read
+  <code>motion=0.00 presence=0.00</code>, which is what an empty room is supposed to look like.</p>
+  <p>Unchanged and still the point of the whole mango exercise: with the room empty, all three nodes
+  report <code>present_moving</code> with <code>person_count: 1</code>. The fabrication is exactly what
+  section 55 measured. A clean baseline does not make a downstairs AP able to see this room.</p>
+
+  <h3>Four readings that lied, worth knowing before trusting them</h3>
+  <ul>
+    <li><code>tcpdump</code> without root prints <strong>nothing</strong> and exits 0. It reads as
+      &ldquo;no traffic on that port&rdquo;. It is a permission failure.</li>
+    <li><code>networksetup -getairportnetwork</code> says &ldquo;You are not associated with an AirPort
+      network&rdquo; on a perfectly working link, because the SSID is redacted without Location
+      permission. It is not a statement about the radio.</li>
+    <li><code>networksetup -setairportnetwork</code> returns <strong>exit 0 on a failed join</strong>,
+      and adds the SSID to the preferred list on the way out.</li>
+    <li><code>cleetus.env</code> values carry inline comments <em>and</em> spaces, so
+      <code>awk '{print $1}'</code> turned <code>Not a meth lab</code> into <code>Not</code> and
+      produced a false &ldquo;the stored SSID does not match&rdquo; alarm.</li>
+  </ul>
+
+  <h3>Still open</h3>
+  <ul>
+    <li>Cable to the mango, restore repeater mode, then revert node 2 to <code>ruview-tx</code>.</li>
+    <li>Everything in section 149 is unchanged: the Pages deploy still fails on the 64-variable cap, so
+      <code>LLM_MODEL</code> still names the deleted laguna and the web app is still answering on paid
+      Claude while claiming to be local.</li>
+    <li><code>~/studio-locate/launchd/swap-agent.sh</code> has not been run, and the C920 still delivers
+      no frames.</li>
   </ul>
 </section>
 
