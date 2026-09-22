@@ -436,7 +436,7 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
     <tr><td><code>/airpad/state</code> *, <code>/airpad/stream.mjpg</code> *</td><td>proxied from :8768 to make it same-origin</td></tr>
   </table></div>
 
-  <p><b>The 50 tools.</b> <code>read_file</code> · <code>write_file</code> · <code>edit_file</code> · <code>list_dir</code> · <code>search_files</code> · <code>find_files</code> · <code>run_shell</code> · <code>vault_search</code> · <code>vault_read</code> · <code>remember_fact</code> · <code>save_skill</code> · <code>check_access</code> · <code>cloud_api</code> · <code>desk_light</code> · <code>web_open</code> · <code>web_read</code> · <code>web_act</code> · <code>web_pending</code> · <code>send_email</code> · <code>look</code> · <code>who_is_there</code> · <code>learn_face</code> · <code>known_faces</code> · <code>watch</code> · <code>detect</code> · <code>list_repos</code> · <code>repo_status</code> · <code>github</code> · <code>clone_repo</code> · <code>list_secrets</code> · <code>get_secret</code> · <code>save_secret</code> · <code>forget_secret</code> · <code>recall_chat</code> · <code>read_chat</code> · <code>recent_work</code> · <code>health_report</code> · <code>scheduled_jobs</code> · <code>generate_image</code> · <code>generate_video</code> · <code>list_media_models</code> · <code>list_references</code> · <code>face_search</code> · <code>find_security_skill</code> · <code>read_security_skill</code> · <code>save_reference</code> &middot; <code>room_sense</code> &middot; <code>lights_read</code> &middot; <code>lights_set</code> &middot; <code>room_alarm</code>. There is <b>no path allowlist</b>, deliberately &mdash; the whole point was
+  <p><b>The 54 tools.</b> <code>read_file</code> · <code>write_file</code> · <code>edit_file</code> · <code>list_dir</code> · <code>search_files</code> · <code>find_files</code> · <code>run_shell</code> · <code>vault_search</code> · <code>vault_read</code> · <code>remember_fact</code> · <code>save_skill</code> · <code>check_access</code> · <code>cloud_api</code> · <code>desk_light</code> · <code>web_open</code> · <code>web_read</code> · <code>web_act</code> · <code>web_pending</code> · <code>send_email</code> · <code>look</code> · <code>who_is_there</code> · <code>learn_face</code> · <code>known_faces</code> · <code>watch</code> · <code>detect</code> · <code>list_repos</code> · <code>repo_status</code> · <code>github</code> · <code>clone_repo</code> · <code>list_secrets</code> · <code>get_secret</code> · <code>save_secret</code> · <code>forget_secret</code> · <code>recall_chat</code> · <code>read_chat</code> · <code>recent_work</code> · <code>health_report</code> · <code>scheduled_jobs</code> · <code>generate_image</code> · <code>generate_video</code> · <code>list_media_models</code> · <code>list_references</code> · <code>face_search</code> · <code>find_security_skill</code> · <code>read_security_skill</code> · <code>find_ble_skill</code> · <code>read_ble_skill</code> · <code>save_reference</code> &middot; <code>room_sense</code> &middot; <code>lights_read</code> &middot; <code>lights_set</code> &middot; <code>plugs_read</code> &middot; <code>plugs_set</code> &middot; <code>room_alarm</code>. There is <b>no path allowlist</b>, deliberately &mdash; the whole point was
   that he can open anything on this machine. Eleven aliases map the names the model guesses
   (<code>shell</code>, <code>cat</code>, <code>ls</code>, <code>grep</code>&hellip;) onto the real ones.</p>
 
@@ -8483,6 +8483,85 @@ in that form is invented.</pre>
   slug in <code>REPOS</code> in <code>bin/fetch-ble-corpus.sh</code>, run the script (Grayson runs it,
   not the daemon &mdash; the auto-mode classifier blocks the daemon from fetching external repos), then
   restart cleetusd. Committed as <code>c0a8b4b</code>.</p>
+</section>
+
+<section id="s149">
+  <h2>The web app has been on Claude since the 17th and saying it was laguna; a second Studio Locate agent; lights on arrive (21 Sep 2026)</h2>
+
+  <h3>Is Cleetus on Qwen? Half of him</h3>
+  <p><strong>cleetusd: yes.</strong> <code>/health</code> names <code>qwen3.8-27b-heretic:q8_0</code>, a real
+  <code>/chat</code> round trip answered correctly, and <code>ollama ps</code> showed that model at 100% GPU
+  afterwards. <strong>The web app (me.cleetusai.com): no.</strong> Its Cloudflare Pages binding
+  <code>LLM_MODEL</code> still says <code>laguna-xs-2.1:q8_0</code>, which was deleted from Ollama on 17 Sep.
+  Proven with one request: the gate call to lfm2.5 returned 200, the main call to laguna returned
+  <strong>404</strong>, and the reply came back <code>served_by: anthropic-fallback, fell_back: true</code>
+  while the text said &ldquo;I&rsquo;m running on laguna-xs-2.1:q8_0, served by Ollama on your Mac Studio.&rdquo;
+  That sentence comes from <code>runtimeLine()</code> in <code>functions/api/cleetus.js</code>, which states
+  <code>env.LLM_MODEL</code> <em>before</em> the call, so a fallback reply carries the wrong claim. Every web
+  answer since the 17th has been paid Claude usage, and <code>/api/health</code> reported
+  <code>fallbacks: 0</code> because the breadcrumb does not count this path.</p>
+
+  <h3>Why the fix cannot just be pushed</h3>
+  <p>Every Pages deploy since 16 Sep has <strong>failed</strong>: &ldquo;69 variables, which exceeds the
+  Workers Free limit of 64.&rdquo; So the logo commit <code>a4684a1</code> never shipped either, and no env
+  change lands until the count drops. Seven bindings are referenced by no function
+  (<code>PLAID_CLIENT_ID</code>, <code>PLAID_ENV</code>, <code>PLAID_REDIRECT_URI</code>, <code>PLAID_SECRET</code>,
+  <code>PLAID_WEBHOOK_URL</code>, <code>CLOUDFLARE_ZONE_ID</code>, <code>SUPABASE_ANON_KEY</code>; all still in
+  cleetus.env). Removing them brings it to 62. The classifier refused both the PATCH (secret-store
+  write) and even writing the script for it, so it is Grayson&rsquo;s to run: PATCH the project&rsquo;s
+  production <code>env_vars</code> with those seven set to <code>null</code> and
+  <code>LLM_MODEL</code> = <code>qwen3.8-27b-heretic:q8_0</code>, then retry the last deployment
+  (<code>POST .../deployments/&lt;id&gt;/retry</code>), then ask the site what it runs on and check
+  <code>served_by</code>. Update <code>LLM_MODEL</code> in cleetus.env too, or the reference copy drifts again
+  (section 08 already caught that once with <code>LLM_PROVIDER</code>).</p>
+
+  <h3>Studio Locate had two launch agents, and the wrong one was winning</h3>
+  <p><code>com.cleetus.studio</code> (13 Aug, bare python) has been respawning into &ldquo;address already in
+  use&rdquo; every 10 s for weeks, 764k log lines, because <code>com.grayson.studio-locate</code> (10 Aug,
+  runs <code>StudioLocate.app</code>) already held :8765. The older one is the <em>right</em> shape: the
+  bundle is what gives the server a camera TCC identity. The plist for <code>com.cleetus.studio</code> now
+  points at the bundle; the swap of running jobs was refused by the classifier and waits in
+  <code>~/studio-locate/launchd/swap-agent.sh</code>. Until it runs, the com.grayson agent still owns
+  the port and the doctor still shows the Errno 48 line.</p>
+
+  <h3>The C920 has delivered nothing since 16 Sep 23:19</h3>
+  <p>Not this session&rsquo;s doing. roomwatch&rsquo;s last real frame is <code>2026-09-17T03:33Z</code>, then
+  <code>camera_frozen</code>, then 14,296 <code>camera_unavailable</code> rows. The health log agrees:
+  &ldquo;the confirming camera serves frames&rdquo; has failed since <code>03:19Z</code> that night, which is
+  the Heretic session that &ldquo;turned the cameras back on.&rdquo; AirPad&rsquo;s watchdog loops
+  <code>no frame was ever tracked</code> every 94 s whenever it is up. The Brio 101 answers
+  <code>has_frame: true</code> and serves a frame that is solid black. Both enumerate on USB. This is a
+  physical check: cable, hub, privacy cover, whichever app took the C920 that night.</p>
+
+  <h3>Done tonight</h3>
+  <ul>
+    <li><code>~/desk-trigger/hooks/on-arrive</code> turns the Bedroom on when every lamp is off, via new
+      <code>cleetusd/bin/lights.mjs</code> (status|on|off over <code>src/hue.mjs</code>, no brightness writes).
+      Fired by hand: &ldquo;already lit (2/4 on), left alone.&rdquo; Nothing on leave; 180 s idle is not leaving.</li>
+    <li>The zones work from 26 Aug (<code>zones.html</code>, <code>/api/ruview-zones</code>) is committed as
+      <code>dd81770</code>, <strong>not pushed</strong>: a push is a deploy and deploys are failing.</li>
+    <li>Handoff tool list is 54 again (<code>find_ble_skill</code>, <code>read_ble_skill</code>,
+      <code>plugs_read</code>, <code>plugs_set</code> were unlisted). Doctor: green.</li>
+    <li>Doctor&rsquo;s tracker-thread check printed &ldquo;live, 0 errors&rdquo; beside FAIL; it now says not live
+      and why. Committed <code>63a3f12</code>.</li>
+    <li>Four runaway logs truncated (ollama.err 125 MB, airpad.err 74 MB, studio server.log 76 MB, studio.err).
+      Each was one line repeating.</li>
+    <li>The RuView collector is not stuck on its 200 MB cap (the file is 3.2 MB); it writes only when all
+      three boards report, and one has been dark since 1 Sep. Power the board.</li>
+  </ul>
+
+  <h3>Still needs Grayson</h3>
+  <ul>
+    <li>Run the Pages PATCH + retry above. This is the one that matters: it stops the Claude spend and
+      ships three weeks of commits.</li>
+    <li>Run <code>~/studio-locate/launchd/swap-agent.sh</code>.</li>
+    <li>Look at the C920.</li>
+    <li>Pi: <code>Delegate=memory</code> for <code>user@1000.service</code> (root on the Pi; gpope04 has no
+      NOPASSWD sudo).</li>
+    <li>Ollama <code>OLLAMA_KEEP_ALIVE</code> is 5m in the plist, so a one-line question after a quiet
+      spell paid a 29 GB reload (111 s for &ldquo;17*23&rdquo;). Set it to <code>-1</code> or <code>24h</code>
+      and restart the agent if Qwen should stay resident.</li>
+  </ul>
 </section>
 
 </body>
