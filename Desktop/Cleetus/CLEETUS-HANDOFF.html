@@ -242,6 +242,9 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
   <li><a href="#s148"><span>148</span>The Bluetooth/BLE shelf, expanded to the full sourc&hellip;</a></li>
   <li><a href="#s149"><span>149</span>The web app has been on Claude since the 17th and s&hellip;</a></li>
   <li><a href="#s150"><span>150</span>Node 2 was never dead, and four ways onto the mango&hellip;</a></li>
+  <li><a href="#s151"><span>151</span>How Grayson wants to be spoken to</a></li>
+  <li><a href="#s152"><span>152</span>The Apple TV is set up and on the house Wi-Fi&hellip;</a></li>
+  <li><a href="#s153"><span>153</span>The Pi panel is now one studio panel&hellip;</a></li>
 </ol></div></nav>
 
 <section id="state"><div class="wrap">
@@ -8684,6 +8687,179 @@ in that form is invented.</pre>
       Claude while claiming to be local.</li>
     <li><code>~/studio-locate/launchd/swap-agent.sh</code> has not been run, and the C920 still delivers
       no frames.</li>
+  </ul>
+</section>
+
+<section id="s151">
+  <h2>How Grayson wants to be spoken to (22 Sep 2026)</h2>
+
+  <p><strong>Standing instruction, every session:</strong> clear, concise wording. Not a ton of words.
+  Volume is not thoroughness: padding buries the facts that matter, and information gets lost in
+  the transfer. Say the thing, give the evidence, stop.</p>
+
+  <ul>
+    <li>Lead with the answer or the finding, not the reasoning that produced it.</li>
+    <li>One short paragraph beats five. Cut restatement, recap and throat-clearing.</li>
+    <li>Keep the evidence (command output, numbers, file paths). Cut the narration around it.</li>
+    <li>Corrections stay to a sentence. No repeated apologising, no tallying past mistakes.</li>
+    <li>Do not pad an answer to look thorough. Short and correct is the goal.</li>
+  </ul>
+
+  <h3>Apple TV state</h3>
+  <p>Superseded by section 152: it is set up and on the house Wi-Fi now.</p>
+</section>
+
+<section id="s152">
+  <h2>The Apple TV is set up and on the house Wi-Fi, after a reset that should not have happened yet (22 Sep 2026)</h2>
+
+  <h3>Where it landed</h3>
+  <ul>
+    <li>Apple TV HD (AppleTV5,3, tvOS 26.6) is <strong>set up</strong> and on <code>Not a meth lab</code>
+      at <strong>192.168.1.198</strong>, the same subnet as the Mac and Grayson&rsquo;s phone. Phone remote works.</li>
+    <li><strong>Companion is NOT paired again yet.</strong> A PIN was on screen and the session timed out.
+      Re-pair with the full-scan + filter script at
+      <code>&lt;scratchpad&gt;/pair.py</code>; identifier is
+      <code>75106BB8-FEB9-46C6-ACAF-A26C4005623A</code>.</li>
+    <li><code>~/.local/bin/appletv</code> still points at the OLD identifier and
+      <code>apple-tv.local</code> on the sharing segment. <strong>Update ATV_ID and ATV_HOST before use.</strong></li>
+    <li><strong>The identifier changes on every reset and on completing setup.</strong> It went
+      5B95125F (original) to 86F85EF9 (post-reset, pre-setup) to 75106BB8 (post-setup). Never hardcode it.</li>
+  </ul>
+
+  <h3>What cost the most time, so nobody repeats it</h3>
+  <ul>
+    <li><strong>tvOS Setup Assistant accepts Companion HID keypresses and silently discards them.</strong>
+      pyatv reports success because the device ACKs the event. Verified asleep and awake. Claude said
+      pairing would let it drive setup without a remote, never tested that, and Grayson reset on that
+      assurance. That was the mistake of the session: <em>verify the recovery path before the
+      irreversible step, not just current-state capability.</em></li>
+    <li><code>cfgutil prepare --skip-all</code> <strong>reports success and skips nothing</strong> when the
+      device is unsupervised. The skip flags need supervision.</li>
+    <li><code>cfgutil erase</code> DOES work unsupervised. <code>install-profile</code> does not: it fails
+      with <em>"User interaction on the device is required"</em> unless supervised.</li>
+    <li>No CEC rescue here: the display is an <strong>LG monitor</strong>, and monitors rarely implement it.
+      iPhone proximity setup never offered its card either.</li>
+    <li>tvOS <strong>greys out Wi-Fi setup while ethernet is connected</strong>, so the handover has to be
+      done with ethernet out.</li>
+  </ul>
+
+  <h3>Internet Sharing, and the Pi outage it caused</h3>
+  <ul>
+    <li>Ticking &ldquo;Ethernet&rdquo; in the Sharing pane silently pulled in six extra interfaces
+      (<code>en10 en6 en7 en8 en9 bridge0</code>). macOS rebuilt the bridge, abandoned 192.168.2.0/24 and
+      renumbered to <strong>192.168.234.0/24</strong>, deleting <code>192.168.2.1</code>. That is the Pi&rsquo;s
+      gateway and cleetusd&rsquo;s wired listener, so the wall panel died.</li>
+    <li>Fixed by trimming <code>:NAT:SharingDevices</code> to <code>en13, en0</code> and pinning
+      <code>SharingNetworkNumberStart</code> back to 192.168.2.1 in
+      <code>/Library/Preferences/SystemConfiguration/com.apple.nat.plist</code>.</li>
+    <li><strong><code>killall InternetSharing</code> does NOT reload the config.</strong> The daemon dies,
+      configd does not restart it, and bridge100 keeps its stale address and members. Only an
+      <strong>OFF/ON toggle in System Settings</strong> rebuilds the bridge from the plist.</li>
+    <li>Pi is healthy again: 192.168.2.2, panel <code>/controls</code> about 8 ms.</li>
+    <li>When checking the Pi, probe the right ports: <code>merossd</code> is <strong>127.0.0.1:8772 on the
+      Pi</strong> (loopback, closed from the Mac is NORMAL), cleetusd&rsquo;s wired listener is
+      <strong>192.168.2.1:8767 on the Mac</strong>, panel is <strong>192.168.2.2:8791</strong>.</li>
+  </ul>
+
+  <h3>RESOLVED, same night</h3>
+  <ul>
+    <li><strong>It is renamed <code>GP TV</code>, set up, on the house Wi-Fi at 192.168.1.198.</strong>
+      Both <strong>Companion AND AirPlay are paired</strong> (creds in <code>~/.pyatv.conf</code>), so
+      <code>playing</code>, <code>app</code>, <code>device_state</code> and artwork work for the first time.
+      AirPlay 7000 only opens once setup completes, which is why it could never be paired before.</li>
+    <li><code>~/.local/bin/appletv</code> was rewritten to use <strong>pyatv name-based scan</strong>
+      (<code>-n "GP TV"</code>) instead of a pinned address and companion-only manual mode. The box is on a
+      routable network now so plain scanning works, and this picks up every paired protocol.
+      Round trip is about 3.3 s.</li>
+    <li><strong>Trap: <code>atvremote --id &lt;identifier&gt;</code> does NOT match this device</strong>
+      even though a plain <code>scan</code> lists that exact identifier. It fails with "Could not find any
+      Apple TV on current network". Use <code>-n</code>/name. The same bug bit the pairing script; it needed
+      a full scan plus a filter on <code>all_identifiers</code>.</li>
+    <li><strong>Trap: the mDNS hostname is NOT the display name.</strong> Renaming it to "GP TV" gave the
+      hostname <code>GP-TV-D0034B4361C2.local</code> (it embeds the ethernet MAC), not
+      <code>gp-tv.local</code>. It also still answers on a stale link-local
+      <code>169.254.x</code> record that works until the wired link goes, so prefer a routable address.</li>
+    <li>Peer-to-peer wireless being on changes nothing now that phone, Mac and Apple TV share
+      192.168.1.x. It is what let the phone reach it ACROSS subnets earlier.</li>
+  </ul>
+
+  <h3>Still open</h3>
+  <ul>
+    <li><code>en0</code> is still an Internet Sharing member with nothing on it. Revert if not wanted.</li>
+    <li>A remote may still be worth having: IR needs no pairing, so it works at Setup Assistant, which
+      nothing software-side can drive.</li>
+  </ul>
+</section>
+
+<section id="s153">
+  <h2>The Pi panel is now one studio panel: clock, room, RuView, markets (22 Sep 2026)</h2>
+
+  <h3>What is on the glass</h3>
+  <ul>
+    <li>The <code>devices</code> scene (what the Pi boots to, :8791) is redesigned in a
+      <strong>dragonfly.xyz</strong> look: black, one orange <code>#fa4c14</code>, light serif clock,
+      small mono labels, corner letters and crosshairs. Numbered cards from the DeerFlow reference,
+      segmented bars from the F1 one.</li>
+    <li><strong>01 Time</strong>: clock, seconds bar, date. Beside it presence (desk from HID idle,
+      camera state) and how many devices are on.</li>
+    <li><strong>02 Markets</strong>: SPY, NVDA, AAPL with price, change and an intraday line against the
+      previous close.</li>
+    <li><strong>03 Room control</strong>: same four stations and <strong>every old guard</strong>: Phone And Pi
+      locked (server refuses too), speakers arm-then-fire, rows settle on the readback, board dims with a
+      banner past 60 s.</li>
+    <li><strong>04 RuView</strong>: ASCII waterfall of each node&rsquo;s motion trace, per-node bars, dBm,
+      fps, fusion. People reads <strong>NO FIX</strong> on purpose (the server&rsquo;s head count is fabricated).</li>
+    <li>The old page is still at <code>http://192.168.2.2:8791/classic</code>.</li>
+  </ul>
+
+  <h3>Where it lives</h3>
+  <ul>
+    <li>Source <code>~/cleetusd/pi-devices-dash/</code>: <code>panel.html</code> (becomes
+      <code>public/index.html</code> on the Pi), <code>classic.html</code>, <code>server.mjs</code>,
+      <code>public/fonts/</code> (Newsreader, Doto, Geist Mono, served locally so the panel never depends on
+      Google Fonts). Deploy: <code>PI=gpope04@192.168.2.2 ./deploy.sh</code>. Commit <code>5d73181</code>.</li>
+    <li>New server routes: <code>/quotes</code> (Yahoo chart API, no key, fetched on the Pi, cached 30 s
+      while the market is open and 5 min otherwise, one refresh in flight) and <code>/ruview</code>
+      (loopback proxy to ruview-dash :8790, so no new poll of the Mac).</li>
+    <li>Page loops each await themselves, so a slow endpoint cannot stack requests (the leak that froze the
+      Pi on 16 Sep). Service RSS after deploy: 77 MB.</li>
+  </ul>
+
+  <h3>Traps found</h3>
+  <ul>
+    <li><strong>Every DNS lookup on the Pi costs a flat 5 s</strong>, v4 and v6 alike: the first resolver in
+      <code>/etc/resolv.conf</code> times out. Probably the real reason the tunnel measured 5.4 s from the Pi.
+      Fixing it needs sudo; not done. Yahoo fetches use a 15 s timeout meanwhile.</li>
+    <li><strong><code>deploy.sh</code> used <code>systemctl --user enable --now</code>, which does not restart a
+      running unit.</strong> Every past re-deploy only updated static files. Now it restarts. Check the new
+      routes answer, not <code>is-active</code>.</li>
+    <li>The repo copy of the old page was stale (missing the speaker guard and offline tiles). Synced from the
+      Pi before renaming it <code>classic.html</code>.</li>
+    <li>Doto&rsquo;s full stop is a four-dot cross that reads as &ldquo;+&rdquo; (&ldquo;773+38&rdquo;), so price
+      decimals are drawn as a small square. Pi Chromium 147 also draws Doto thinner than Mac Chrome.</li>
+    <li>An empty fusion window reports median 0 ms; the panel shows a dash then, not &ldquo;0 ms&rdquo;.</li>
+  </ul>
+
+  <h3>Verified</h3>
+  <ul>
+    <li>Screenshot of the real glass via <code>grim</code>. Every feed cut on purpose: each card says NO FEED
+      and the footer names what is down. Locked outlet write goes through the new server and is refused.
+      <strong>A real device toggle from the new page was not tested.</strong></li>
+  </ul>
+
+  <h3>Usability pass, same night (commit <code>b43d033</code>)</h3>
+  <ul>
+    <li>Bigger type (labels 10 to 11 px, tile names 17 px), a wider <strong>ADJ</strong> strip with an icon,
+      and more height for room control.</li>
+    <li><strong>Per-station ALL ON / ALL OFF.</strong> ALL OFF arms first (tap Confirm within 3.5 s). It skips
+      locked, guarded and offline tiles, so it never touches the Pi&rsquo;s power or the speakers. Writes go one
+      at a time.</li>
+    <li><strong>Adjust sheet:</strong> five brightness presets (5 to 100%) and five whites (Candle to Cool) as
+      56 px buttons; the slider stays. It closes itself after 25 s untouched.</li>
+    <li><strong>Night veil, 23:00 to 06:30:</strong> the panel dims, and the first tap only wakes it for 90 s,
+      so waking the screen in the dark never switches a lamp.</li>
+    <li>Tested in Playwright with <code>/controls/set</code> blocked: wake tap, arm tap, arm timeout and ADJ
+      all sent <strong>zero writes</strong>. Glass screenshot confirmed the veil on the Pi.</li>
   </ul>
 </section>
 
