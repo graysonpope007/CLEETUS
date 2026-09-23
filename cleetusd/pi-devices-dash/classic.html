@@ -47,6 +47,12 @@
   /* A tap is in flight. The row must not read as its old state, and must not
      read as the new one either until the device says so. */
   li.pending{border-color:var(--warn);animation:pulse 1s ease-in-out infinite}
+  /* Armed: a confirm-guarded tile (powered speakers) waiting for the second tap. */
+  li.arming{border-color:var(--bad);background:#2a1416;animation:pulse .7s ease-in-out infinite}
+  li.arming .st{color:var(--bad)}
+  /* Offline: reachable=false (a Govee plug that is not answering). Not a button. */
+  li.offline{opacity:.5;border-style:dashed}
+  li.offline .st{color:var(--warn)}
   @keyframes pulse{50%{opacity:.55}}
   li.failed{border-color:var(--bad)}
   body.stale main{opacity:.32;filter:saturate(.25)}
@@ -101,20 +107,36 @@
 <script>
 const board=document.getElementById("board"), ageEl=document.getElementById("age"),
       banner=document.getElementById("banner"), toast=document.getElementById("toast");
-let lastGood=0, pending=new Map(), pausedUntil=0;
+let lastGood=0, pending=new Map(), pausedUntil=0, armed=null;
 
 function say(msg){ toast.textContent=msg; toast.classList.add("show");
   clearTimeout(say._t); say._t=setTimeout(()=>toast.classList.remove("show"), 4000); }
 
 async function tap(item, li){
   if(item.protected) { say(item.protected); return; }
+  if(item.reachable === false) { say(item.name + " is offline"); return; }
   if(pending.has(item.id)) return;
+  // Confirm-guarded (powered speakers): first tap arms, second within 4s fires.
+  // Polling is paused for the window so the pulsing cue is not wiped by a poll.
+  if(item.confirm){
+    const now = Date.now();
+    if(!armed || armed.id !== item.id || now > armed.until){
+      armed = { id: item.id, until: now + 4000 };
+      li.classList.add("arming"); say(item.confirm);
+      pausedUntil = armed.until;
+      clearTimeout(tap._disarm);
+      tap._disarm = setTimeout(()=>{ armed=null; render(); }, 4000);
+      return;
+    }
+    armed = null; clearTimeout(tap._disarm); li.classList.remove("arming");
+  }
   const want = !item.on;
   pending.set(item.id, want);
   li.classList.add("pending"); li.classList.remove("failed");
-  // Hold off polling: a Meross write takes ~2 s and the read cache could
-  // otherwise hand back the PRE-tap state and make the row snap back.
-  pausedUntil = Date.now() + 3000;
+  // Hold off polling while the tap is in flight. The reply IS the readback
+  // and the server drops its read cache on every write, so the hold only has
+  // to cover the request itself, not a cloud round trip.
+  pausedUntil = Date.now() + 1500;
   try{
     const r = await fetch("/controls/set", {method:"POST",
       headers:{"content-type":"application/json"}, body:JSON.stringify({id:item.id, on:want})});
@@ -122,7 +144,7 @@ async function tap(item, li){
     if(!d.ok) { li.classList.add("failed"); say(d.error || "did not switch"); }
     else { item.on = d.on; item.detail = d.detail ?? item.detail; }
   }catch(e){ li.classList.add("failed"); say("no reply: " + e.message); }
-  finally{ pending.delete(item.id); li.classList.remove("pending"); pausedUntil = Date.now()+600; render(); }
+  finally{ pending.delete(item.id); li.classList.remove("pending"); pausedUntil = Date.now()+300; render(); }
 }
 
 // ── The brightness / colour sheet ────────────────────────────────────────────
@@ -193,6 +215,8 @@ function row(item){
   li.className = (item.on?"on ":"") + (item.named_in_home===false?"unnamed ":"") +
                  (item.protected?"locked ":"") + (tappable?"tappable":"");
   if(pending.has(item.id)) li.classList.add("pending");
+  if(armed && armed.id===item.id && Date.now()<armed.until) li.classList.add("arming");
+  if(item.reachable===false) li.classList.add("offline");
   const d=document.createElement("span"); d.className="dot";
   const n=document.createElement("span"); n.className="nm"; n.textContent=item.name;
   const s=document.createElement("span");
@@ -249,9 +273,12 @@ async function tick(){
 function paint(){
   const age=lastGood?Date.now()-lastGood:Infinity;
   ageEl.textContent=lastGood?Math.round(age/1000)+"s ago":"no data";
-  ageEl.className="age"+(age>60000?" bad":age>25000?" warn":"");
+  ageEl.className="age"+(age>30000?" bad":age>10000?" warn":"");
   document.body.classList.toggle("stale", age>60000);
   if(age>60000 && !banner.textContent) banner.textContent="NOT UPDATING";
 }
-tick(); setInterval(tick, 5000);
+// 2 s, not 5: the backend answers from memory now (merossd + the wired link),
+// so a switch flipped from Siri or the Meross app shows here within a couple
+// of seconds instead of up to five.
+tick(); setInterval(tick, 2000);
 </script></body></html>
