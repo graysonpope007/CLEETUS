@@ -35,8 +35,8 @@
   .cross::before,.cross::after{content:"";position:absolute;background:var(--dim2)}
   .cross::before{left:4px;top:0;width:1px;height:9px} .cross::after{top:4px;left:0;height:1px;width:9px}
 
-  .shell{position:absolute;inset:0;display:grid;padding:8px 40px 6px;gap:8px;
-         grid-template-columns:minmax(0,1fr) 352px;grid-template-rows:30px 204px minmax(0,1fr) 14px}
+  .shell{position:absolute;inset:0;display:grid;padding:8px 34px 5px;gap:8px;
+         grid-template-columns:minmax(0,1fr) 344px;grid-template-rows:30px 178px minmax(0,1fr) 15px}
   /* The nav pill, dragonfly's centre bar: mark · status dots · label */
   .pill{grid-column:1/-1;justify-self:center;display:flex;align-items:center;gap:22px;height:30px;
         padding:0 14px;background:#0f0f0f;border:1px solid var(--edge);border-radius:3px;min-width:380px}
@@ -49,7 +49,7 @@
   /* ── Cards ────────────────────────────────────────────────────────────── */
   .card{background:var(--card);border:1px solid var(--edge);border-radius:10px;min-width:0;min-height:0;
         position:relative;display:flex;flex-direction:column;padding:10px 12px 11px;overflow:hidden}
-  .hd{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--bone);height:12px;flex:0 0 auto}
+  .hd{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--bone);height:13px;flex:0 0 auto}
   .hd .n{color:var(--dim)}
   .hd .rt{margin-left:auto;color:var(--dim);display:flex;align-items:center;gap:6px}
   .live{width:6px;height:6px;border-radius:50%;background:var(--hot);box-shadow:0 0 8px var(--hot)}
@@ -60,19 +60,19 @@
   .time{grid-column:1;grid-row:2;flex-direction:row;gap:0;padding:0}
   .clock{flex:1;min-width:0;padding:10px 14px 12px;display:flex;flex-direction:column}
   .hm{display:flex;align-items:flex-start;margin-top:2px}
-  .hm .big{font-family:var(--serif);font-weight:200;font-size:128px;line-height:1;letter-spacing:-6px;margin-left:-4px;
+  .hm .big{font-family:var(--serif);font-weight:200;font-size:112px;line-height:1;letter-spacing:-5px;margin-left:-4px;
            font-variant-numeric:lining-nums tabular-nums;font-optical-sizing:auto;color:var(--bone)}
-  .hm .sec{font-family:var(--dot);font-weight:700;font-size:34px;color:var(--hot);margin:22px 0 0 12px;line-height:1;letter-spacing:1px}
+  .hm .sec{font-family:var(--dot);font-weight:700;font-size:34px;color:var(--hot);margin:18px 0 0 12px;line-height:1;letter-spacing:1px}
   .hm .ap{display:none}
   .date{font-size:11px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-top:auto;display:flex;gap:14px}
   .date b{color:var(--bone);font-weight:400}
   .secbar{display:grid;grid-template-columns:repeat(60,1fr);gap:2px;height:5px;margin-top:9px}
   .secbar i{background:var(--ghost)} .secbar i.on{background:var(--hot)} .secbar i.q{background:var(--dim2)}
   .who{width:196px;flex:0 0 auto;border-left:1px solid var(--edge);padding:10px 14px 12px;display:flex;flex-direction:column;gap:0}
-  .who .k{font-size:9px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase;margin-top:11px}
-  .who .k:first-of-type{margin-top:9px}
-  .who .v{font-family:var(--serif);font-weight:300;font-size:25px;line-height:1.02;letter-spacing:-.4px;text-transform:uppercase;margin-top:3px}
-  .who .s{font-size:10px;color:var(--dim);letter-spacing:.04em;margin-top:3px;text-transform:uppercase}
+  .who .k{font-size:10px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase;margin-top:9px}
+  .who .k:first-of-type{margin-top:7px}
+  .who .v{font-family:var(--serif);font-weight:300;font-size:24px;line-height:1.02;letter-spacing:-.4px;text-transform:uppercase;margin-top:2px}
+  .who .s{font-size:11px;color:var(--dim);letter-spacing:.03em;margin-top:3px;text-transform:uppercase}
   .who .s b{color:var(--hot);font-weight:400}
   .who .v.muted{color:var(--dim)}
 
@@ -81,12 +81,12 @@
   .tick{display:grid;grid-template-columns:52px minmax(0,1fr) 104px;align-items:center;gap:8px;
         flex:1;border-top:1px solid var(--edge);min-height:0}
   .tick:first-of-type{border-top:0}
-  .tick .sym{font-size:11px;letter-spacing:.06em}
-  .tick .sym small{display:block;font-size:8.5px;color:var(--dim);margin-top:3px;letter-spacing:.04em}
-  .tick .px{font-family:var(--dot);font-weight:700;font-size:27px;line-height:1;letter-spacing:.5px;white-space:nowrap}
+  .tick .sym{font-size:13px;letter-spacing:.06em}
+  .tick .sym small{display:block;font-size:9.5px;color:var(--dim);margin-top:3px;letter-spacing:.04em}
+  .tick .px{font-family:var(--dot);font-weight:800;font-variation-settings:"wght" 800;font-size:27px;line-height:1;letter-spacing:.5px;white-space:nowrap}
   /* Doto's full stop is a four-dot cross that reads as "+": draw the point. */
   .tick .px .pt{display:inline-block;width:4px;height:4px;background:var(--bone);margin:0 3px 3px 2px;vertical-align:bottom}
-  .tick .ch{font-size:10px;margin-top:3px;letter-spacing:.03em;white-space:nowrap}
+  .tick .ch{font-size:11px;margin-top:3px;letter-spacing:.03em;white-space:nowrap}
   .tick .ch.up{color:var(--bone)} .tick .ch.dn{color:var(--hot)}
   .tick svg{width:104px;height:40px;display:block;overflow:visible}
   .mkts .ticks{flex:1;display:flex;flex-direction:column;margin-top:6px;min-height:0}
@@ -96,27 +96,34 @@
   .room{grid-column:1;grid-row:3}
   .stations{flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:8px;min-height:0}
   .station{display:flex;flex-direction:column;min-width:0;min-height:0}
-  .station h3{font-size:9px;font-weight:400;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
-              padding:0 0 5px;border-bottom:1px solid var(--edge);margin-bottom:6px;display:flex}
-  .station h3 span{margin-left:auto;color:var(--dim2)}
+  .station h3{font-size:10.5px;font-weight:400;letter-spacing:.08em;white-space:nowrap;text-transform:uppercase;color:var(--bone);
+              height:30px;border-bottom:1px solid var(--edge);margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .station h3 .cnt{color:var(--dim)}
+  /* Station-wide switch. ALL OFF arms first (it can cut the monitors
+     mid-work); ALL ON is one tap. Never touches locked or guarded tiles. */
+  .all{margin-left:auto;height:26px;padding:0 8px;white-space:nowrap;flex:0 0 auto;border-radius:4px;border:1px solid var(--edge2);background:#121212;
+       font:inherit;font-size:9.5px;letter-spacing:.1em;color:var(--dim);display:flex;align-items:center}
+  .all.hasOn{color:var(--bone)}
+  .all.armed{background:var(--hot);border-color:var(--hot);color:#000;animation:pulse .7s ease-in-out infinite}
+  .all:active{transform:scale(.95)}
   ul{list-style:none;display:flex;flex-direction:column;gap:6px;flex:1;min-height:0}
   /* Finger targets: 56px is the floor that stops a thumb hitting two rows. */
-  li{flex:1 1 0;min-height:56px;max-height:92px;display:flex;min-width:0;border-radius:7px;
+  li{flex:1 1 0;min-height:58px;max-height:96px;display:flex;min-width:0;border-radius:7px;
      background:var(--card2);border:1px solid var(--edge);position:relative;overflow:hidden;
      transition:background .15s,border-color .15s}
-  li .main{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;padding:7px 9px 7px 10px}
-  li .nm{font-family:var(--serif);font-weight:300;font-size:15.5px;line-height:1.02;letter-spacing:-.1px;color:var(--dim);
+  li .main{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;padding:7px 7px 7px 10px}
+  li .nm{font-family:var(--serif);font-weight:300;font-size:17px;line-height:1;letter-spacing:-.1px;color:var(--dim);
          overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
-  li .ft{display:flex;align-items:center;gap:7px;font-size:9px;letter-spacing:.1em;color:var(--dim2);text-transform:uppercase}
+  li .ft{display:flex;align-items:center;gap:7px;font-size:10.5px;letter-spacing:.1em;color:var(--dim2);text-transform:uppercase}
   li .ft .st{min-width:22px}
   li .seg{display:flex;gap:2px;flex:1;max-width:60px}
   li .seg i{flex:1;height:4px;background:var(--ghost)}
-  li.on{background:var(--hotbg);border-color:var(--hotedge)}
-  li.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--hot)}
+  li.on{background:#261006;border-color:var(--hotedge)}
+  li.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--hot)}
   li.on .nm{color:var(--bone)}
   li.on .ft{color:var(--hot)}
   li.on .seg i.f{background:var(--hot)}
-  li .more{flex:0 0 38px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--edge);
+  li .more{flex:0 0 44px;flex-direction:column;gap:3px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--edge);
            font-size:9px;letter-spacing:.1em;color:var(--dim)}
   li.on .more{border-left-color:var(--hotedge);color:var(--hot2)}
   li.tappable:active{transform:scale(.97)}
@@ -140,37 +147,49 @@
   .rv{grid-column:2;grid-row:3}
   #ascii{display:block;width:100%;flex:1;min-height:0;margin-top:8px}
   .nodes{display:flex;flex-direction:column;gap:5px;margin-top:8px;flex:0 0 auto}
-  .node{display:grid;grid-template-columns:44px minmax(0,1fr) 34px 52px 42px;gap:8px;align-items:center;height:16px;font-size:10px;letter-spacing:.02em;white-space:nowrap}
+  .node{display:grid;grid-template-columns:44px minmax(0,1fr) 34px 54px 44px;gap:7px;align-items:center;height:16px;font-size:11px;letter-spacing:.02em;white-space:nowrap}
   .node .id{color:var(--bone)} .node .id b{color:var(--hot);font-weight:400;font-size:8px;margin-left:3px;vertical-align:1px}
   .node .bar{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;height:9px}
   .node .bar i{background:var(--ghost)} .node .bar i.f{background:var(--bone)} .node .bar i.h{background:var(--hot)}
   .node .num{text-align:right;color:var(--bone);font-variant-numeric:tabular-nums}
   .node .num.d{color:var(--dim)}
   .node.down{opacity:.4}
-  .rvft{display:flex;justify-content:space-between;font-size:9px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;
+  .rvft{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;
         border-top:1px solid var(--edge);padding-top:7px;margin-top:8px}
   .rvft b{font-weight:400;color:var(--bone)} .rvft b.w{color:var(--hot)}
   .rv.stale #ascii,.rv.stale .nodes{opacity:.35}
 
   .foot{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;font-size:9px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase;padding:0 2px}
+  .foot{font-size:10px}
   .foot b{color:var(--bone);font-weight:400}
 
   /* ── Brightness / colour sheet: full-bleed, a thumb not a mouse ────────── */
-  .sheet{position:fixed;inset:0;z-index:10;background:#000;display:none;flex-direction:column;padding:26px 44px 24px;gap:14px}
+  .sheet{position:fixed;inset:0;z-index:10;background:#000;display:none;flex-direction:column;padding:22px 40px 20px;gap:11px}
   .sheet.open{display:flex}
   .sheet h3{display:flex;align-items:flex-end;gap:18px}
   .sheet h3 .t{font-family:var(--serif);font-weight:200;font-size:58px;line-height:.9;letter-spacing:-2px;text-transform:uppercase}
   .sheet h3 .now{margin-left:auto;font-family:var(--dot);font-weight:700;font-size:40px;color:var(--hot);line-height:1}
   .pwr{padding:9px 18px;border-radius:4px;border:1px solid var(--edge2);background:#0f0f0f;font:inherit;font-size:11px;letter-spacing:.1em;color:var(--dim)}
   .pwr.on{background:var(--hot);border-color:var(--hot);color:#000}
-  .lab{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:4px}
-  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:48px;background:transparent;margin:0}
+  .lab{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:4px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;background:transparent;margin:0}
   input[type=range]::-webkit-slider-runnable-track{height:48px;border-radius:4px;border:1px solid var(--edge2)}
   input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:46px;border-radius:2px;background:var(--hot);margin-top:0;box-shadow:0 0 14px var(--hot)}
   #bri::-webkit-slider-runnable-track{background:repeating-linear-gradient(90deg,transparent 0 9px,#000 9px 11px),linear-gradient(90deg,#1a1a1a,#ecebe7)}
   #ct::-webkit-slider-runnable-track{background:repeating-linear-gradient(90deg,transparent 0 9px,#000 9px 11px),linear-gradient(90deg,#ffb45c,#fff5e8,#cfe4ff)}
+  .presets{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+  .pre{height:56px;border-radius:4px;border:1px solid var(--edge2);background:#0f0f0f;color:var(--bone);font:inherit;
+       font-size:12px;letter-spacing:.08em;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+  .pre small{font-size:9.5px;color:var(--dim);letter-spacing:.1em}
+  .pre.cur{border-color:var(--hot);color:var(--hot)}
+  .pre:active{transform:scale(.95)}
+  .pre .chip{width:34px;height:8px;border-radius:2px}
   .swatches{display:grid;grid-template-columns:repeat(10,1fr);gap:8px}
-  .sw{height:54px;border-radius:4px;border:1px solid #2a2a2a}
+  /* Night: a dark veil that catches the FIRST touch, so waking the panel in
+     a dark room never also switches the lamp under your thumb. */
+  .veil{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.62);display:none}
+  body.night .veil{display:block}
+  .sw{height:50px;border-radius:4px;border:1px solid #2a2a2a}
   .sw:active{transform:scale(.94)}
   .sheet .close{margin-top:auto;align-self:flex-end;padding:13px 34px;border-radius:4px;border:1px solid var(--edge2);background:#0f0f0f;color:var(--bone);font:inherit;font-size:12px;letter-spacing:.12em}
 
@@ -238,14 +257,16 @@
 <section class="sheet" id="sheet">
   <h3><span class="t" id="sName">Lamp</span><button class="pwr" id="sPwr">ON</button><span class="now" id="sNow"></span></h3>
   <div class="lab">Brightness</div>
+  <div class="presets" id="briP"></div>
   <input type="range" id="bri" min="2" max="100" step="1" value="50">
-  <div class="lab" id="ctLab">White temperature</div>
-  <input type="range" id="ct" min="153" max="447" step="1" value="300">
+  <div class="lab" id="ctLab">White</div>
+  <div class="presets" id="ctP"></div>
   <div class="lab" id="swLab">Colour</div>
   <div class="swatches" id="sw"></div>
   <button class="close" id="sClose">DONE</button>
 </section>
 <div class="toast" id="toast"></div>
+<div class="veil" id="veil"></div>
 <div class="banner" id="banner"></div>
 
 <script>
@@ -316,7 +337,7 @@ const SWATCHES=[
   ["#25d6d6",[0.1600,0.3200]],["#3aa0ff",[0.1500,0.1000]],["#7a5cff",[0.2000,0.0800]],
   ["#ff5cc8",[0.3800,0.1600]],
 ];
-const sheet=$("sheet"), briEl=$("bri"), ctEl=$("ct"), swEl=$("sw");
+const sheet=$("sheet"), briEl=$("bri"), swEl=$("sw");
 let cur=null, sendTimer=null;
 function paintSheet(){ if(!cur) return;
   $("sName").textContent=cur.name;
@@ -337,22 +358,47 @@ function push(patch, now){
   clearTimeout(sendTimer);
   if(now) send(); else sendTimer=setTimeout(send,220);
 }
+// Presets first: a thumb hits a 56 px button every time, a slider rarely
+// lands where you meant. The slider stays for in-between values.
+const BRI_P=[[5,"Night"],[25,"Low"],[50,"Half"],[75,"High"],[100,"Full"]];
+const CT_P=[[447,"Candle","#ff9f45"],[370,"Warm","#ffc27a"],[300,"Soft","#ffe2b8"],[233,"Neutral","#fff4e6"],[153,"Cool","#d6e8ff"]];
+function paintPresets(){
+  if(!cur) return;
+  $("briP").replaceChildren(...BRI_P.map(([v,l])=>{
+    const b=el("button","pre"+(cur.on&&Math.abs((cur.brightness??-99)-v)<3?" cur":""));
+    b.innerHTML=`${v}%<small>${l}</small>`;
+    b.addEventListener("click",()=>{ briEl.value=v; cur.brightness=v; cur.on=true; push({brightness:v,on:true},true); paintPresets(); paintSheet(); poke(); });
+    return b;
+  }));
+  $("ctP").replaceChildren(...CT_P.map(([m,l,c])=>{
+    const b=el("button","pre"+(cur.mirek!=null&&Math.abs(cur.mirek-m)<12?" cur":""));
+    b.innerHTML=`<span class="chip" style="background:${c}"></span><small>${l}</small>`;
+    b.addEventListener("click",()=>{ cur.mirek=m; push({mirek:m,on:true},true); paintPresets(); poke(); });
+    return b;
+  }));
+}
+// A sheet left open would hide the whole panel until someone walks over, so
+// it closes itself after 25 s without a touch.
+let sheetIdle=null;
+function poke(){ clearTimeout(sheetIdle); sheetIdle=setTimeout(closeSheet,25000); }
+function closeSheet(){ sheet.classList.remove("open"); cur=null; clearTimeout(sheetIdle); render(); }
+sheet.addEventListener("pointerdown",poke);
 function openSheet(item){
   cur=item;
-  briEl.value=Math.round(item.brightness??50); ctEl.value=item.mirek??320;
+  briEl.value=Math.round(item.brightness??50);
   const showCT=!!item.ctCapable, showColor=!!item.colorCapable;
-  ctEl.style.display=$("ctLab").style.display=showCT?"":"none";
+  $("ctP").style.display=$("ctLab").style.display=showCT?"":"none";
+  $("briP").style.display=item.dimmable?"":"none";
   swEl.style.display=$("swLab").style.display=showColor?"":"none";
   briEl.style.display=item.dimmable?"":"none";
-  paintSheet(); sheet.classList.add("open");
+  paintSheet(); paintPresets(); sheet.classList.add("open"); poke();
 }
 swEl.replaceChildren(...SWATCHES.map(([css,xy])=>{ const b=el("div","sw"); b.style.background=css;
-  b.addEventListener("click",()=>push({xy,on:true},true)); return b; }));
+  b.addEventListener("click",()=>{ cur.mirek=null; push({xy,on:true},true); paintPresets(); }); return b; }));
 briEl.addEventListener("input",()=>{ $("sNow").textContent=`${briEl.value}%`; push({brightness:Number(briEl.value),on:true}); });
 briEl.addEventListener("change",()=>push({brightness:Number(briEl.value),on:true},true));
-ctEl.addEventListener("change",()=>push({mirek:Number(ctEl.value),on:true},true));
 $("sPwr").addEventListener("click",()=>push({on:!cur.on},true));
-$("sClose").addEventListener("click",()=>{ sheet.classList.remove("open"); cur=null; });
+$("sClose").addEventListener("click",closeSheet);
 
 function row(item){
   const li=el("li");
@@ -377,7 +423,8 @@ function row(item){
   // Two targets, far apart: the tile toggles (the common action stays one
   // tap), the ADJ strip opens brightness and colour.
   if(item.dimmable || item.colorCapable){
-    const m=el("span","more","ADJ");
+    const m=el("span","more");
+    m.innerHTML=`<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M3 13l1.4-1.4M11.6 4.4L13 3"/></svg>ADJ`;
     m.addEventListener("click",e=>{ e.stopPropagation(); openSheet(item); });
     li.append(m);
   }
@@ -385,12 +432,52 @@ function row(item){
   li.addEventListener("click",()=>tap(item,li));
   return li;
 }
+// ── Station-wide switch ─────────────────────────────────────────────────────
+// Only plain tiles: never a locked one (the Pi's own power), never a guarded
+// one (the powered speakers), never one that is offline.
+const bulkable=g=>g.items.filter(i=>!i.protected && !i.confirm && i.reachable!==false);
+let allArmed=null;
+async function allTap(g,wantOn){
+  if(!wantOn){
+    if(!allArmed || allArmed.g!==g.name || Date.now()>allArmed.until){
+      allArmed={g:g.name, until:Date.now()+3500}; pausedUntil=allArmed.until;
+      say(`Tap Confirm to switch off everything at ${g.name}`); render();
+      clearTimeout(allTap._t); allTap._t=setTimeout(()=>{ allArmed=null; render(); },3500);
+      return;
+    }
+    allArmed=null; clearTimeout(allTap._t);
+  }
+  const targets=bulkable(g).filter(i=>i.on!==wantOn);
+  targets.forEach(i=>pending.set(i.id,wantOn)); render();
+  let failed=0;
+  // One at a time: the Meross side is one warm session, and a burst of
+  // parallel writes is exactly the kind of pile-up this panel avoids.
+  for(const i of targets){
+    pausedUntil=Date.now()+4000;
+    try{
+      const r=await fetch("/controls/set",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:i.id,on:wantOn})});
+      const d=await r.json();
+      if(d.ok){ i.on=d.on; i.detail=d.detail??i.detail; } else failed++;
+    }catch{ failed++; }
+    pending.delete(i.id); render();
+  }
+  pausedUntil=Date.now()+300;
+  if(failed) say(`${failed} of ${targets.length} at ${g.name} did not switch`);
+}
+
 function render(){
   if(!model) return;
   $("board").replaceChildren(...model.groups.map(g=>{
     const s=el("div","station"); const h=el("h3",null,g.name);
-    const on=g.items.filter(i=>i.on && !i.protected).length, all=g.items.filter(i=>!i.protected).length;
-    h.append(el("span",null,g.online===false?"OFFLINE":`${on}/${all}`)); s.append(h);
+    if(g.online===false) h.append(el("span","cnt","offline"));
+    const bulk=bulkable(g);
+    if(bulk.length>1){
+      const anyOn=bulk.some(i=>i.on), isArmed=allArmed&&allArmed.g===g.name&&Date.now()<allArmed.until;
+      const b=el("button","all"+(anyOn?" hasOn":"")+(isArmed?" armed":""), isArmed?"Confirm":(anyOn?"All off":"All on"));
+      b.addEventListener("click",e=>{ e.stopPropagation(); allTap(g,!anyOn); });
+      h.append(b);
+    }
+    s.append(h);
     const ul=el("ul"); g.items.forEach(i=>ul.append(row(i))); s.append(ul); return s;
   }));
   const items=model.groups.flatMap(g=>g.items).filter(i=>!i.protected);
@@ -553,6 +640,17 @@ async function tickRuview(){
   paintRuview(); paintPresence(); paintDots();
 }
 
+// ── Night: 23:00 to 06:30 the panel sits under a dark veil. The first touch
+// only lifts it (90 s), so waking the screen never switches anything. ────────
+let wokeUntil=0;
+function nightCheck(){
+  const d=new Date(), m=d.getHours()*60+d.getMinutes();
+  const night=(m>=23*60 || m<6*60+30) && Date.now()>wokeUntil && !sheet.classList.contains("open");
+  document.body.classList.toggle("night",night);
+}
+$("veil").addEventListener("click",e=>{ e.stopPropagation(); wokeUntil=Date.now()+90000; nightCheck(); });
+addEventListener("pointerdown",()=>{ if(!document.body.classList.contains("night") && wokeUntil>Date.now()) wokeUntil=Date.now()+90000; },true);
+
 // ── Loops. Each one awaits itself, so a slow endpoint can never stack
 // requests (the ruview-dash leak that froze this Pi was exactly that). ─────
 function loop(fn,ms){ (async function go(){ try{ await fn(); }catch{} setTimeout(go,ms); })(); }
@@ -563,6 +661,7 @@ document.fonts.ready.then(()=>{
 loop(tickControls,2000);
 loop(tickRuview,1000);
 loop(tickMarkets,20000);
-setInterval(()=>{ paintAge(); paintDots(); },1000);
+setInterval(()=>{ paintAge(); paintDots(); nightCheck(); },1000);
+nightCheck();
 </script>
 </body></html>
