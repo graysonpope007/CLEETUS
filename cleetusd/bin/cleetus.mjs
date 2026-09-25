@@ -34,20 +34,36 @@ const MAX_OUT = 20_000;
 
 // ---------- args ----------
 const argv = process.argv.slice(2);
+
+// `cleetus chat ...` = talk to Cleetus HIMSELF (personality, memory, vault, all
+// 24 agents), not the coding agent. Delegate to the daemon's chat REPL and keep
+// this file about coding. Everything after `chat` is passed straight through.
+if (argv[0] === "chat" || argv[0] === "talk") {
+  const { spawn } = await import("node:child_process");
+  const child = spawn(process.execPath, [join(HOME, "cleetusd/bin/chat.mjs"), ...argv.slice(1)],
+    { stdio: "inherit", cwd: join(HOME, "cleetusd") });
+  child.on("exit", (code) => process.exit(code ?? 0));
+  await new Promise(() => {});   // hand the terminal to the child
+}
+
 const flag = (f) => { const i = argv.indexOf(f); if (i === -1) return false; argv.splice(i, 1); return true; };
 const opt = (f) => { const i = argv.indexOf(f); if (i === -1) return null; const v = argv[i + 1]; argv.splice(i, 2); return v; };
 if (flag("--help") || flag("-h")) {
-  console.log(`cleetus: code with the local model
+  console.log(`cleetus: two ways in
 
-  cleetus                 interactive, in this directory
-  cleetus --self          interactive, in ~/cleetusd (build Cleetus)
-  cleetus -p "prompt"     one-shot
-  cleetus -c              continue the last session here
+  cleetus chat            TALK to Cleetus himself (personality, memory, vault, all agents)
+  cleetus chat "..."      one-shot question to Cleetus
+
+  cleetus                 CODE with the local model, in this directory
+  cleetus --self          code in ~/cleetusd (Cleetus works on itself)
+  cleetus -p "prompt"     one-shot coding task
+  cleetus -c              continue the last coding session here
   cleetus --yolo          skip approval prompts
   cleetus --model NAME    pick an Ollama model (default $CLEETUS_MODEL or qwen3.8-27b-heretic:q8_0)
   cleetus --think         show the model's reasoning (slower)
 
-In a session: /help /clear /model /think /yolo /cwd /exit`);
+In a coding session: /help /clear /model /think /yolo /cwd /exit
+In chat: /agent <name> /clear /exit`);
   process.exit(0);
 }
 let MODEL = opt("--model") || process.env.CLEETUS_MODEL || "qwen3.8-27b-heretic:q8_0";
