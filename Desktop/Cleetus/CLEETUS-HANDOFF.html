@@ -249,6 +249,7 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
   <li><a href="#s155"><span>155</span>The desk camera now teaches the RF locator&hellip;</a></li>
   <li><a href="#s160"><span>160</span>The revert loop was the pipeline, and LLM_MODEL is empty&hellip;</a></li>
   <li><a href="#s161"><span>161</span>cleetus from the phone, a Claude-style terminal, and a session that cannot vanish&hellip;</a></li>
+  <li><a href="#s162"><span>162</span>The Nightstand strip was never offline; discovery just stopped looking&hellip;</a></li>
 </ol></div></nav>
 
 <section id="state"><div class="wrap">
@@ -9338,8 +9339,19 @@ in that form is invented.</pre>
     <li>The phone cannot change a session's mode (ask / accept edits / yolo) or run slash commands other than as typed text; /compact typed from the phone does work.</li>
     <li>Housekeeping not built: <code>~/.cleetus/live/*.jsonl</code> grow forever and ended sessions are never pruned; phone-started tmux sessions close when cleetus exits, so a crash there leaves no pane to look at (crash.log still has it).</li>
     <li>Terminal edge cases: very long wrapped input or resizing mid-prompt can misplace the box borders (cosmetic). The two saved sessions titled "Last login: ..." are real: the first message of that session was pasted terminal text.</li>
-    <li>Carried over: Pi studio panel (<code>pi-devices-dash</code>) new code is committed but not deployed to the Pi; Schwab re-auth (income endpoint still no_token); Outlook re-link; security sentry decisions (floor plan, housemates' consent, parts); sleep watch needs 5+ nights of <code>sleepwatch</code> marks; RuView locator pinned at "keys" until a walk-through.</li>
+    <li>Carried over: (Pi studio panel: CORRECTION, it WAS deployed by a Codex session at 13:52 on 25 Sep; the Pi's files match commit e848fd6, see s162); Schwab re-auth (income endpoint still no_token); Outlook re-link; security sentry decisions (floor plan, housemates' consent, parts); sleep watch needs 5+ nights of <code>sleepwatch</code> marks; RuView locator pinned at "keys" until a walk-through.</li>
   </ol>
+</section>
+
+<section id="s162">
+  <h2>162. The Nightstand strip was never offline; discovery just stopped looking (25 Sep)</h2>
+  <ul>
+    <li><strong>Picked up from a Codex session that hit its usage limit.</strong> It had (a) redesigned the Pi panel twice (bold orange STUDIO header, room tabs, big device cards, brightness/colour sheet), (b) regrouped it as Grayson asked: 1 Lights = Keys light, Turtle light, Bulb 1, Bulb 4; 2 Daily = Keys screen, Desk screen, Diffuser; 3 Media = Apple TV &middot; GP TV (full pyatv remote: navigation, apps, playback, touchpad, text, sleep/wake; volume dimmed because the current output does not support it), Apple TV power (Nightstand ch 4, confirm before switching), Keys speakers, Main Monitors; 4 Power = Helix, Desk USB, Turtle lamp outlet, Phone And Pi (locked); (c) deployed it (Pi files == e848fd6, checked by sha256). It stopped while finding out why the Nightstand strip read offline.</li>
+    <li><strong>Cause:</strong> merossd (<code>~/.config/meross/merossd.py</code>, com.cleetus.merossd) reconnects to the Meross cloud after network blips. At the 24 Sep ~17:24 reconnect the Nightstand MSS425F did not answer <code>Appliance.System.Ability</code> within 10 s, so <code>find_devices()</code> returned 2, and nothing ever looked again while the session stayed healthy. Apple TV power, Turtle lamp outlet and Phone And Pi were all "offline" for about a day while the strip worked.</li>
+    <li><strong>Fixed:</strong> restarted merossd (3 devices), and it now rediscovers every 5 min whenever it holds fewer than expected (seeded 3 = Desk, Nightstand, Diffuser; <code>MEROSSD_EXPECTED</code> overrides; also the max ever seen). A failed rediscovery is logged and does not drop the session. Backup: <code>merossd.py.bak-&lt;timestamp&gt;</code>. Not in git: that folder holds Meross credentials.</li>
+    <li><strong>Verified:</strong> <code>/healthz</code> devices 3; Pi <code>/controls</code> all four groups online with Apple TV power reachable; screenshot from the Pi's own display (grim) at <code>Desktop/Cleetus/Pi-screen-20260925-fixed.png</code> shows the new layout and "Connected &middot; All feeds up to date".</li>
+    <li>Left from that session: its isolated preview server (<code>/private/tmp/cleetus-pi-review/preview.mjs</code>, :8794, all writes in memory) may still be running; harmless. The rediscovery path itself has not yet fired for real (it needs a strip to go missing); watch for <code>rediscovering</code> in <code>~/Library/Logs/cleetus-merossd.log</code>.</li>
+  </ul>
 </section>
 
 </body>
