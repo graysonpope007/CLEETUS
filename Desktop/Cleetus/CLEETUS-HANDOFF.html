@@ -8984,10 +8984,13 @@ in that form is invented.</pre>
     <li>Presence thresholds pinned in NVS from the empty window (mean + 3 sd): node 1 25.20, node 2 27.45,
       node 3 27.02, so a reboot with someone present no longer poisons them.</li>
     <li><strong>Mango</strong>: back on channel 1, OFDM-only basic rates (<code>WirelessMode=7</code>,
-      <code>BasicRate=336</code>), now a plain AP on the Mac&rsquo;s wired bridge at
-      <code>root@192.168.2.250</code> (DHCP off). <code>/etc/ruview-tx.sh</code> pings every RuView board on it at
-      50/s so it transmits frames that carry CSI (beacons carry none). Leave its Ethernet in: node 2&rsquo;s data
-      and the mango&rsquo;s illumination both depend on it.</li>
+      <code>BasicRate=336</code>), <strong>fully wireless since 25 Sep</strong>: its own AP <code>ruview-tx</code> on 192.168.8.1 with DHCP, and a
+      Wi-Fi uplink (<code>apcli0</code>) to the house network at <code>192.168.1.204</code> that NATs node 2&rsquo;s data to
+      the Mac (192.168.1.134). SSH: <code>root@192.168.1.204</code> (firewall rule <code>mac_ssh</code> allows only the Mac).
+      Its LAN Ethernet port is removed from <code>br-lan</code>, so no cable is needed and its DHCP can never reach the
+      Pi&rsquo;s bridge again. <code>/etc/ruview-tx.sh</code> (started from <code>/etc/rc.local</code> via start-stop-daemon)
+      pings every RuView board on it at 50/s so it transmits frames that carry CSI (beacons carry none). Node 2 is
+      on <code>ruview-tx</code> at 192.168.8.150, target 192.168.1.134. Backups: <code>/etc/*.bak-2026092*</code>.</li>
     <li>Server (<code>~/RuView/v2</code>, uncommitted): <code>RUVIEW_UDP_TEE</code> raw copy to :5006,
       <code>RUVIEW_EDGE_PRESENCE_GATE</code> (a board&rsquo;s own empty verdict vetoes the stock classifier),
       <code>--udp-allow</code> now includes 192.168.2.0/24.</li>
