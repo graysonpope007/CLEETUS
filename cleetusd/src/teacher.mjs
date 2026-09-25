@@ -86,7 +86,7 @@ async function toolNames() {
 }
 
 const SYSTEM = [
-  "You teach a smaller local model (laguna-xs-2.1, 33B, running on a Mac) to do things it just failed at.",
+  "You teach a smaller local model (Qwen3.8-27B, dense, running on a Mac) to do things it just failed at.",
   "",
   "You are NOT solving the task. You are writing the PROCEDURE the smaller model should follow next time, which is a different job:",
   "- A procedure is repeatable steps. 'Pull the ledger, group by business, reconcile against Plaid, then summarise.'",

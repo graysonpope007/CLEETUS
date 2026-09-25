@@ -74,7 +74,7 @@ const SYSTEM = [
   "",
   "A brief is pasted into that agent's system prompt on EVERY message, on top of a shared identity file. It is not documentation and nobody reads it for pleasure. It is the instructions that make this agent good at its subject and unmistakably about Grayson.",
   "",
-  "The model reading it is laguna-xs-2.1, a 33B running locally. Write for that: concrete, ordered, decidable. It follows instructions literally, so an escape clause will be used and a vague preference will be ignored.",
+  "The model reading it is Qwen3.8-27B, a dense 27B running locally. Write for that: concrete, ordered, decidable. It follows instructions literally, so an escape clause will be used and a vague preference will be ignored.",
   "",
   "WHAT MAKES A GOOD BRIEF",
   "- The judgement calls that separate a specialist from a search engine. What to lead with. What to check before answering. What order to change things in. What tradeoff to make when two goals conflict.",

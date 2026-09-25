@@ -79,7 +79,7 @@ export const CONFIG = {
   // the /v1 endpoint silently drops fields it does not recognise, which is how
   // a 500-token reasoning monologue once ate an entire 300-token brief.
   ollama: env.OLLAMA_HOST || "http://127.0.0.1:11434",
-  model: env.CLEETUSD_MODEL || env.LLM_MODEL || "laguna-xs-2.1:q8_0",
+  model: env.CLEETUSD_MODEL || env.LLM_MODEL || "qwen3.8-27b-heretic:q8_0",
   gateModel: env.LOCAL_GATE_MODEL || "lfm2.5:8b",
   // The eyes. A separate model on purpose: laguna is the one that knows him and
   // holds the tools, and swapping the whole turn onto a VLM to look at one

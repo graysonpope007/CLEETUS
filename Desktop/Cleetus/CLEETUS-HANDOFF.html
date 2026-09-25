@@ -9217,5 +9217,26 @@ in that form is invented.</pre>
   </ul>
 </section>
 
+<section id="s158">
+  <h2>158. Model check: already on the best Qwen this Mac can run; laguna references repointed (25 Sep)</h2>
+  <ul>
+    <li><strong>Correction to s157:</strong> cleetusd was NOT on laguna. <code>~/cleetusd/.env</code> sets CLEETUSD_MODEL=qwen3.8-27b-heretic:q8_0 and overrides the
+      shared cleetus.env; the laguna lines I grepped were old log entries. /health confirmed qwen before and after.</li>
+    <li><strong>Newest Qwen, checked on Hugging Face 25 Sep:</strong> Qwen3.8-27B (5 Aug) is the newest general Qwen that fits. Newer is Qwen3.8-Flash-Next
+      (24 Aug; 125B MoE + 51B n-gram embeddings, preview of the Qwen 4 architecture; beats 27B e.g. DeepSWE 58.7 vs 42.2, SWE-bench Pro 62.5 vs 61.7)
+      but its SMALLEST quant (unsloth UD-IQ1_S) is 72.5 GB, over this Mac's 64 GB total, and there is no heretic build of it. Qwen3.8-2.4T-A95B is
+      far out of reach. Qwen 4 is announced "very soon", no date.</li>
+    <li>The installed heretic build is current: local download sha <code>2dc9b36</code> = heretic-org/Qwen3.8-27B-heretic-ara HEAD (last modified 15 Aug).
+      Nothing to install. When Qwen 4 lands: check its size against 64 GB and whether heretic-org publishes a build, then
+      <code>MODEL_ID=... BASE=... OLLAMA_NAME=... bin/heretic-qwen.sh</code>, <code>verify</code>, <code>activate</code>.</li>
+    <li>Repointed: config.mjs fallback default, the teacher.mjs and train.mjs prompts (they told the teacher its student was "laguna, 33B"),
+      and LLM_MODEL in the shared cleetus.env (backup cleetus.env.bak.&lt;ts&gt;). Restarted cleetusd; <code>heretic-qwen.sh verify</code> = tool-calling OK;
+      a real ask used list_dir correctly (1 min 41 s end to end, slow for a one-line question).</li>
+    <li><strong>NOT changed, needs a look:</strong> the Cleetus V2 web app reads LLM_MODEL from its Cloudflare env, not this file. If that is still
+      laguna with LLM_PROVIDER=openai, its local-model calls fail (or silently fall back to Claude with LLM_FALLBACK=1). Could not read it here:
+      wrangler is not installed, /api/health needs auth, and neither Ollama nor Caddy logs requests.</li>
+  </ul>
+</section>
+
 </body>
 </html>
