@@ -9083,5 +9083,37 @@ in that form is invented.</pre>
 
 
 
+<section id="s156">
+  <h2>156. Sleep watch started; Cleetus Security sentry designed and its core written (25 Sep, ~01:15-02:00)</h2>
+  <h3>Sleep watch (learns what "in bed" and "asleep" look like)</h3>
+  <ul>
+    <li><code>~/cleetusd/bin/sleepwatch.py</code>, LaunchAgent <code>com.cleetus.sleepwatch</code> (KeepAlive), a row every 10 s to
+      <code>roomwatch/sleepwatch/samples-DAY.jsonl</code>: locator posterior, HID idle, Hue lamps on, latest roomwatch camera
+      heartbeat. Raw CSI is already kept by ruview-raw.py, so stillness is computed after the fact.</li>
+    <li><code>sleepwatch mark bed|asleep|up</code> (symlinked to /usr/local/bin) or <code>sleepwatch truth 2026-09-24 bed=01:40 asleep=02:05 up=09:30</code>.
+      Labels come ONLY from Grayson, never from the sensors being scored.</li>
+    <li><code>bin/sleepwatch-report.py</code>, agent <code>com.cleetus.sleepwatch-report</code> daily 14:05 with a push: per-minute timeline,
+      class profiles, leave-one-NIGHT-out logistic model. <strong>READY rule</strong> (baseline.json): 5+ nights with truth, every held-out
+      night in-bed accuracy &ge; 95%, bed and get-up times within 15 min, sleep onset within 20 min on 4 of 5. Until then it keeps watching.</li>
+    <li>CSI motion dropped about 5x at 23:29 on 24 Sep. That matches the multi-illuminator flash at 23:22, so nothing
+      before the flash is comparable. The 0.1-0.5 Hz "breath" feature reads 0.3-0.4 all evening: experimental, probably noise.</li>
+    <li><strong>Locator pinned:</strong> from at least 01:13 the :8793 model output 100% "keys" every window (raw keys 0.62, every
+      other spot at the clip floor) with HID idle and a black camera. Out of distribution, not a location. Do not trust it
+      as a bed signal until it moves again; the day pass (walk, then --score-saved) will say how far it has drifted.</li>
+  </ul>
+  <h3>Cleetus Security sentry</h3>
+  <ul>
+    <li>Plan, Q&amp;A decisions and priced shopping list: Obsidian <code>30-Projects/Cleetus/cleetus-security.md</code>. Living-area unit,
+      multi-unit later; other people live here and visitors have keys; budget ~$250-400; no triggers yet, so the unit detects on its own.</li>
+    <li>RuView is NOT the trigger (bedroom only, presence measured useless). The sentry locates people itself with an HLK-LD2450
+      radar, confirms them with a camera/thermal, aims a pan/tilt night camera, and pushes a live stream. It never calls anyone.</li>
+    <li>Code <code>~/cleetus-security</code> (own repo): LD2450 parser (format checked against the Hi-Link manual), one house frame +
+      <code>fit_pose</code> from a 4-spot walk, Kalman tracker, policy (radar never alerts alone; known face = no push; stranger born at an
+      entry at night = URGENT; faceless figure from the bedroom hall = CHECK), simulator. 11 tests pass; the pose-fit test
+      caught a sign error first.</li>
+    <li>Prices: Pi 5 8 GB is $175 now (RAM price rises). v1 about $415, the ideal build about $576.</li>
+  </ul>
+</section>
+
 </body>
 </html>
