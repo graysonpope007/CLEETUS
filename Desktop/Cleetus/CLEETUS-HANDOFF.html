@@ -746,6 +746,7 @@ git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GIT
         Six can be fixed with a path rewrite; four scripts were never merged out of the worktree and are
         gone. Full detail and the exact commands in section 14. <b>This is the top of the list.</b></li>
       <li><b>Push notifications.</b> <code>apns_devices</code> empty since July. Open the iOS app once.</li>
+      <li><b>Cleetus is auto-committing then reverting to the web app repo in a loop.</b> The Cloudflare deploy history (22 Sep) is filled with paired commits "Cleetus: /api/health reports X is down" immediately followed by "Revert ...", for snapshot and schwab. Every one FAILED to deploy anyway (the 64-var limit, now fixed, see s159), so the churn was invisible. Find what generates these commits (an improve/self-heal path that edits functions/api/health.js on a failing signal, commits, then reverts), and stop it or gate it. NEXT SESSION: start here. See [[cleetusv2-cloudflare-env-limit]], section s159.</li>
     </ol>
   </div>
 
@@ -9254,6 +9255,7 @@ in that form is invented.</pre>
       anthropic; if anthropic, the app runs on Claude and LLM_MODEL is inert but harmless. Could not verify served model without the site login.</li>
     <li><strong>Durable gotcha:</strong> the Pages env is at 60/64. Adding &gt;4 more vars re-breaks every deploy. Under ~5 headroom until Workers Paid.</li>
     <li>wrangler installed globally (4.140.0). All Cloudflare reads/writes here went through the CLOUDFLARE_API_TOKEN in cleetus.env, not wrangler.</li>
+    <li><strong>Final state:</strong> Grayson re-set the LLM_MODEL secret himself via <code>wrangler pages secret put</code> (wrangler works end to end), and a redeploy <code>2d8bd748</code> succeeded and is canonical. Env at 60/64. Site 401 = SITE_PASSWORD gate up. Served model still unverified from outside (needs the site login or the secret LLM_PROVIDER).</li>
     <li><strong>`cleetus chat`</strong> added (bin/chat.mjs): talks to Cleetus HIMSELF via ask() — personality, memory, vault, 24 agents, run
       logs — keeping conversation history. Distinct from bare <code>cleetus</code> (the coding agent). Verified: recalled a number across turns.</li>
   </ul>
