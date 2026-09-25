@@ -62,7 +62,7 @@ if (flag("--help") || flag("-h")) {
   cleetus --model NAME    pick an Ollama model (default $CLEETUS_MODEL or qwen3.8-27b-heretic:q8_0)
   cleetus --think         show the model's reasoning (slower)
 
-In a coding session: /help /clear /model /think /yolo /cwd /exit
+In a coding session: /help /compact /context /clear /model /think /yolo /cwd /exit
 In chat: /agent <name> /clear /exit`);
   process.exit(0);
 }
@@ -310,19 +310,28 @@ async function* stream(messages, signal) {
 let current = null;   // AbortController of the in-flight turn
 let lastCtx = 0;      // prompt+eval tokens Ollama reported for the last call
 
-// Keep the conversation inside the window. Old tool outputs (file dumps, diffs,
-// test logs) are most of the bulk and the least needed later, so past 70% they
-// shrink to a stub; the model can re-run the tool. System prompt, user turns,
-// and the last KEEP messages are never touched.
+// Keep the conversation inside the window, without ever losing the session.
+//
+// Tier 1 (70% full): old tool outputs (file dumps, diffs, test logs) are most of
+// the bulk and the least needed later, so they shrink to a stub; the model can
+// re-run the tool. Cheap, no model call.
+// Tier 2 (80% full, or /compact): the model writes a working summary of the
+// older part of the session (goal, decisions, files changed, state, next steps)
+// and that summary replaces it. The last KEEP messages stay verbatim, and the
+// full transcript is archived to ~/.cleetus/sessions/archive/ first, so nothing
+// is ever actually thrown away. This is what makes /clear unnecessary.
 const KEEP = 12;
 const STUB = 600;
+const SUMMARIZE_AT = Number(process.env.CLEETUS_COMPACT_AT || 0.8);
+const TRIM_AT = Math.min(0.7, SUMMARIZE_AT);
+const SUMMARY_TAG = "[Session summary. Earlier messages were compacted to fit the context window; the full transcript is archived.]";
 function estTokens(ms) { return Math.ceil(ms.reduce((n, m) => n + String(m.content || "").length + JSON.stringify(m.tool_calls || "").length, 0) / 3.2); }
-function compact(ms, budget, used = estTokens(ms)) {
-  if (used <= budget * 0.7) return 0;
+function trimToolOutputs(ms, budget, used = estTokens(ms)) {
+  if (used <= budget * TRIM_AT) return 0;
   let freed = 0;
   for (let i = 1; i < ms.length - KEEP; i++) {
     const m = ms[i];
-    if (m.role !== "tool" || m.content.length <= STUB + 100 || m.compacted) continue;
+    if (m.role !== "tool" || String(m.content).length <= STUB + 100 || m.compacted) continue;
     const was = m.content.length;
     m.content = m.content.slice(0, STUB) + `\n...[older output trimmed to save context (${was} chars); re-run the tool if you need it]`;
     m.compacted = true; freed += was - m.content.length;
@@ -330,11 +339,59 @@ function compact(ms, budget, used = estTokens(ms)) {
   }
   return freed;
 }
+// Where the verbatim tail starts. Never on a tool result: one without the
+// assistant message that called it is an orphan the model cannot place.
+function cutPoint(ms) {
+  let i = Math.max(1, ms.length - KEEP);
+  while (i > 1 && ms[i].role === "tool") i--;
+  return i;
+}
+const SUMMARIZE = `Pause the task. Older messages in this session are about to be removed to free context, and this summary will replace them. Write a working summary so you can continue seamlessly. Include:
+1. Grayson's goal(s) and every instruction or preference he gave, in his words where it matters.
+2. What has been done: exact file paths created or changed, and why.
+3. Key facts learned: commands, paths, ports, errors and their causes, test results.
+4. Current state: what is finished, what is in progress, what is broken.
+5. The next concrete steps.
+Be specific; exact names beat prose. Plain text, no tool calls, under 1500 words.`;
+async function summarizeOlder(ms) {
+  const cut = cutPoint(ms);
+  if (cut <= 2) return { ok: false, why: "nothing old enough to compact" };
+  const older = ms.slice(0, cut);
+  // The summary request reuses the exact prefix (same system prompt, same tools),
+  // so Ollama's KV cache covers it and only the summary itself is generated.
+  const res = await fetch(`${OLLAMA}/api/chat`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: MODEL, messages: [...older, { role: "user", content: SUMMARIZE }], tools: toolSchemas,
+      stream: false, think: false, options: { num_ctx: NUM_CTX, temperature: 0.2 } }),
+  });
+  if (!res.ok) return { ok: false, why: `ollama ${res.status}` };
+  const summary = String((await res.json()).message?.content || "").trim();
+  if (summary.length < 200) return { ok: false, why: "the model returned no usable summary" };
+  // If the request that started the current work is being compacted, keep it
+  // word for word. A paraphrase of the task is how an agent drifts off it.
+  const lastUser = older.filter((m) => m.role === "user" && !String(m.content).startsWith(SUMMARY_TAG)).at(-1);
+  const pinned = lastUser && !ms.slice(cut).some((m) => m.role === "user") ? `\n\nGrayson's current request, verbatim:\n${lastUser.content}` : "";
+  const archived = await archive(ms);
+  const before = estTokens(ms);
+  ms.splice(1, cut - 1, { role: "user", content: `${SUMMARY_TAG}\n\n${summary}${pinned}` });
+  return { ok: true, removed: cut - 1, before, after: estTokens(ms), archived };
+}
+async function keepInWindow(ms, { force = false } = {}) {
+  const overhead = Math.ceil(JSON.stringify(toolSchemas).length / 3.2);
+  let used = Math.max(lastCtx, estTokens(ms) + overhead);
+  const freed = trimToolOutputs(ms, NUM_CTX, used);
+  if (freed) { lastCtx = 0; used = estTokens(ms) + overhead; console.log(dim(`  trimmed old tool output (${Math.round(freed / 1000)}k chars) to stay inside the ${NUM_CTX} context`)); }
+  if (!force && used <= NUM_CTX * SUMMARIZE_AT) return;
+  const spin = tty ? startSpinner() : null;
+  let r;
+  try { r = await summarizeOlder(ms); } catch (e) { r = { ok: false, why: e.message }; } finally { spin?.stop(); }
+  if (r.ok) { lastCtx = 0; console.log(dim(`  compacted ${r.removed} older messages into a summary (~${Math.round(r.before / 1000)}k -> ~${Math.round(r.after / 1000)}k tokens); full transcript kept at ${show(r.archived)}`)); }
+  else console.log(yellow(`  could not compact: ${r.why}`));
+}
 
 async function turn(messages) {
   for (let step = 0; step < MAX_STEPS; step++) {
-    const freed = compact(messages, NUM_CTX, Math.max(lastCtx, estTokens(messages)));
-    if (freed) { lastCtx = 0; console.log(dim(`  trimmed old tool output (${Math.round(freed / 1000)}k chars) to stay inside the ${NUM_CTX} context`)); }
+    await keepInWindow(messages);
     current = new AbortController();
     let text = "", thinking = "", calls = [], started = false, stats = null;
     const spin = tty ? startSpinner() : null;
@@ -362,11 +419,11 @@ async function turn(messages) {
       const tps = stats.eval_count && stats.eval_duration ? (stats.eval_count / (stats.eval_duration / 1e9)).toFixed(1) : "?";
       const ctx = lastCtx;
       if (!calls.length) console.log(dim(`  ${tps} tok/s · context ${ctx}/${NUM_CTX}`));
-      if (ctx > NUM_CTX * 0.85) console.log(yellow(`  context nearly full (${ctx}/${NUM_CTX}); /clear soon or set CLEETUS_CTX higher`));
+      // No warning needed: the next step compacts on its own past 80%.
     }
     if (!calls.length && !text.trim()) {
       // A blank reply with no tool call is how an overflowing prompt looks from here.
-      console.log(yellow(`  the model returned nothing (context ${lastCtx || "?"}/${NUM_CTX}). Try again, or /clear.`));
+      console.log(yellow(`  the model returned nothing (context ${lastCtx || "?"}/${NUM_CTX}). Try again, or /compact.`));
     }
     if (!calls.length) return;
     for (const call of calls) {
@@ -409,6 +466,13 @@ async function save(messages) {
   sessionFile ??= join(sessionDir, `${sessionKey}__${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
   await writeFile(sessionFile, JSON.stringify(messages));
 }
+async function archive(messages) {
+  const dir = join(sessionDir, "archive");
+  await mkdir(dir, { recursive: true });
+  const f = join(dir, `${sessionKey}__${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  await writeFile(f, JSON.stringify(messages));
+  return f;
+}
 
 // ---------- main ----------
 async function checkModel() {
@@ -446,7 +510,9 @@ rl.on("SIGINT", () => {
   lastSigint = Date.now(); console.log(dim("\n  (ctrl-c again to exit)")); rl.prompt();
 });
 
-const HELP = `  /clear         start a fresh conversation
+const HELP = `  /compact       summarize older messages now to free context (automatic at 80%)
+  /context       show how full the context window is
+  /clear         start a fresh conversation (the old one stays on disk)
   /model [name]  show or switch the Ollama model
   /think         toggle showing reasoning (currently ${THINK ? "on" : "off"})
   /yolo          toggle approval prompts
@@ -462,6 +528,8 @@ while (true) {
     const [cmd, ...rest] = q.slice(1).split(/\s+/); const arg = rest.join(" ");
     if (cmd === "exit" || cmd === "quit") break;
     else if (cmd === "help") console.log(HELP);
+    else if (cmd === "compact") { await keepInWindow(messages, { force: true }); await save(messages).catch(() => {}); }
+    else if (cmd === "context") { const est = estTokens(messages) + Math.ceil(JSON.stringify(toolSchemas).length / 3.2); console.log(dim(`  ~${Math.max(lastCtx, est)} of ${NUM_CTX} tokens (${Math.round(100 * Math.max(lastCtx, est) / NUM_CTX)}%), ${messages.length} messages; compacts at ${Math.round(SUMMARIZE_AT * 100)}%`)); }
     else if (cmd === "clear") { messages = [{ role: "system", content: systemPrompt() }]; sessionFile = null; console.log(dim("  cleared")); }
     else if (cmd === "think") { THINK = !THINK; console.log(dim(`  reasoning ${THINK ? "shown" : "off"}`)); }
     else if (cmd === "yolo") { YOLO = !YOLO; console.log(YOLO ? yellow("  yolo on: writes and shell run without asking") : dim("  approvals back on")); }
