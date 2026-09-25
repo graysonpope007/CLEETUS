@@ -9238,5 +9238,26 @@ in that form is invented.</pre>
   </ul>
 </section>
 
+<section id="s159">
+  <h2>159. Cleetus web app deploying again + `cleetus chat` (25 Sep)</h2>
+  <ul>
+    <li><strong>Root cause of 8 failed deploys (since 22 Sep):</strong> Cloudflare Workers FREE limit is 64 env vars per Worker; Pages
+      bundles all Functions into one Worker; production had 65 (the 22 Sep logs said 69, 4 trimmed since). Every deploy died at the
+      PUBLISH step: "includes 69 variables, which exceeds the Workers Free limit of 64". Not a code bug. The auto-commit/revert
+      "/api/health reports X is down" churn was Cleetus retrying into that wall.</li>
+    <li><strong>Fix (Grayson approved):</strong> deleted the 5 unconfigured <code>MS_*</code> vars (Microsoft 365; MS_WEB_CLIENT_ID and
+      MS_WEB_REFRESH_TOKEN were literally REPLACE_ME) -> 60 vars. Triggered a fresh production deploy <code>d351fce4</code>: FIRST success
+      after 8 failures, now the canonical production deployment. Site returns 401 = the SITE_PASSWORD gate is up (healthy), not down.</li>
+    <li><strong>LLM_MODEL:</strong> set the production secret to <code>qwen3.8-27b-heretic:q8_0</code> (was almost certainly the deleted laguna).
+      Cloudflare never echoes secret values, so it reads back as '' in the API; the other 6 LLM_/LOCAL_ vars are intact. NOTE: whether the
+      app actually uses LLM_MODEL depends on <code>LLM_PROVIDER</code> (a secret, unreadable here) being openai/local rather than the default
+      anthropic; if anthropic, the app runs on Claude and LLM_MODEL is inert but harmless. Could not verify served model without the site login.</li>
+    <li><strong>Durable gotcha:</strong> the Pages env is at 60/64. Adding &gt;4 more vars re-breaks every deploy. Under ~5 headroom until Workers Paid.</li>
+    <li>wrangler installed globally (4.140.0). All Cloudflare reads/writes here went through the CLOUDFLARE_API_TOKEN in cleetus.env, not wrangler.</li>
+    <li><strong>`cleetus chat`</strong> added (bin/chat.mjs): talks to Cleetus HIMSELF via ask() — personality, memory, vault, 24 agents, run
+      logs — keeping conversation history. Distinct from bare <code>cleetus</code> (the coding agent). Verified: recalled a number across turns.</li>
+  </ul>
+</section>
+
 </body>
 </html>
