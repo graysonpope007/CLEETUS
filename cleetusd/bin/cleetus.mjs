@@ -72,7 +72,10 @@ let THINK = flag("--think");
 const CONTINUE = flag("-c") || flag("--continue");
 const SELF = flag("--self");
 const oneShot = opt("-p") ?? opt("--print");
-const NUM_CTX = Number(process.env.CLEETUS_CTX || 32768);
+// Matches what Ollama already loads this model at (262144, same as cleetusd), so
+// a turn never forces a reload. 32768 overflowed in ~30 tool calls, and Ollama
+// silently drops the START of an overflowing prompt, so replies went blank.
+const NUM_CTX = Number(process.env.CLEETUS_CTX || 262144);
 if (SELF) process.chdir(join(HOME, "cleetusd"));
 let CWD = process.cwd();
 
@@ -305,9 +308,33 @@ async function* stream(messages, signal) {
 }
 
 let current = null;   // AbortController of the in-flight turn
+let lastCtx = 0;      // prompt+eval tokens Ollama reported for the last call
+
+// Keep the conversation inside the window. Old tool outputs (file dumps, diffs,
+// test logs) are most of the bulk and the least needed later, so past 70% they
+// shrink to a stub; the model can re-run the tool. System prompt, user turns,
+// and the last KEEP messages are never touched.
+const KEEP = 12;
+const STUB = 600;
+function estTokens(ms) { return Math.ceil(ms.reduce((n, m) => n + String(m.content || "").length + JSON.stringify(m.tool_calls || "").length, 0) / 3.2); }
+function compact(ms, budget, used = estTokens(ms)) {
+  if (used <= budget * 0.7) return 0;
+  let freed = 0;
+  for (let i = 1; i < ms.length - KEEP; i++) {
+    const m = ms[i];
+    if (m.role !== "tool" || m.content.length <= STUB + 100 || m.compacted) continue;
+    const was = m.content.length;
+    m.content = m.content.slice(0, STUB) + `\n...[older output trimmed to save context (${was} chars); re-run the tool if you need it]`;
+    m.compacted = true; freed += was - m.content.length;
+    if (used - freed / 3.2 <= budget * 0.5) break;
+  }
+  return freed;
+}
 
 async function turn(messages) {
   for (let step = 0; step < MAX_STEPS; step++) {
+    const freed = compact(messages, NUM_CTX, Math.max(lastCtx, estTokens(messages)));
+    if (freed) { lastCtx = 0; console.log(dim(`  trimmed old tool output (${Math.round(freed / 1000)}k chars) to stay inside the ${NUM_CTX} context`)); }
     current = new AbortController();
     let text = "", thinking = "", calls = [], started = false, stats = null;
     const spin = tty ? startSpinner() : null;
@@ -330,11 +357,16 @@ async function turn(messages) {
     } finally { spin?.stop(); current = null; }
     if (text && !text.endsWith("\n")) process.stdout.write("\n");
     messages.push({ role: "assistant", content: text, ...(calls.length ? { tool_calls: calls } : {}) });
+    if (stats) lastCtx = (stats.prompt_eval_count || 0) + (stats.eval_count || 0);
     if (stats && tty) {
       const tps = stats.eval_count && stats.eval_duration ? (stats.eval_count / (stats.eval_duration / 1e9)).toFixed(1) : "?";
-      const ctx = (stats.prompt_eval_count || 0) + (stats.eval_count || 0);
+      const ctx = lastCtx;
       if (!calls.length) console.log(dim(`  ${tps} tok/s · context ${ctx}/${NUM_CTX}`));
       if (ctx > NUM_CTX * 0.85) console.log(yellow(`  context nearly full (${ctx}/${NUM_CTX}); /clear soon or set CLEETUS_CTX higher`));
+    }
+    if (!calls.length && !text.trim()) {
+      // A blank reply with no tool call is how an overflowing prompt looks from here.
+      console.log(yellow(`  the model returned nothing (context ${lastCtx || "?"}/${NUM_CTX}). Try again, or /clear.`));
     }
     if (!calls.length) return;
     for (const call of calls) {

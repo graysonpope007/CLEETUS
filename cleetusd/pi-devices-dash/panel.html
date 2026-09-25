@@ -1,11 +1,11 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=1024,height=600,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Studio Panel</title>
 <!--
   The Pi's main panel (1024x600, DZX Z3). Clock, room control, RuView, markets.
   Look: dragonfly.xyz (black field, one hot orange, light Roman serif display,
-  tiny mono labels, ASCII imagery, crosshair marks) crossed with the DeerFlow
-  card grid and F1-telemetry segmented bars.
+  mono labels, ASCII imagery, crosshair marks). Room controls get priority,
+  with separate power and adjustment targets sized for the Pi touchscreen.
 
   Everything the old Room panel guarded is still guarded here: the server
   refuses protected writes, the page says why; confirm tiles arm-then-fire;
@@ -14,260 +14,174 @@
   wall are worse than none. The old page is at /classic.
 -->
 <style>
-  @font-face{font-family:"Newsreader";src:url(/fonts/Newsreader-normal.woff2) format("woff2");font-weight:200 400;font-display:block}
-  @font-face{font-family:"Doto";src:url(/fonts/Doto-normal.woff2) format("woff2");font-weight:400 900;font-display:block}
-  @font-face{font-family:"Geist Mono";src:url(/fonts/GeistMono-normal.woff2) format("woff2");font-weight:300 500;font-display:block}
-  :root{
-    --void:#000; --card:#0a0a0a; --card2:#101010; --edge:#1d1d1d; --edge2:#2a2a2a;
-    --bone:#ecebe7; --dim:#7b7b7b; --dim2:#4a4a4a; --ghost:#262626;
-    --hot:#fa4c14; --hot2:#ff7a45; --hotbg:#1c0c05; --hotedge:#5a2410;
-    --serif:"Newsreader",Georgia,serif; --mono:"Geist Mono",ui-monospace,Menlo,monospace; --dot:"Doto","Geist Mono",monospace;
-  }
-  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-  html,body{width:1024px;height:600px;overflow:hidden;touch-action:manipulation;background:var(--void)}
-  body{color:var(--bone);font-family:var(--mono);font-size:11px;user-select:none;position:relative}
+@font-face{font-family:Newsreader;src:url(/fonts/Newsreader-normal.woff2) format("woff2");font-weight:200 400;font-display:swap}
+@font-face{font-family:"Geist Mono";src:url(/fonts/GeistMono-normal.woff2) format("woff2");font-weight:300 500;font-display:swap}
+:root{--void:#000;--card:#0a0a0a;--card2:#141414;--edge:#242424;--edge2:#393939;--bone:#ecebe7;--dim:#a0a09b;--dim2:#74746f;--ghost:#292929;--hot:#fa4c14;--hot2:#ff916d;--hotbg:#20110b;--hotedge:#73402a;--serif:Newsreader,Georgia,serif;--mono:"Geist Mono",monospace;--sans:Arial,Helvetica,sans-serif}
+[hidden]{display:none!important}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;min-height:100%;background:var(--void);touch-action:manipulation}
+body{color:var(--bone);font-family:var(--sans);font-size:14px;user-select:none}
+button,input{font:inherit} button{cursor:pointer;color:inherit} button:disabled{cursor:wait}
+button:focus-visible,input:focus-visible{outline:2px solid var(--bone);outline-offset:3px;z-index:2}
+button:active:not(:disabled){filter:brightness(1.25)}
+.corner{position:fixed;font-family:var(--serif);font-size:23px;line-height:1;pointer-events:none;color:var(--bone)}
+.corner.tl{left:8px;top:12px}.corner.tr{right:8px;top:12px}.corner.bl{left:8px;bottom:6px}.corner.br{right:8px;bottom:6px}
+.cross{position:fixed;width:7px;height:7px;pointer-events:none}
+.cross::before,.cross::after{content:"";position:absolute;background:var(--dim2)}
+.cross::before{left:3px;width:1px;height:7px}.cross::after{top:3px;width:7px;height:1px}
 
-  /* ── Frame: dragonfly's corner letters and crosshairs ─────────────────── */
-  .corner{position:absolute;font-family:var(--serif);font-weight:300;font-size:22px;line-height:1;color:var(--bone);z-index:2}
-  .corner.tl{left:12px;top:9px} .corner.tr{right:12px;top:9px}
-  .corner.bl{left:12px;bottom:6px} .corner.br{right:12px;bottom:6px}
-  .cross{position:absolute;width:9px;height:9px;z-index:2;pointer-events:none}
-  .cross::before,.cross::after{content:"";position:absolute;background:var(--dim2)}
-  .cross::before{left:4px;top:0;width:1px;height:9px} .cross::after{top:4px;left:0;height:1px;width:9px}
+/* One area at a time: four room tabs, four generous device tiles. */
+.shell{height:100dvh;min-height:600px;max-width:1600px;margin:auto;display:grid;padding:14px 30px 10px;gap:14px;grid-template-columns:minmax(0,1fr) 252px;grid-template-rows:110px minmax(0,1.08fr) minmax(0,1fr) 18px}
+.masthead{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 252px;gap:14px;border-bottom:1px solid var(--edge2);padding-bottom:13px;min-width:0}
+.mast-left{display:flex;justify-content:space-between;align-items:center;gap:20px;min-width:0}
+.identity{min-width:0}.eyebrow{font:10px var(--mono);color:var(--dim);letter-spacing:.13em;text-transform:uppercase;display:flex;align-items:center;gap:10px}
+.wordmark{font:400 85px/.9 var(--sans);letter-spacing:-6px;color:var(--hot);margin-top:9px;margin-left:-4px}
+.dots{display:flex;gap:3px}.dots i{width:4px;height:4px;background:var(--dim2)}.dots i.ok{background:var(--hot)}
+.who{width:205px;min-width:0;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;padding-top:13px}.who .k{font:10px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}.who .v{font:300 27px/1.1 var(--serif);margin:7px 0 3px}.who .v.muted{color:var(--dim)}.who .s{font:10px/1.5 var(--mono);color:var(--dim);white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.who .s b{color:var(--hot);font-weight:400}.running{font:10px var(--mono);color:var(--dim);margin-top:9px;display:flex;align-items:center;gap:6px}.running strong{font-weight:400;color:var(--bone)}#onS{display:none}
+.clock{min-width:0;display:flex;flex-direction:column;align-items:flex-end;justify-content:center}.hm{display:flex;align-items:baseline;gap:8px;white-space:nowrap}.hm .big{font:200 73px/.9 var(--serif);letter-spacing:-3px;font-variant-numeric:lining-nums tabular-nums}.hm .sec{font:16px var(--mono);color:var(--hot)}.hm .ap{font:10px var(--mono);color:var(--dim)}.date{display:flex;gap:9px;white-space:nowrap;font:10px var(--mono);color:var(--dim);margin-top:9px}.date b{font-weight:400;color:var(--bone)}.secbar{width:100%;height:2px;display:grid;grid-template-columns:repeat(60,1fr);gap:2px;margin-top:10px}.secbar i{background:var(--ghost)}.secbar i.on{background:var(--hot)}#tz{display:none}
+.card{min-width:0;min-height:0;display:flex;flex-direction:column;position:relative}.hd{display:flex;align-items:center;gap:8px;font:10px var(--mono);text-transform:uppercase;letter-spacing:.05em;min-height:18px;flex-shrink:0}.hd .n{color:var(--hot)}.hd .rt{margin-left:auto;color:var(--dim);display:flex;align-items:center;gap:5px;font-size:9px;letter-spacing:0}.live{width:5px;height:5px;display:inline-block;background:var(--hot)}.rt.warn{color:var(--hot2)}
+.room{grid-column:1;grid-row:2/4;min-height:0}.room-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;flex:0 0 58px}
+.room-tab{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;border:1px solid var(--edge2);background:var(--card);padding:0 12px;color:var(--dim);font:12px var(--mono)}.room-tab .tab-count{font-size:10px;opacity:.85;white-space:nowrap}.room-tab[aria-selected=true]{background:var(--hot);border-color:var(--hot);color:#000}.room-tab[aria-selected=true] .tab-name{font-weight:500}.room-tab[aria-selected=true] .tab-count{opacity:1}
+.stations{flex:1;min-height:0;display:flex;flex-direction:column}.station{flex:1;min-height:0;display:flex;flex-direction:column}.station-head{display:flex;align-items:center;justify-content:space-between;gap:15px;min-height:69px;flex:0 0 69px}.station-title{display:flex;align-items:baseline;gap:13px;min-width:0}.station h2{font:300 31px/1 var(--serif);letter-spacing:-.3px}.station .cnt{font:10px var(--mono);color:var(--dim);white-space:nowrap}.all{min-width:145px;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:13px;padding:0 13px;border:1px solid var(--edge2);background:transparent;font:11px var(--mono)}.all.armed{background:var(--hot);border-color:var(--hot);color:#000}.all .arr{font-size:18px;color:var(--dim)}.all.armed .arr{color:#000}
+.device-list{flex:1;min-height:0;list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:10px;overflow-y:auto;overscroll-behavior:contain}.device{display:flex;flex-direction:column;min-width:0;min-height:125px;position:relative;border:1px solid var(--edge2);background:var(--card2);transition:background .15s,border-color .15s}.device .main{flex:1;min-height:79px;display:flex;align-items:center;gap:15px;justify-content:space-between;text-align:left;padding:14px 17px;border:0;background:transparent;color:inherit}.device .device-copy{min-width:0;display:flex;flex-direction:column;gap:11px}.device .nm{font:400 23px/1.05 var(--sans);letter-spacing:-.4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.device .ft{display:flex;align-items:center;gap:6px;font:10px var(--mono);text-transform:uppercase;color:var(--dim);white-space:nowrap}.device .status-dot{width:5px;height:5px;border:1px solid var(--dim2);flex-shrink:0}.device .power-symbol{flex:0 0 43px;width:43px;height:43px;border:1px solid var(--edge2);display:flex;align-items:center;justify-content:center;color:var(--dim)}.device .power-symbol svg{width:19px;height:19px}.device.on{background:#19130f;border-color:#654332}.device.on .power-symbol{background:var(--hot);border-color:var(--hot);color:#000}.device.on .ft{color:var(--hot2)}.device.on .status-dot{background:var(--hot);border-color:var(--hot)}
+.device .more{min-height:44px;height:44px;flex-shrink:0;border:0;border-top:1px solid var(--edge2);padding:0 16px;background:transparent;display:flex;align-items:center;gap:10px;color:var(--dim);font:10px var(--mono)}.device .more .adjust-arrow{margin-left:auto;font-size:17px}.device.on .more{border-color:#493022;color:var(--hot2)}
+.device.locked,.device.offline{background:var(--card);border-style:dashed}.device.locked .nm,.device.offline .nm{color:var(--dim)}.device.locked .power-symbol,.device.offline .power-symbol{background:transparent;border-color:var(--edge2);color:var(--dim)}.device.locked .ft{color:var(--dim)}.device.locked .status-dot{background:transparent;border-color:var(--dim)}.device.pending{border-color:var(--bone)}.device.pending .power-symbol{animation:pulse 1s infinite}.device.arming{background:#352016;border-color:var(--hot)}.device.failed{border-color:var(--hot)}.room.stale .device-list{opacity:.45}.empty{margin-top:16px;padding:28px 20px;border:1px dashed var(--edge2);font:13px/1.7 var(--mono);color:var(--dim)}
+.area-note{grid-column:1/-1;display:flex;align-items:center;gap:23px;min-height:125px;border:1px solid var(--edge);padding:22px;color:var(--dim)}.area-note svg{width:50px;height:50px;flex-shrink:0;stroke:var(--hot);opacity:.85}.area-note strong{display:block;font:300 25px var(--serif);color:var(--bone);margin-bottom:8px}.area-note p{font:11px/1.65 var(--mono);max-width:370px}.area-note .area-hint{font:10px var(--mono);margin-top:8px;color:var(--dim)}
+.mkts{grid-column:2;grid-row:2;background:var(--card);border:1px solid var(--edge);padding:13px}.ticks{flex:1;display:flex;flex-direction:column;margin-top:5px;min-height:0}.tick{flex:1;display:grid;grid-template-columns:42px minmax(0,1fr) 52px;gap:6px;align-items:center;border-top:1px solid var(--edge);min-height:0}.tick:first-child{border:0}.tick .sym{font:12px var(--mono)}.tick .sym small{font-size:8px;display:block;color:var(--dim);margin-top:5px}.tick .px{font:19px var(--mono);letter-spacing:-.7px;white-space:nowrap}.tick .ch{font:9px var(--mono);white-space:nowrap;margin-top:4px}.tick .ch.dn{color:var(--hot2)}.tick .ch.up{color:var(--dim)}.tick svg{display:block;width:52px;height:30px;overflow:visible}.mkts.stale .ticks{opacity:.4}
+.rv{grid-column:2;grid-row:3;background:var(--card);border:1px solid var(--edge);padding:13px}.rv-caption{font:9px var(--mono);color:var(--dim);margin-top:5px}#ascii{display:block;width:100%;flex:1;min-height:20px;margin-top:7px}.nodes{display:flex;flex-direction:column;gap:6px;margin-top:7px}.node{display:grid;grid-template-columns:24px 1fr 28px 48px;align-items:center;gap:5px;font:9px var(--mono)}.node .id b{display:none}.node .bar{display:grid;grid-template-columns:repeat(24,1fr);gap:1px;height:6px}.node .bar i{background:var(--ghost)}.node .bar i.f{background:var(--bone)}.node .bar i.h{background:var(--hot)}.node .num{text-align:right}.node .num.d{color:var(--dim)}.node .fps{display:none}.node.down{opacity:.4}.rvft{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;border-top:1px solid var(--edge);margin-top:9px;padding-top:9px;font:9px var(--mono);color:var(--dim)}.rvft b{font-weight:400;color:var(--bone)}.rvft .fusion{display:none}.rv.stale #ascii,.rv.stale .nodes{opacity:.35}
+.foot{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;font:9px var(--mono);color:var(--dim);white-space:nowrap;letter-spacing:.02em}.foot b{color:var(--hot);font-weight:400}.foot .rt{display:flex;align-items:center;gap:6px}.cross{display:none}
+.sheet{position:fixed;inset:0;z-index:10;background:#000;display:none;flex-direction:column;padding:24px 40px;gap:12px;overflow-y:auto}.sheet.open{display:flex}.sheet-top{display:flex;align-items:center;justify-content:space-between;font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}.sheet .close{min-height:44px;padding:0 22px;border:1px solid var(--edge2);background:var(--card2);color:var(--bone);font:11px var(--mono)}.sheet h3{display:flex;align-items:center;gap:20px;min-height:57px;border-bottom:1px solid var(--edge);padding-bottom:12px}.sheet h3 .t{font:300 45px/1 var(--serif);letter-spacing:-1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sheet h3 .now{margin-left:auto;font:27px var(--mono);color:var(--hot)}.pwr{min-width:115px;height:44px;flex-shrink:0;padding:0 14px;border:1px solid var(--edge2);background:var(--card2);font:11px var(--mono)}.pwr.on{color:var(--hot2);border-color:var(--hotedge);background:var(--hotbg)}.lab{font:11px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-top:3px}.presets{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.pre{height:57px;border:1px solid var(--edge2);background:var(--card2);color:var(--bone);font:14px var(--mono);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}.pre small{font:10px var(--mono);color:var(--dim)}.pre.cur{border-color:var(--hot);color:var(--hot2);background:var(--hotbg)}.pre .chip{width:36px;height:7px}.swatches{display:grid;grid-template-columns:repeat(10,1fr);gap:10px}.sw{height:45px;border:2px solid transparent}.sw[aria-pressed=true]{border-color:var(--bone);outline:2px solid var(--hot);outline-offset:2px}input[type=range]{appearance:none;width:100%;height:44px;background:transparent;flex-shrink:0}input[type=range]::-webkit-slider-runnable-track{height:8px;background:linear-gradient(90deg,#444,var(--bone));border-radius:0}input[type=range]::-webkit-slider-thumb{appearance:none;width:30px;height:30px;background:var(--hot);border:4px solid #000;outline:1px solid var(--hot);margin-top:-11px;border-radius:50%}.sheet-note{font:10px var(--mono);color:var(--dim);min-height:14px;margin-top:auto}.sheet-note.warn{color:var(--hot2)}
+.toast{position:fixed;bottom:34px;left:50%;transform:translateX(-50%);z-index:20;background:#191919;border:1px solid var(--hot);color:var(--bone);padding:14px 20px;font:12px/1.5 var(--mono);display:none;max-width:90%;box-shadow:0 10px 40px #000}.toast.show{display:block}.banner{display:none;position:fixed;left:30px;bottom:30px;right:284px;z-index:9;background:var(--hot);color:#000;padding:10px 14px;font:11px/1.4 var(--mono)}body.stale .banner{display:block}.veil{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.67);display:none;border:0;width:100%;height:100%}.veil span{position:absolute;bottom:32px;left:0;right:0;text-align:center;font:11px var(--mono);color:var(--bone);letter-spacing:.15em;text-transform:uppercase}body.night .veil{display:block}
 
-  .shell{position:absolute;inset:0;display:grid;padding:8px 34px 5px;gap:8px;
-         grid-template-columns:minmax(0,1fr) 344px;grid-template-rows:30px 178px minmax(0,1fr) 15px}
-  /* The nav pill, dragonfly's centre bar: mark · status dots · label */
-  .pill{grid-column:1/-1;justify-self:center;display:flex;align-items:center;gap:22px;height:30px;
-        padding:0 14px;background:#0f0f0f;border:1px solid var(--edge);border-radius:3px;min-width:380px}
-  .pill svg{display:block}
-  .pill .dots{display:flex;gap:3px;margin:0 auto}
-  .pill .dots i{width:5px;height:5px;background:var(--dim2)}
-  .pill .dots i.ok{background:var(--hot)}
-  .pill .lbl{font-size:10px;letter-spacing:.08em;color:var(--bone);text-transform:uppercase}
+@keyframes pulse{50%{opacity:.4}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+@media(min-width:1250px){.shell{padding:20px 40px 14px;grid-template-columns:minmax(0,1fr) 310px;grid-template-rows:130px minmax(0,1fr) minmax(0,1fr) 18px;gap:20px}.masthead{grid-template-columns:minmax(0,1fr) 310px;gap:20px}.wordmark{font-size:108px}.hm .big{font-size:91px}.who{width:250px}.who .v{font-size:31px}.room-tabs{flex-basis:65px}.room-tab{font-size:16px}.device .nm{font-size:29px}.device .power-symbol{width:53px;height:53px;flex-basis:53px}.device .ft{font-size:12px}.device .more{font-size:12px;min-height:49px}.station-head{flex-basis:77px}.station h2{font-size:38px}.tick{grid-template-columns:48px minmax(0,1fr) 75px}.tick .px{font-size:23px}.tick svg{width:75px;height:40px}}
+@media(max-width:850px){.shell{height:auto;min-height:100dvh;grid-template-columns:1fr 1fr;grid-template-rows:120px auto 235px 20px;padding:14px 25px;gap:16px}.masthead{grid-column:1/-1;grid-template-columns:1fr 200px}.wordmark{font-size:68px;letter-spacing:-5px}.who{display:none}.hm .big{font-size:65px}.date{font-size:9px;gap:6px}.room{grid-column:1/-1;grid-row:2;min-height:425px}.mkts{grid-column:1;grid-row:3}.rv{grid-column:2;grid-row:3}.foot{grid-row:4}.device-list{grid-template-rows:repeat(2,145px);overflow:visible}.room-tabs{min-height:58px}.room-tab{font-size:11px;padding:0 10px}.room-tab .tab-count{font-size:9px}.device .nm{font-size:22px}.area-note{min-height:145px}.banner{left:25px;right:25px}.sheet{padding:20px 24px}.sheet h3 .t{font-size:34px}.sheet h3{gap:10px}.sheet h3 .now{font-size:22px}.sheet .swatches{grid-template-columns:repeat(5,1fr)}.foot>span:last-child{display:none}}
+@media(max-width:520px){.shell{padding:13px 20px;gap:15px;grid-template-columns:1fr;grid-template-rows:140px auto 230px 240px 24px}.masthead{grid-template-columns:1fr 139px;gap:10px;padding-bottom:17px;align-items:center}.wordmark{font-size:49px;letter-spacing:-3px;margin-top:9px}.eyebrow{font-size:8px;letter-spacing:.05em;gap:6px}.dots{gap:2px}.dots i{width:3px;height:3px}.hm{gap:5px;flex-wrap:wrap;justify-content:flex-end}.hm .big{font-size:54px;letter-spacing:-2px}.hm .sec{font-size:13px}.hm .ap{font-size:9px}.date{flex-wrap:wrap;justify-content:flex-end;gap:3px}.date b{width:100%;text-align:right}.room-tabs{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:48px 48px;gap:6px;flex-basis:102px}.room-tab{font-size:13px}.room-tab .tab-count{font-size:10px}.room{grid-row:2;min-height:490px}.station-head{flex-basis:69px;gap:8px}.station-title{gap:5px}.station h2{font-size:29px}.station .cnt{display:none}.all{min-width:130px;font-size:10px;padding:0 10px;gap:6px}.device-list{grid-template-rows:repeat(2,145px);gap:8px}.device .main{padding:13px 10px;gap:8px;align-items:flex-start;position:relative}.device .device-copy{gap:12px;align-self:center}.device .nm{font-size:19px;padding-right:22px;min-height:36px}.device .power-symbol{position:absolute;right:8px;top:12px;width:29px;height:29px;min-width:29px;flex-basis:29px}.device .power-symbol svg{width:15px;height:15px}.device .ft{font-size:9px;gap:4px;flex-wrap:wrap;white-space:normal}.device .more{padding:0 10px;font-size:8px;gap:6px}.device .more svg{width:15px}.area-note{padding:16px;gap:15px}.area-note svg{width:37px;height:37px}.area-note strong{font-size:23px}.area-note p{font-size:10px}.mkts{grid-column:1;grid-row:3}.rv{grid-column:1;grid-row:4}.foot{grid-row:5;font-size:8px;letter-spacing:0}.tick{grid-template-columns:56px minmax(0,1fr) 85px}.tick .px{font-size:23px}.tick svg{width:85px}.sheet h3{flex-wrap:wrap}.sheet h3 .t{width:100%}.sheet{gap:10px}.presets{gap:5px}.pre{font-size:12px}.pre small{font-size:9px}}
 
-  /* ── Cards ────────────────────────────────────────────────────────────── */
-  .card{background:var(--card);border:1px solid var(--edge);border-radius:10px;min-width:0;min-height:0;
-        position:relative;display:flex;flex-direction:column;padding:10px 12px 11px;overflow:hidden}
-  .hd{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--bone);height:13px;flex:0 0 auto}
-  .hd .n{color:var(--dim)}
-  .hd .rt{margin-left:auto;color:var(--dim);display:flex;align-items:center;gap:6px}
-  .live{width:6px;height:6px;border-radius:50%;background:var(--hot);box-shadow:0 0 8px var(--hot)}
-  .live.off{background:var(--dim2);box-shadow:none}
-  .rt.warn{color:var(--hot)}
-
-  /* 01 · Time */
-  .time{grid-column:1;grid-row:2;flex-direction:row;gap:0;padding:0}
-  .clock{flex:1;min-width:0;padding:10px 14px 12px;display:flex;flex-direction:column}
-  .hm{display:flex;align-items:flex-start;margin-top:2px}
-  .hm .big{font-family:var(--serif);font-weight:200;font-size:112px;line-height:1;letter-spacing:-5px;margin-left:-4px;
-           font-variant-numeric:lining-nums tabular-nums;font-optical-sizing:auto;color:var(--bone)}
-  .hm .sec{font-family:var(--dot);font-weight:700;font-size:34px;color:var(--hot);margin:18px 0 0 12px;line-height:1;letter-spacing:1px}
-  .hm .ap{display:none}
-  .date{font-size:11px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-top:auto;display:flex;gap:14px}
-  .date b{color:var(--bone);font-weight:400}
-  .secbar{display:grid;grid-template-columns:repeat(60,1fr);gap:2px;height:5px;margin-top:9px}
-  .secbar i{background:var(--ghost)} .secbar i.on{background:var(--hot)} .secbar i.q{background:var(--dim2)}
-  .who{width:196px;flex:0 0 auto;border-left:1px solid var(--edge);padding:10px 14px 12px;display:flex;flex-direction:column;gap:0}
-  .who .k{font-size:10px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase;margin-top:9px}
-  .who .k:first-of-type{margin-top:7px}
-  .who .v{font-family:var(--serif);font-weight:300;font-size:24px;line-height:1.02;letter-spacing:-.4px;text-transform:uppercase;margin-top:2px}
-  .who .s{font-size:11px;color:var(--dim);letter-spacing:.03em;margin-top:3px;text-transform:uppercase}
-  .who .s b{color:var(--hot);font-weight:400}
-  .who .v.muted{color:var(--dim)}
-
-  /* 02 · Markets */
-  .mkts{grid-column:2;grid-row:2}
-  .tick{display:grid;grid-template-columns:52px minmax(0,1fr) 104px;align-items:center;gap:8px;
-        flex:1;border-top:1px solid var(--edge);min-height:0}
-  .tick:first-of-type{border-top:0}
-  .tick .sym{font-size:13px;letter-spacing:.06em}
-  .tick .sym small{display:block;font-size:9.5px;color:var(--dim);margin-top:3px;letter-spacing:.04em}
-  .tick .px{font-family:var(--dot);font-weight:800;font-variation-settings:"wght" 800;font-size:27px;line-height:1;letter-spacing:.5px;white-space:nowrap}
-  /* Doto's full stop is a four-dot cross that reads as "+": draw the point. */
-  .tick .px .pt{display:inline-block;width:4px;height:4px;background:var(--bone);margin:0 3px 3px 2px;vertical-align:bottom}
-  .tick .ch{font-size:11px;margin-top:3px;letter-spacing:.03em;white-space:nowrap}
-  .tick .ch.up{color:var(--bone)} .tick .ch.dn{color:var(--hot)}
-  .tick svg{width:104px;height:40px;display:block;overflow:visible}
-  .mkts .ticks{flex:1;display:flex;flex-direction:column;margin-top:6px;min-height:0}
-  .mkts.stale .ticks{opacity:.4}
-
-  /* 03 · Room control */
-  .room{grid-column:1;grid-row:3}
-  .stations{flex:1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:8px;min-height:0}
-  .station{display:flex;flex-direction:column;min-width:0;min-height:0}
-  .station h3{font-size:10.5px;font-weight:400;letter-spacing:.08em;white-space:nowrap;text-transform:uppercase;color:var(--bone);
-              height:30px;border-bottom:1px solid var(--edge);margin-bottom:6px;display:flex;align-items:center;gap:6px}
-  .station h3 .cnt{color:var(--dim)}
-  /* Station-wide switch. ALL OFF arms first (it can cut the monitors
-     mid-work); ALL ON is one tap. Never touches locked or guarded tiles. */
-  .all{margin-left:auto;height:26px;padding:0 8px;white-space:nowrap;flex:0 0 auto;border-radius:4px;border:1px solid var(--edge2);background:#121212;
-       font:inherit;font-size:9.5px;letter-spacing:.1em;color:var(--dim);display:flex;align-items:center}
-  .all.hasOn{color:var(--bone)}
-  .all.armed{background:var(--hot);border-color:var(--hot);color:#000;animation:pulse .7s ease-in-out infinite}
-  .all:active{transform:scale(.95)}
-  ul{list-style:none;display:flex;flex-direction:column;gap:6px;flex:1;min-height:0}
-  /* Finger targets: 56px is the floor that stops a thumb hitting two rows. */
-  li{flex:1 1 0;min-height:58px;max-height:96px;display:flex;min-width:0;border-radius:7px;
-     background:var(--card2);border:1px solid var(--edge);position:relative;overflow:hidden;
-     transition:background .15s,border-color .15s}
-  li .main{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;padding:7px 7px 7px 10px}
-  li .nm{font-family:var(--serif);font-weight:300;font-size:17px;line-height:1;letter-spacing:-.1px;color:var(--dim);
-         overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
-  li .ft{display:flex;align-items:center;gap:7px;font-size:10.5px;letter-spacing:.1em;color:var(--dim2);text-transform:uppercase}
-  li .ft .st{min-width:22px}
-  li .seg{display:flex;gap:2px;flex:1;max-width:60px}
-  li .seg i{flex:1;height:4px;background:var(--ghost)}
-  li.on{background:#261006;border-color:var(--hotedge)}
-  li.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--hot)}
-  li.on .nm{color:var(--bone)}
-  li.on .ft{color:var(--hot)}
-  li.on .seg i.f{background:var(--hot)}
-  li .more{flex:0 0 44px;flex-direction:column;gap:3px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--edge);
-           font-size:9px;letter-spacing:.1em;color:var(--dim)}
-  li.on .more{border-left-color:var(--hotedge);color:var(--hot2)}
-  li.tappable:active{transform:scale(.97)}
-  li.unnamed .nm{font-style:italic}
-  /* Protected rows are visibly not buttons. The server refuses them too:
-     this is the label, not the lock. */
-  li.locked{opacity:.45;border-style:dashed;background:transparent}
-  li.locked::before{display:none}
-  li.locked .ft{color:var(--dim)}
-  /* In flight: must not read as the old state, nor the new one until the
-     device says so. */
-  li.pending{border-color:var(--bone);animation:pulse 1s ease-in-out infinite}
-  li.arming{border-color:var(--hot);background:#2a0f05;animation:pulse .7s ease-in-out infinite}
-  li.arming .ft{color:var(--hot)}
-  li.offline{opacity:.45;border-style:dashed}
-  li.failed{border-color:#ff2d2d}
-  @keyframes pulse{50%{opacity:.5}}
-  .room.stale .stations{opacity:.28;filter:grayscale(1)}
-
-  /* 04 · RuView */
-  .rv{grid-column:2;grid-row:3}
-  #ascii{display:block;width:100%;flex:1;min-height:0;margin-top:8px}
-  .nodes{display:flex;flex-direction:column;gap:5px;margin-top:8px;flex:0 0 auto}
-  .node{display:grid;grid-template-columns:44px minmax(0,1fr) 34px 54px 44px;gap:7px;align-items:center;height:16px;font-size:11px;letter-spacing:.02em;white-space:nowrap}
-  .node .id{color:var(--bone)} .node .id b{color:var(--hot);font-weight:400;font-size:8px;margin-left:3px;vertical-align:1px}
-  .node .bar{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;height:9px}
-  .node .bar i{background:var(--ghost)} .node .bar i.f{background:var(--bone)} .node .bar i.h{background:var(--hot)}
-  .node .num{text-align:right;color:var(--bone);font-variant-numeric:tabular-nums}
-  .node .num.d{color:var(--dim)}
-  .node.down{opacity:.4}
-  .rvft{display:flex;justify-content:space-between;font-size:10px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;
-        border-top:1px solid var(--edge);padding-top:7px;margin-top:8px}
-  .rvft b{font-weight:400;color:var(--bone)} .rvft b.w{color:var(--hot)}
-  .rv.stale #ascii,.rv.stale .nodes{opacity:.35}
-
-  .foot{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;font-size:9px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase;padding:0 2px}
-  .foot{font-size:10px}
-  .foot b{color:var(--bone);font-weight:400}
-
-  /* ── Brightness / colour sheet: full-bleed, a thumb not a mouse ────────── */
-  .sheet{position:fixed;inset:0;z-index:10;background:#000;display:none;flex-direction:column;padding:22px 40px 20px;gap:11px}
-  .sheet.open{display:flex}
-  .sheet h3{display:flex;align-items:flex-end;gap:18px}
-  .sheet h3 .t{font-family:var(--serif);font-weight:200;font-size:58px;line-height:.9;letter-spacing:-2px;text-transform:uppercase}
-  .sheet h3 .now{margin-left:auto;font-family:var(--dot);font-weight:700;font-size:40px;color:var(--hot);line-height:1}
-  .pwr{padding:9px 18px;border-radius:4px;border:1px solid var(--edge2);background:#0f0f0f;font:inherit;font-size:11px;letter-spacing:.1em;color:var(--dim)}
-  .pwr.on{background:var(--hot);border-color:var(--hot);color:#000}
-  .lab{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-top:4px}
-  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:44px;background:transparent;margin:0}
-  input[type=range]::-webkit-slider-runnable-track{height:48px;border-radius:4px;border:1px solid var(--edge2)}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:46px;border-radius:2px;background:var(--hot);margin-top:0;box-shadow:0 0 14px var(--hot)}
-  #bri::-webkit-slider-runnable-track{background:repeating-linear-gradient(90deg,transparent 0 9px,#000 9px 11px),linear-gradient(90deg,#1a1a1a,#ecebe7)}
-  #ct::-webkit-slider-runnable-track{background:repeating-linear-gradient(90deg,transparent 0 9px,#000 9px 11px),linear-gradient(90deg,#ffb45c,#fff5e8,#cfe4ff)}
-  .presets{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-  .pre{height:56px;border-radius:4px;border:1px solid var(--edge2);background:#0f0f0f;color:var(--bone);font:inherit;
-       font-size:12px;letter-spacing:.08em;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
-  .pre small{font-size:9.5px;color:var(--dim);letter-spacing:.1em}
-  .pre.cur{border-color:var(--hot);color:var(--hot)}
-  .pre:active{transform:scale(.95)}
-  .pre .chip{width:34px;height:8px;border-radius:2px}
-  .swatches{display:grid;grid-template-columns:repeat(10,1fr);gap:8px}
-  /* Night: a dark veil that catches the FIRST touch, so waking the panel in
-     a dark room never also switches the lamp under your thumb. */
-  .veil{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.62);display:none}
-  body.night .veil{display:block}
-  .sw{height:50px;border-radius:4px;border:1px solid #2a2a2a}
-  .sw:active{transform:scale(.94)}
-  .sheet .close{margin-top:auto;align-self:flex-end;padding:13px 34px;border-radius:4px;border:1px solid var(--edge2);background:#0f0f0f;color:var(--bone);font:inherit;font-size:12px;letter-spacing:.12em}
-
-  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;z-index:20;background:#0f0f0f;border:1px solid var(--hot);
-         color:var(--bone);padding:9px 16px;border-radius:4px;font-size:11px;letter-spacing:.04em;display:none;max-width:760px}
-  .toast.show{display:block}
-  .banner{display:none;position:fixed;left:0;right:0;bottom:0;z-index:15;padding:6px 16px;background:var(--hot);color:#000;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
-  body.stale .banner{display:block}
+/* Full Apple TV remote. Kept separate from the mains outlet. */
+.room-tab .tab-number{font-size:9px;opacity:.8;margin-right:7px}.device.tv-device .power-symbol{background:var(--bone);border-color:var(--bone);color:#000}.device.tv-device .ft{color:var(--dim)}
+.tv-sheet{gap:11px}.tv-heading{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-shrink:0}.tv-heading h2{font:300 42px var(--serif);letter-spacing:-1px}.tv-heading h2 small{font:12px var(--mono);letter-spacing:0;color:var(--dim);margin-left:14px}.tv-connection{font:11px var(--mono);color:var(--dim);min-height:16px}.tv-tabs{display:flex;gap:8px;flex-shrink:0;margin-top:4px}.tv-tabs button{min-height:44px;flex:1;border:1px solid var(--edge2);background:var(--card2);font:12px var(--mono)}.tv-tabs button[aria-selected=true]{background:var(--hot);color:#000;border-color:var(--hot)}.tv-pane{flex:1;min-height:0;overflow-y:auto;padding:5px 0;overscroll-behavior:contain}.tv-layout{display:grid;grid-template-columns:230px 1fr;gap:26px;min-height:100%}.tv-dpad{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,65px);gap:7px}.tv-btn{border:1px solid var(--edge2);background:var(--card2);min-height:48px;padding:8px 12px;font:12px var(--mono);text-align:center}.tv-btn.primary{background:var(--hot);border-color:var(--hot);color:#000}.tv-btn:disabled{opacity:.35;cursor:default}.tv-dpad .tv-btn{font-size:22px}.tv-dpad .center{font-size:13px}.tv-dpad .up{grid-column:2}.tv-dpad .left{grid-column:1;grid-row:2}.tv-dpad .center{grid-column:2;grid-row:2}.tv-dpad .right{grid-column:3;grid-row:2}.tv-dpad .down{grid-column:2;grid-row:3}.tv-row{display:flex;gap:8px;align-items:center;margin-top:9px}.tv-row>*{flex:1;min-width:0}.tv-row label{font:11px var(--mono);color:var(--dim)}.tv-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.tv-now{padding:12px 0 18px}.tv-now .tv-title{font:300 29px/1.15 var(--serif);margin:8px 0}.tv-caption{font:11px/1.5 var(--mono);color:var(--dim)}.tv-label{display:block;font:11px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 8px}.tv-status{font:11px/1.45 var(--mono);color:var(--hot2);min-height:17px;flex-shrink:0}.tv-apps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.tv-apps button{min-height:69px;text-align:left;padding:13px;font-size:14px}.tv-form{max-width:780px}.tv-form input,.tv-form select,.tv-input,.tv-select{min-height:46px;min-width:0;border:1px solid var(--edge2);padding:10px 12px;background:#141414;color:var(--bone);font:13px var(--mono)}.tv-form input:focus-visible,.tv-form select:focus-visible{outline:2px solid var(--hot);outline-offset:2px}.tv-form label{font:12px var(--mono);color:var(--dim)}.tv-section{padding:0 0 17px;border-bottom:1px solid var(--edge);margin-bottom:15px}.tv-output-row{display:flex;align-items:center;gap:10px;padding:10px 0;font:12px var(--mono)}.tv-output-row span{flex:1}.tv-output-row button{min-width:120px}.tv-touch{height:209px;border:1px solid var(--edge2);background:radial-gradient(circle at center,#353535 1px,transparent 1px);background-size:12px 12px;touch-action:none;display:flex;align-items:center;justify-content:center;color:var(--dim);font:11px var(--mono);text-align:center;padding:30px}.tv-media{max-width:850px}.tv-media input[type=range]{flex:3}.tv-slider-label{font:11px var(--mono);color:var(--dim)}.tv-sheet .close{align-self:auto}.tv-reconnect{margin-left:auto}.tv-help{font:11px/1.6 var(--mono);color:var(--dim);margin-top:10px}
+@media(max-width:850px){.tv-layout{grid-template-columns:205px 1fr;gap:15px}.tv-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.tv-apps{grid-template-columns:repeat(3,minmax(0,1fr))}.tv-heading h2{font-size:35px}}
+@media(max-width:520px){.tv-layout{display:flex;flex-direction:column}.tv-dpad{max-width:240px;margin:auto;width:100%}.tv-heading h2{font-size:30px}.tv-heading h2 small{display:block;margin:4px 0 0}.tv-apps{grid-template-columns:repeat(2,minmax(0,1fr))}.tv-tabs{gap:4px}.tv-tabs button{font-size:10px}.tv-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.tv-row{flex-wrap:wrap}.tv-row input,.tv-row select{flex-basis:100%}.tv-form .tv-row input{flex-basis:100%}.tv-btn{font-size:11px}.tv-touch{max-width:260px;margin:auto}}
 </style></head><body>
 
 <span class="corner tl">C</span><span class="corner tr">E</span><span class="corner bl">U</span><span class="corner br">S</span>
 
 <div class="shell">
-  <div class="pill">
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#ecebe7" stroke-width="1.3"><circle cx="9" cy="9" r="5.2"/><path d="M9 0v5M9 13v5M0 9h5M13 9h5"/><circle cx="9" cy="9" r="1" fill="#fa4c14" stroke="none"/></svg>
-    <span class="dots" id="dots" title="clock · controls · presence · ruview · markets"><i></i><i></i><i></i><i></i><i></i></span>
-    <span class="lbl">Studio</span>
-  </div>
-
-  <!-- 01 TIME -->
-  <section class="card time">
-    <div class="clock">
-      <div class="hd"><span class="n">01</span>Local time<span class="rt" id="tz">EDT</span></div>
-      <div class="hm"><span class="big" id="hm">--:--</span><span class="sec" id="sec">--</span></div>
-      <div class="date" id="date"></div>
-      <div class="secbar" id="secbar"></div>
+  <header class="masthead">
+    <div class="mast-left">
+      <div class="identity"><div class="eyebrow">Cleetus / Home control <span class="dots" id="dots" title="clock · controls · presence · ruview · markets"><i></i><i></i><i></i><i></i><i></i></span></div><h1 class="wordmark">STUDIO</h1></div>
+      <div class="who"><div class="k" id="greeting">Your space, connected.</div><div class="v" id="who">Connecting…</div><div class="s" id="whoS">Checking presence</div><div class="running"><strong id="onCount">—</strong><span>devices on</span></div><div id="onS"></div></div>
     </div>
-    <div class="who">
-      <div class="hd"><span class="n">&nbsp;</span>Room<span class="rt" id="whoAge"></span></div>
-      <div class="k">Presence</div>
-      <div class="v" id="who">—</div>
-      <div class="s" id="whoS"></div>
-      <div class="k">Running</div>
-      <div class="v" id="onCount">—</div>
-      <div class="s" id="onS"></div>
-    </div>
-  </section>
+    <div class="clock"><div class="hm"><span class="big" id="hm">--:--</span><span class="sec" id="sec">--</span><span class="ap" id="ampm"></span></div><div class="date" id="date"></div><span id="tz"></span><div class="secbar" id="secbar" aria-hidden="true"></div></div>
+  </header>
 
   <!-- 02 MARKETS -->
   <section class="card mkts" id="mkts">
-    <div class="hd"><span class="n">02</span>Markets<span class="rt" id="mktAge">—</span></div>
+    <div class="hd"><span class="n">↗</span>Markets<span class="rt" id="mktAge">—</span></div>
     <div class="ticks" id="ticks"></div>
   </section>
 
-  <!-- 03 ROOM CONTROL -->
-  <section class="card room" id="room">
-    <div class="hd"><span class="n">03</span>Room control<span class="rt" id="age">connecting</span></div>
-    <div class="stations" id="board"></div>
+  <!-- Room navigation never sends device commands. -->
+  <section class="card room" id="room" aria-label="Room controls">
+    <div class="room-tabs" id="roomTabs" role="tablist" aria-label="Room areas"></div>
+    <div class="stations" id="board" role="tabpanel" tabindex="-1"><p class="empty">Connecting to your room…<br>Device controls will appear here.</p></div>
   </section>
 
   <!-- 04 RUVIEW -->
   <section class="card rv" id="rv">
-    <div class="hd"><span class="n">04</span>RuView · WiFi sensing<span class="rt" id="rvAge">—</span></div>
-    <canvas id="ascii"></canvas>
+    <div class="hd"><span class="n">⌁</span>Room sensing<span class="rt" id="rvAge">—</span></div>
+    <div class="rv-caption">RuView / live motion signal</div><canvas id="ascii" aria-label="Wi-Fi motion history"></canvas>
     <div class="nodes" id="nodes"></div>
-    <div class="rvft"><span>Fusion <b id="fus">—</b></span><span>People <b id="ppl">NO FIX</b></span><span>Nodes <b id="nct">—</b></span></div>
+    <div class="rvft"><span class="fusion">Fusion <b id="fus">—</b></span><span>People <b id="ppl">Unconfirmed</b></span><span>Nodes <b id="nct">—</b></span></div>
   </section>
 
-  <div class="foot"><span id="sys">● Starting</span><span>Cleetus · creo-bots-pi</span></div>
+  <div class="foot"><span id="sys">● Starting</span><span class="rt" id="age">Connecting</span><span>Tap a device to switch · Adjust to fine-tune</span></div>
 </div>
 
 <i class="cross" style="left:35px;top:44px"></i><i class="cross" style="right:35px;top:44px"></i>
 <i class="cross" style="left:35px;bottom:24px"></i><i class="cross" style="right:35px;bottom:24px"></i>
 
-<section class="sheet" id="sheet">
+<section class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sName">
+  <div class="sheet-top"><span>Light settings</span><button class="close" id="sClose">Done ↗</button></div>
   <h3><span class="t" id="sName">Lamp</span><button class="pwr" id="sPwr">ON</button><span class="now" id="sNow"></span></h3>
-  <div class="lab">Brightness</div>
+  <label class="lab" id="briLab" for="bri">Brightness</label>
   <div class="presets" id="briP"></div>
   <input type="range" id="bri" min="2" max="100" step="1" value="50">
-  <div class="lab" id="ctLab">White</div>
+  <div class="lab" id="ctLab">White temperature</div>
   <div class="presets" id="ctP"></div>
   <div class="lab" id="swLab">Colour</div>
   <div class="swatches" id="sw"></div>
-  <button class="close" id="sClose">DONE</button>
+  <div class="sheet-note" id="sheetStatus" role="status">Changes apply as you adjust.</div>
 </section>
-<div class="toast" id="toast"></div>
-<div class="veil" id="veil"></div>
-<div class="banner" id="banner"></div>
+
+<section class="sheet tv-sheet" id="tvSheet" role="dialog" aria-modal="true" aria-labelledby="tvTitle">
+  <div class="tv-heading"><h2 id="tvTitle">Apple TV <small>GP TV</small></h2><button class="close" id="tvClose">Done ↗</button></div>
+  <div class="tv-connection" id="tvConnection">Connecting to GP TV…</div>
+  <div class="tv-tabs" id="tvTabs" role="tablist" aria-label="Apple TV controls">
+    <button id="tvTabRemote" role="tab" aria-controls="tvRemote" aria-selected="true" data-tv-tab="tvRemote">Remote</button>
+    <button id="tvTabApps" role="tab" aria-controls="tvApps" aria-selected="false" tabindex="-1" data-tv-tab="tvApps">Apps</button>
+    <button id="tvTabMedia" role="tab" aria-controls="tvMedia" aria-selected="false" tabindex="-1" data-tv-tab="tvMedia">Playback</button>
+    <button id="tvTabMore" role="tab" aria-controls="tvMore" aria-selected="false" tabindex="-1" data-tv-tab="tvMore">More</button>
+  </div>
+  <div class="tv-pane" id="tvRemote" role="tabpanel" aria-labelledby="tvTabRemote">
+    <div class="tv-layout">
+      <div>
+        <div class="tv-dpad" id="tvDpad">
+          <button class="tv-btn up" data-tv="up" data-feature="Up" aria-label="Up">↑</button>
+          <button class="tv-btn left" data-tv="left" data-feature="Left" aria-label="Left">←</button>
+          <button class="tv-btn primary center" data-tv="select" data-feature="Select">Select</button>
+          <button class="tv-btn right" data-tv="right" data-feature="Right" aria-label="Right">→</button>
+          <button class="tv-btn down" data-tv="down" data-feature="Down" aria-label="Down">↓</button>
+        </div>
+        <div id="tvTouch" class="tv-touch" hidden>Swipe to navigate.<br>Tap to select.</div>
+        <div class="tv-row"><button class="tv-btn" data-tv="menu" data-feature="Menu">Back</button><button class="tv-btn" data-tv="home" data-feature="Home">Home</button></div>
+        <div class="tv-row"><button class="tv-btn" id="tvTouchMode">Use touchpad</button></div>
+      </div>
+      <div>
+        <div class="tv-now"><span class="tv-caption">NOW ON APPLE TV</span><div class="tv-title" id="tvNowTitle">Reading current activity…</div><p class="tv-caption" id="tvNowDetail"></p></div>
+        <div class="tv-actions">
+          <button class="tv-btn primary" data-tv="play_pause" data-feature="PlayPause">Play / pause</button>
+          <button class="tv-btn" data-tv="wake" data-feature="Home">Wake</button>
+          <button class="tv-btn" data-tv="sleep" data-feature="TurnOff">Sleep</button>
+          <button class="tv-btn" data-tv="app_switcher" data-feature="Home">App switcher</button>
+          <button class="tv-btn" data-tv="control_center" data-feature="ControlCenter">Control Center</button>
+          <button class="tv-btn" data-tv="screensaver" data-feature="Screensaver">Screensaver</button>
+          <button class="tv-btn" data-tv="volume_down" data-feature="VolumeDown">Volume −</button>
+          <button class="tv-btn" data-tv="volume_up" data-feature="VolumeUp">Volume +</button>
+          <button class="tv-btn" data-tv="top_menu" data-feature="TopMenu">Top menu</button>
+        </div>
+        <p class="tv-help" id="tvVolumeHint">Checking volume support…</p>
+        <p class="tv-help">Sleep keeps Apple TV connected. The separate “Apple TV power” tile cuts mains power.</p>
+      </div>
+    </div>
+  </div>
+  <div class="tv-pane" id="tvApps" role="tabpanel" aria-labelledby="tvTabApps" hidden><div class="tv-apps" id="tvAppList"><p class="tv-caption">Loading installed apps…</p></div></div>
+  <div class="tv-pane tv-media" id="tvMedia" role="tabpanel" aria-labelledby="tvTabMedia" hidden>
+    <div class="tv-actions">
+      <button class="tv-btn" data-tv="play" data-feature="Play">Play</button><button class="tv-btn" data-tv="pause" data-feature="Pause">Pause</button><button class="tv-btn" data-tv="stop" data-feature="Stop">Stop</button>
+      <button class="tv-btn" data-tv="previous" data-feature="Previous">Previous</button><button class="tv-btn" data-tv="next" data-feature="Next">Next</button><button class="tv-btn" data-tv="skip_backward" data-feature="SkipBackward">Skip back</button>
+      <button class="tv-btn" data-tv="skip_forward" data-feature="SkipForward">Skip forward</button><button class="tv-btn" data-tv="channel_down" data-feature="ChannelDown">Channel −</button><button class="tv-btn" data-tv="channel_up" data-feature="ChannelUp">Channel +</button>
+      <button class="tv-btn" data-tv="guide" data-feature="Guide">TV guide</button><button class="tv-btn" data-tv="home_hold" data-feature="Home">Hold Home</button>
+    </div>
+    <label class="tv-label" for="tvSeek">Playback position <span id="tvPosition"></span></label><input id="tvSeek" type="range" min="0" max="1" value="0" step="1" data-feature="SetPosition">
+    <label class="tv-label" for="tvVolume">Volume <span id="tvVolumeValue"></span></label><input id="tvVolume" type="range" min="0" max="100" value="0" step="1" data-feature="SetVolume">
+    <div class="tv-row"><label for="tvShuffle">Shuffle<select class="tv-select" id="tvShuffle" data-feature="SetShuffle"><option value="Off">Off</option><option value="Albums">Albums</option><option value="Songs">Songs</option></select></label><label for="tvRepeat">Repeat<select class="tv-select" id="tvRepeat" data-feature="SetRepeat"><option value="Off">Off</option><option value="Track">Track</option><option value="All">All</option></select></label></div>
+    <p class="tv-help">Unavailable controls are dimmed. Support updates with the app and media playing on GP TV.</p>
+  </div>
+  <div class="tv-pane tv-form" id="tvMore" role="tabpanel" aria-labelledby="tvTabMore" hidden>
+    <div class="tv-section"><label for="tvText">Type on Apple TV</label><p class="tv-help" id="tvKeyboardHint">Open a search or text field on Apple TV first.</p><div class="tv-row"><input id="tvText" placeholder="Text to send" autocomplete="off" maxlength="2000" aria-label="Text to send to Apple TV"><button class="tv-btn" id="tvTextSend" data-feature="TextSet">Replace text</button><button class="tv-btn" id="tvTextAppend" data-feature="TextAppend">Append text</button><button class="tv-btn" data-tv="text_clear" data-feature="TextClear">Clear field</button></div></div>
+    <div class="tv-section"><label for="tvURL">Play a media URL</label><div class="tv-row"><input id="tvURL" type="url" placeholder="https://…" aria-label="Media URL" maxlength="2048"><button class="tv-btn" id="tvPlayURL" data-feature="PlayUrl">Play video</button><button class="tv-btn" id="tvStreamAudio" data-feature="StreamFile">Stream audio</button></div><p class="tv-help">Use a direct media link. Start screen mirroring to GP TV from Control Center on your Mac or iPhone.</p></div>
+    <div class="tv-section"><label for="tvAccount">Apple TV profile</label><div class="tv-row"><select id="tvAccount" aria-label="Apple TV profile"></select><button class="tv-btn" id="tvSwitchAccount" data-feature="SwitchAccount">Switch profile</button></div></div>
+    <div class="tv-section"><span class="tv-label">Current audio outputs</span><div id="tvOutputs" class="tv-caption">Loading outputs…</div><div class="tv-row"><button class="tv-btn" data-tv="control_center" data-feature="ControlCenter">Choose speakers on TV</button></div><details><summary class="tv-help">Advanced AirPlay output</summary><p class="tv-help">Use the AirPlay device identifier of a speaker you already know.</p><div class="tv-row"><input id="tvOutputId" placeholder="AirPlay output identifier" aria-label="AirPlay output identifier"><button class="tv-btn" id="tvAddOutput" data-feature="AddOutputDevices">Add output</button><button class="tv-btn" id="tvSetOutput" data-feature="SetOutputDevices">Use only this output</button></div></details></div>
+  </div>
+  <div class="tv-status" id="tvStatus" role="status" aria-live="polite"></div>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<button class="veil" id="veil" aria-label="Wake the screen"><span>Night mode · Tap to wake</span></button>
+<div class="banner" id="banner" role="alert"></div>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -276,7 +190,7 @@ const health={clock:true,controls:false,presence:false,ruview:false,markets:fals
 function paintDots(){ const ks=["clock","controls","presence","ruview","markets"];
   [...$("dots").children].forEach((d,i)=>d.classList.toggle("ok",!!health[ks[i]]));
   const bad=ks.filter(k=>!health[k]);
-  $("sys").innerHTML = bad.length ? `<b style="color:var(--hot)">●</b> Degraded · ${bad.join(" · ")}` : `<b style="color:var(--hot)">●</b> All systems nominal`;
+  $("sys").innerHTML = bad.length ? `<b style="color:var(--hot)">●</b> Waiting for ${bad.map(k=>({controls:"room controls",presence:"presence",ruview:"sensors",markets:"markets"}[k]||k)).join(" · ")}` : `<b style="color:var(--hot)">●</b> Connected · All feeds up to date`;
 }
 function ago(ms){ if(ms==null) return "—"; const s=Math.round(ms/1000);
   if(s<60) return s+"s"; const m=Math.floor(s/60); if(m<60) return m+"m"; return Math.floor(m/60)+"h"+String(m%60).padStart(2,"0"); }
@@ -287,47 +201,59 @@ function say(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"
 const secbar=$("secbar"); for(let i=0;i<60;i++){ const b=el("i"); if(i%15===0) b.className="q"; secbar.append(b); }
 function clock(){
   const d=new Date();
-  $("hm").textContent=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  $("hm").textContent=`${d.getHours()%12||12}:${String(d.getMinutes()).padStart(2,"0")}`;
+  $("ampm").textContent=d.getHours()<12?"AM":"PM";
+  $("greeting").textContent=d.getHours()>=6&&d.getHours()<12?"Good morning, Grayson.":d.getHours()>=12&&d.getHours()<17?"Good afternoon, Grayson.":"Good evening, Grayson.";
   const s=d.getSeconds(); $("sec").textContent=String(s).padStart(2,"0");
   [...secbar.children].forEach((b,i)=>{ b.classList.toggle("on",i<=s); });
   const day=d.toLocaleDateString("en-US",{weekday:"long"}), md=d.toLocaleDateString("en-GB",{day:"2-digit",month:"long"});
-  const wk=Math.ceil((((d-new Date(d.getFullYear(),0,1))/864e5)+new Date(d.getFullYear(),0,1).getDay()+1)/7);
-  $("date").innerHTML=`<b>${day}</b><span>${md} ${d.getFullYear()}</span><span>WK ${wk}</span>`;
+  $("date").innerHTML=`<b>${day}</b><span>${md}</span>`;
   $("tz").textContent=d.toLocaleTimeString("en-US",{timeZoneName:"short"}).split(" ").pop();
   setTimeout(clock, 1000 - (Date.now()%1000) + 5);
 }
 clock();
 
 // ── 03 Room control (ported from the Room panel; same guards) ───────────────
+const startedAt=Date.now();
 let lastGood=0, pending=new Map(), pausedUntil=0, armed=null, model=null;
+const failures=new Set();
+function controlsReady(){
+  if(!lastGood || Date.now()-lastGood>60000){ say("Room controls are reconnecting. Please wait for live status."); return false; }
+  return true;
+}
+async function writeControl(item,patch){
+  const r=await fetch("/controls/set",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:item.id,...patch}),signal:AbortSignal.timeout(40000)});
+  const d=await r.json();
+  if(!r.ok||!d.ok) throw new Error(d.error||"The device did not confirm the change.");
+  // Only display states returned by the device, never a speculative toggle.
+  if(d.on!=null) item.on=d.on;
+  if(d.detail!=null) item.detail=d.detail;
+  if(d.brightness!=null) item.brightness=d.brightness;
+  if(d.mirek!=null) item.mirek=d.mirek;
+  else if(patch.mirek!=null) item.mirek=patch.mirek;
+  if(patch.xy){ item.xy=patch.xy; item.mirek=null; }
+  failures.delete(item.id);
+  return d;
+}
 
-async function tap(item, li){
-  if(item.protected){ say(item.protected); return; }
-  if(item.reachable===false){ say(item.name+" is offline"); return; }
-  if(pending.has(item.id)) return;
-  // Confirm-guarded (powered speakers): first tap arms, second within 4 s fires.
+async function tap(item){
+  if(item.protected){ say(item.name+" is locked on this panel."); return; }
+  if(item.reachable===false){ say(item.name+" is offline. Check its power or connection."); return; }
+  if(pending.has(item.id)||!controlsReady()) return;
   if(item.confirm){
     const now=Date.now();
     if(!armed || armed.id!==item.id || now>armed.until){
-      armed={id:item.id, until:now+4000};
-      li.classList.add("arming"); say(item.confirm);
-      pausedUntil=armed.until;
-      clearTimeout(tap._disarm); tap._disarm=setTimeout(()=>{ armed=null; render(); },4000);
+      armed={id:item.id,until:now+4000}; pausedUntil=armed.until;
+      say(item.confirm); render();
+      clearTimeout(tap._disarm); tap._disarm=setTimeout(()=>{armed=null;render();},4000);
       return;
     }
-    armed=null; clearTimeout(tap._disarm); li.classList.remove("arming");
   }
-  const want=!item.on;
-  pending.set(item.id,want);
-  li.classList.add("pending"); li.classList.remove("failed");
-  pausedUntil=Date.now()+1500;
-  try{
-    const r=await fetch("/controls/set",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:item.id,on:want})});
-    const d=await r.json();
-    if(!d.ok){ li.classList.add("failed"); say(d.error||"did not switch"); }
-    else { item.on=d.on; item.detail=d.detail??item.detail; if(d.brightness!=null) item.brightness=d.brightness; }
-  }catch(e){ li.classList.add("failed"); say("no reply: "+e.message); }
-  finally{ pending.delete(item.id); li.classList.remove("pending"); pausedUntil=Date.now()+300; render(); }
+  armed=null; clearTimeout(tap._disarm);
+  pending.set(item.id,!item.on); failures.delete(item.id); render();
+  try{ await writeControl(item,{on:!item.on}); }
+  catch(e){failures.add(item.id);say(item.name+": "+e.message);}
+  finally{pending.delete(item.id);pausedUntil=Date.now()+300;render();}
 }
 
 // Gamut C xy pairs: DEVICE coordinates, not RGB, or "red" clamps to orange.
@@ -338,174 +264,221 @@ const SWATCHES=[
   ["#ff5cc8",[0.3800,0.1600]],
 ];
 const sheet=$("sheet"), briEl=$("bri"), swEl=$("sw");
-let cur=null, sendTimer=null;
-function paintSheet(){ if(!cur) return;
+let cur=null, sendTimer=null, sheetIdle=null, sheetReturn=null, queuedAdjustment=null, adjustmentSending=false;
+function paintSheet(){
+  if(!cur) return;
   $("sName").textContent=cur.name;
-  $("sPwr").textContent=cur.on?"ON":"OFF"; $("sPwr").className="pwr"+(cur.on?" on":"");
-  $("sNow").textContent=cur.on?`${Math.round(briEl.value)}%`:"OFF";
+  $("sPwr").textContent=cur.on?"Turn off":"Turn on";
+  $("sPwr").className="pwr"+(cur.on?" on":"");
+  $("sPwr").setAttribute("aria-label",`${cur.on?"Turn off":"Turn on"} ${cur.name}`);
+  $("sNow").textContent=pending.has(cur.id)?"Applying…":cur.on?(cur.dimmable?`${Math.round(cur.brightness??briEl.value)}%`:"On"):"Off";
+  paintPresets();
 }
-// Throttle while dragging: one PUT per pixel floods the bridge.
-function push(patch, now){
-  const send=async()=>{
-    try{
-      const r=await fetch("/controls/set",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:cur.id,...patch})});
-      const d=await r.json();
-      if(!d.ok) say(d.error||"did not apply");
-      else { cur.on=d.on; if(d.brightness!=null) cur.brightness=d.brightness; cur.detail=d.detail??cur.detail; paintSheet(); }
-    }catch(e){ say("no reply: "+e.message); }
-    pausedUntil=Date.now()+1500;
-  };
-  clearTimeout(sendTimer);
-  if(now) send(); else sendTimer=setTimeout(send,220);
+// Capture the target before any asynchronous work. One write at a time; newer
+// slider values replace unsent values. Closing discards only unsent changes.
+function push(patch,now){
+  if(!cur||cur.protected||cur.reachable===false||!controlsReady()) return;
+  const item=cur;
+  queuedAdjustment={item,patch:{...(queuedAdjustment?.item===item?queuedAdjustment.patch:{}),...patch}};
+  clearTimeout(sendTimer); poke();
+  if(now) flushAdjustment(); else sendTimer=setTimeout(flushAdjustment,220);
 }
-// Presets first: a thumb hits a 56 px button every time, a slider rarely
-// lands where you meant. The slider stays for in-between values.
+async function flushAdjustment(){
+  if(adjustmentSending||!queuedAdjustment) return;
+  const {item,patch}=queuedAdjustment; queuedAdjustment=null;
+  if(cur!==item||!controlsReady()) return;
+  adjustmentSending=true; pending.set(item.id,true); paintSheet();
+  $("sheetStatus").textContent="Applying your change…"; $("sheetStatus").className="sheet-note";
+  try{
+    await writeControl(item,patch);
+    if(cur===item){
+      $("sheetStatus").textContent="Saved · Light updated";
+      if(!queuedAdjustment) briEl.value=Math.round(item.brightness??briEl.value);
+    }
+  }catch(e){
+    failures.add(item.id); say(item.name+": "+e.message);
+    if(cur===item){ $("sheetStatus").textContent="Not saved · Try the adjustment again."; $("sheetStatus").className="sheet-note warn"; briEl.value=Math.round(item.brightness??50); }
+  }finally{
+    pending.delete(item.id); adjustmentSending=false; pausedUntil=Date.now()+300;
+    if(cur===item) paintSheet();
+    render();
+    if(queuedAdjustment) flushAdjustment();
+  }
+}
 const BRI_P=[[5,"Night"],[25,"Low"],[50,"Half"],[75,"High"],[100,"Full"]];
 const CT_P=[[447,"Candle","#ff9f45"],[370,"Warm","#ffc27a"],[300,"Soft","#ffe2b8"],[233,"Neutral","#fff4e6"],[153,"Cool","#d6e8ff"]];
 function paintPresets(){
   if(!cur) return;
-  $("briP").replaceChildren(...BRI_P.map(([v,l])=>{
-    const b=el("button","pre"+(cur.on&&Math.abs((cur.brightness??-99)-v)<3?" cur":""));
-    b.innerHTML=`${v}%<small>${l}</small>`;
-    b.addEventListener("click",()=>{ briEl.value=v; cur.brightness=v; cur.on=true; push({brightness:v,on:true},true); paintPresets(); paintSheet(); poke(); });
-    return b;
-  }));
-  $("ctP").replaceChildren(...CT_P.map(([m,l,c])=>{
-    const b=el("button","pre"+(cur.mirek!=null&&Math.abs(cur.mirek-m)<12?" cur":""));
-    b.innerHTML=`<span class="chip" style="background:${c}"></span><small>${l}</small>`;
-    b.addEventListener("click",()=>{ cur.mirek=m; push({mirek:m,on:true},true); paintPresets(); poke(); });
-    return b;
-  }));
+  [...$("briP").children].forEach((b,i)=>{const active=cur.on&&Math.abs((cur.brightness??-99)-BRI_P[i][0])<3;b.classList.toggle("cur",active);b.setAttribute("aria-pressed",String(active));});
+  [...$("ctP").children].forEach((b,i)=>{const active=cur.on&&cur.mirek!=null&&Math.abs(cur.mirek-CT_P[i][0])<12;b.classList.toggle("cur",active);b.setAttribute("aria-pressed",String(active));});
+  [...swEl.children].forEach((b,i)=>{const xy=SWATCHES[i][1], active=cur.on&&cur.mirek==null&&cur.xy&&Math.abs(cur.xy[0]-xy[0])<.015&&Math.abs(cur.xy[1]-xy[1])<.015;b.setAttribute("aria-pressed",String(!!active));});
 }
-// A sheet left open would hide the whole panel until someone walks over, so
-// it closes itself after 25 s without a touch.
-let sheetIdle=null;
-function poke(){ clearTimeout(sheetIdle); sheetIdle=setTimeout(closeSheet,25000); }
-function closeSheet(){ sheet.classList.remove("open"); cur=null; clearTimeout(sheetIdle); render(); }
-sheet.addEventListener("pointerdown",poke);
+$("briP").replaceChildren(...BRI_P.map(([v,l])=>{
+  const b=el("button","pre"); b.innerHTML=`${v}%<small>${l}</small>`; b.setAttribute("aria-label",`${l}, ${v}% brightness`);
+  b.addEventListener("click",()=>{briEl.value=v;push({brightness:v,on:true},true);}); return b;
+}));
+$("ctP").replaceChildren(...CT_P.map(([m,l,c])=>{
+  const b=el("button","pre");b.innerHTML=`<span class="chip" style="background:${c}"></span><small>${l}</small>`;b.setAttribute("aria-label",`${l} white`);
+  b.addEventListener("click",()=>push({mirek:m,on:true},true));return b;
+}));
+const COLOR_NAMES=["Red","Orange","Amber","Yellow","Lime","Green","Cyan","Blue","Violet","Pink"];
+swEl.replaceChildren(...SWATCHES.map(([css,xy],i)=>{const b=el("button","sw");b.style.background=css;b.setAttribute("aria-label",COLOR_NAMES[i]);b.addEventListener("click",()=>push({xy,on:true},true));return b;}));
+function poke(){clearTimeout(sheetIdle);sheetIdle=setTimeout(()=>{if(adjustmentSending||queuedAdjustment)poke();else closeSheet();},25000);}
+function closeSheet(){
+  clearTimeout(sendTimer);queuedAdjustment=null;sheet.classList.remove("open");cur=null;clearTimeout(sheetIdle);
+  document.querySelector(".shell").inert=false;render();
+  if(sheetReturn) document.getElementById(sheetReturn)?.focus({preventScroll:true});
+}
+sheet.addEventListener("pointerdown",poke);sheet.addEventListener("keydown",poke);
 function openSheet(item){
-  cur=item;
-  briEl.value=Math.round(item.brightness??50);
-  const showCT=!!item.ctCapable, showColor=!!item.colorCapable;
-  $("ctP").style.display=$("ctLab").style.display=showCT?"":"none";
-  $("briP").style.display=item.dimmable?"":"none";
-  swEl.style.display=$("swLab").style.display=showColor?"":"none";
-  briEl.style.display=item.dimmable?"":"none";
-  paintSheet(); paintPresets(); sheet.classList.add("open"); poke();
+  if(item.protected||item.reachable===false||pending.has(item.id)||!controlsReady()) return;
+  armed=null;allArmed=null;clearTimeout(tap._disarm);clearTimeout(allTap._t);
+  clearTimeout(say._t);$("toast").classList.remove("show");render();
+  cur=item;sheetReturn="adjust-"+item.id;briEl.value=Math.round(item.brightness??50);
+  $("ctP").hidden=$("ctLab").hidden=!item.ctCapable;
+  $("briP").hidden=$("briLab").hidden=briEl.hidden=!item.dimmable;
+  swEl.hidden=$("swLab").hidden=!item.colorCapable;
+  $("sheetStatus").textContent="Changes apply as you adjust.";$("sheetStatus").className="sheet-note";
+  paintSheet();sheet.classList.add("open");document.querySelector(".shell").inert=true;$("sClose").focus();poke();
 }
-swEl.replaceChildren(...SWATCHES.map(([css,xy])=>{ const b=el("div","sw"); b.style.background=css;
-  b.addEventListener("click",()=>{ cur.mirek=null; push({xy,on:true},true); paintPresets(); }); return b; }));
-briEl.addEventListener("input",()=>{ $("sNow").textContent=`${briEl.value}%`; push({brightness:Number(briEl.value),on:true}); });
+briEl.addEventListener("input",()=>{ $("sNow").textContent=`${briEl.value}%`;push({brightness:Number(briEl.value),on:true}); });
 briEl.addEventListener("change",()=>push({brightness:Number(briEl.value),on:true},true));
-$("sPwr").addEventListener("click",()=>push({on:!cur.on},true));
+$("sPwr").addEventListener("click",()=>{if(cur)push({on:!cur.on},true);});
 $("sClose").addEventListener("click",closeSheet);
-
+sheet.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){e.preventDefault();closeSheet();return;}
+  if(e.key!=="Tab")return;
+  const targets=[...sheet.querySelectorAll("button,input")].filter(x=>!x.hidden&&!x.closest("[hidden]")&&!x.disabled);
+  const first=targets[0],last=targets.at(-1);
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
+const ADJUST_ICON='<svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M4 2v16M10 2v16M16 2v16"/><path d="M1 6h6M7 14h6M13 8h6" stroke-width="3"/></svg>';
+const POWER_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 3v9M7 5.7a8 8 0 1 0 10 0"/></svg>';
+const LOCK_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="6" y="10" width="12" height="10" rx="1"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>';
 function row(item){
-  const li=el("li");
-  li.className=(item.on?"on ":"")+(item.named_in_home===false?"unnamed ":"")+(item.protected?"locked ":"tappable");
-  if(pending.has(item.id)) li.classList.add("pending");
-  if(armed && armed.id===item.id && Date.now()<armed.until) li.classList.add("arming");
-  if(item.reachable===false) li.classList.add("offline");
-  const main=el("div","main"); main.append(el("span","nm",item.name));
-  const ft=el("div","ft");
-  let st;
-  if(item.protected) st="Locked";
-  else if(item.reachable===false) st="Offline";
-  else if(item.confirm && armed && armed.id===item.id) st="Tap again";
-  else st=item.on?(item.dimmable&&item.brightness!=null?Math.round(item.brightness)+"%":"On"):"Off";
-  ft.append(el("span","st",st));
-  if(item.dimmable && !item.protected){
-    const seg=el("span","seg"); const n=Math.round((item.brightness??0)/10);
-    for(let i=0;i<10;i++){ const b=el("i"); if(item.on && i<n) b.className="f"; seg.append(b); }
-    ft.append(seg);
-  } else if(item.confirm){ ft.append(el("span",null,"· guarded")); }
-  main.append(ft); li.append(main);
-  // Two targets, far apart: the tile toggles (the common action stays one
-  // tap), the ADJ strip opens brightness and colour.
-  if(item.dimmable || item.colorCapable){
-    const m=el("span","more");
-    m.innerHTML=`<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="3"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3 3l1.4 1.4M11.6 11.6L13 13M3 13l1.4-1.4M11.6 4.4L13 3"/></svg>ADJ`;
-    m.addEventListener("click",e=>{ e.stopPropagation(); openSheet(item); });
-    li.append(m);
+  if(item.kind==="appletv"){
+    const li=el("li","device tv-device");const button=el("button","main");button.id="power-"+item.id;button.setAttribute("aria-label","Open Apple TV remote for GP TV");
+    const copy=el("span","device-copy");copy.append(el("span","nm",item.name));copy.append(el("span","ft",tvSummary()));
+    const icon=el("span","power-symbol");icon.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="1"/><path d="M8 21h8M12 17v4M10 8l5 3-5 3z"/></svg>';button.append(copy,icon);button.addEventListener("click",openTV);li.append(button);
+    const more=el("button","more");more.textContent="Open remote · Apps · Playback ↗";more.addEventListener("click",openTV);li.append(more);return li;
   }
-  // Locked rows listen TOO: a silent refusal reads as a dead panel.
-  li.addEventListener("click",()=>tap(item,li));
+  const li=el("li","device"+(item.on?" on":"")+(item.protected?" locked":"")+(item.reachable===false?" offline":""));
+  const isPending=pending.has(item.id),isArmed=armed&&armed.id===item.id&&Date.now()<armed.until;
+  li.classList.toggle("pending",isPending);li.classList.toggle("arming",!!isArmed);li.classList.toggle("failed",failures.has(item.id));
+  const main=el("button","main");main.id="power-"+item.id;main.disabled=isPending;
+  main.setAttribute("aria-label",item.protected?`${item.name}, locked`:item.reachable===false?`${item.name}, offline`:isArmed?`Confirm ${item.on?"turn off":"turn on"} ${item.name}`:`${item.on?"Turn off":"Turn on"} ${item.name}`);
+  if(!item.protected&&item.reachable!==false)main.setAttribute("aria-pressed",String(!!item.on));
+  const copy=el("span","device-copy");copy.append(el("span","nm",item.name.replace(/^Hue Essential lamp /,"Essential lamp ")));
+  const st=isPending?"Applying…":item.protected?"Locked on this panel":item.reachable===false?"Offline":isArmed?"Tap to confirm":failures.has(item.id)?"Try again":item.on?(item.dimmable&&item.brightness!=null?`On · ${Math.round(item.brightness)}%`:"On"):"Off";
+  const ft=el("span","ft");ft.append(el("i","status-dot"),el("span","st",st));
+  if(item.confirm&&!isArmed&&!isPending)ft.append(el("span",null,"· Confirm to switch"));
+  copy.append(ft);const power=el("span","power-symbol");power.innerHTML=item.protected?LOCK_ICON:POWER_ICON;
+  main.append(copy,power);main.addEventListener("click",()=>tap(item));li.append(main);
+  if((item.dimmable||item.colorCapable||item.ctCapable)&&!item.protected){
+    const more=el("button","more");more.id="adjust-"+item.id;
+    const label=item.dimmable&&(item.colorCapable||item.ctCapable)?"Brightness & color":item.dimmable?"Brightness":"Color";
+    more.innerHTML=ADJUST_ICON+`<span>${label}</span><span class="adjust-arrow">↗</span>`;more.setAttribute("aria-label",`Adjust ${item.name}`);more.disabled=item.reachable===false||isPending;
+    more.addEventListener("click",()=>openSheet(item));li.append(more);
+  }
   return li;
 }
 // ── Station-wide switch ─────────────────────────────────────────────────────
 // Only plain tiles: never a locked one (the Pi's own power), never a guarded
 // one (the powered speakers), never one that is offline.
-const bulkable=g=>g.items.filter(i=>!i.protected && !i.confirm && i.reachable!==false);
+const bulkable=g=>g.items.filter(i=>!i.protected && !i.confirm && !i.bulkExclude && i.kind!=="appletv" && i.reachable!==false);
 let allArmed=null;
 async function allTap(g,wantOn){
+  if(!controlsReady()||g.items.some(i=>pending.has(i.id)))return;
   if(!wantOn){
-    if(!allArmed || allArmed.g!==g.name || Date.now()>allArmed.until){
-      allArmed={g:g.name, until:Date.now()+3500}; pausedUntil=allArmed.until;
-      say(`Tap Confirm to switch off everything at ${g.name}`); render();
-      clearTimeout(allTap._t); allTap._t=setTimeout(()=>{ allArmed=null; render(); },3500);
-      return;
+    if(!allArmed||allArmed.g!==g.name||Date.now()>allArmed.until){
+      allArmed={g:g.name,until:Date.now()+4000};pausedUntil=allArmed.until;
+      say(`Tap Confirm off for ${g.name}. Protected and confirmation-only devices stay unchanged.`);render();
+      clearTimeout(allTap._t);allTap._t=setTimeout(()=>{allArmed=null;render();},4000);return;
     }
-    allArmed=null; clearTimeout(allTap._t);
   }
-  const targets=bulkable(g).filter(i=>i.on!==wantOn);
-  targets.forEach(i=>pending.set(i.id,wantOn)); render();
+  allArmed=null;clearTimeout(allTap._t);
+  const targets=bulkable(g).filter(i=>i.on!==wantOn);targets.forEach(i=>pending.set(i.id,wantOn));render();
   let failed=0;
-  // One at a time: the Meross side is one warm session, and a burst of
-  // parallel writes is exactly the kind of pile-up this panel avoids.
   for(const i of targets){
-    pausedUntil=Date.now()+4000;
-    try{
-      const r=await fetch("/controls/set",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:i.id,on:wantOn})});
-      const d=await r.json();
-      if(d.ok){ i.on=d.on; i.detail=d.detail??i.detail; } else failed++;
-    }catch{ failed++; }
-    pending.delete(i.id); render();
+    try{await writeControl(i,{on:wantOn});}
+    catch{failed++;failures.add(i.id);}
+    pending.delete(i.id);render();
   }
   pausedUntil=Date.now()+300;
-  if(failed) say(`${failed} of ${targets.length} at ${g.name} did not switch`);
+  say(failed?`${failed} of ${targets.length} devices did not switch. Tap Try again.`:`${g.name} · ${targets.length} ${targets.length===1?"device":"devices"} turned ${wantOn?"on":"off"}`);
 }
-
+let selectedGroup="";
+try{selectedGroup=localStorage.getItem("cleetus-studio-area")||"";}catch{}
+function selectGroup(name,focusTab=false){
+  if(!model?.groups.some(g=>g.name===name))return;
+  selectedGroup=name;
+  try{localStorage.setItem("cleetus-studio-area",name);}catch{}
+  armed=null;allArmed=null;clearTimeout(tap._disarm);clearTimeout(allTap._t);pausedUntil=0;
+  clearTimeout(say._t);$("toast").classList.remove("show");
+  render();
+  if(focusTab)document.getElementById("tab-"+name)?.focus();
+}
+$("roomTabs").addEventListener("keydown",e=>{
+  if(!["ArrowRight","ArrowLeft","Home","End"].includes(e.key)||!model?.groups.length)return;
+  e.preventDefault();const names=model.groups.map(g=>g.name),current=names.indexOf(selectedGroup);
+  const i=e.key==="Home"?0:e.key==="End"?names.length-1:(current+(e.key==="ArrowRight"?1:-1)+names.length)%names.length;
+  selectGroup(names[i],true);
+});
 function render(){
-  if(!model) return;
-  $("board").replaceChildren(...model.groups.map(g=>{
-    const s=el("div","station"); const h=el("h3",null,g.name);
-    if(g.online===false) h.append(el("span","cnt","offline"));
-    const bulk=bulkable(g);
-    if(bulk.length>1){
-      const anyOn=bulk.some(i=>i.on), isArmed=allArmed&&allArmed.g===g.name&&Date.now()<allArmed.until;
-      const b=el("button","all"+(anyOn?" hasOn":"")+(isArmed?" armed":""), isArmed?"Confirm":(anyOn?"All off":"All on"));
-      b.addEventListener("click",e=>{ e.stopPropagation(); allTap(g,!anyOn); });
-      h.append(b);
-    }
-    s.append(h);
-    const ul=el("ul"); g.items.forEach(i=>ul.append(row(i))); s.append(ul); return s;
+  if(!model)return;
+  const focusId=document.activeElement?.id;
+  const groups=model.groups;
+  if(!groups.some(g=>g.name===selectedGroup))selectedGroup=groups[0]?.name||"";
+  $("roomTabs").replaceChildren(...groups.map(g=>{
+    const tab=el("button","room-tab");tab.id="tab-"+g.name;tab.setAttribute("role","tab");tab.setAttribute("aria-controls","board");tab.setAttribute("aria-selected",String(g.name===selectedGroup));tab.tabIndex=g.name===selectedGroup?0:-1;
+    const count=g.items.filter(i=>i.on&&i.reachable!==false&&!i.protected).length;
+    const label=el("span","tab-name");label.append(el("span","tab-number",String(g.number||groups.indexOf(g)+1).padStart(2,"0")),document.createTextNode(g.name));tab.append(label,el("span","tab-count",`${count} on`));tab.addEventListener("click",()=>selectGroup(g.name));return tab;
   }));
-  const items=model.groups.flatMap(g=>g.items).filter(i=>!i.protected);
-  const on=items.filter(i=>i.on);
-  $("onCount").textContent=`${on.length} of ${items.length}`;
-  const lamps=on.filter(i=>i.dimmable).length;
-  $("onS").innerHTML=`<b>${lamps}</b> lamps · ${on.length-lamps} outlets`;
+  const g=groups.find(g=>g.name===selectedGroup);
+  if(g){
+    $("board").setAttribute("aria-labelledby","tab-"+g.name);
+    const station=el("section","station"),head=el("div","station-head"),title=el("div","station-title");
+    title.append(el("h2",null,g.name),el("span","cnt",`${g.items.length} devices`));head.append(title);
+    const bulk=bulkable(g);
+    if(bulk.length){
+      const anyOn=bulk.some(i=>i.on),isArmed=allArmed&&allArmed.g===g.name&&Date.now()<allArmed.until;
+      const b=el("button","all"+(anyOn?" hasOn":"")+(isArmed?" armed":""));b.id="group-"+g.name;
+      b.append(el("span",null,isArmed?"Confirm off":anyOn?"Turn group off":"Turn group on"),el("span","arr",isArmed?"✓":"↗"));
+      b.setAttribute("aria-label",`${isArmed?"Confirm off":anyOn?"Turn off":"Turn on"} ${g.name} group`);
+      b.disabled=g.items.some(i=>pending.has(i.id));b.addEventListener("click",()=>allTap(g,!anyOn));head.append(b);
+    }
+    station.append(head);const ul=el("ul","device-list");g.items.forEach(i=>ul.append(row(i)));
+    if(g.items.length===2&&g.items.every(i=>i.dimmable)){
+      const note=el("li","area-note");note.innerHTML='<svg viewBox="0 0 64 64" fill="none" stroke-width="1"><circle cx="32" cy="32" r="13"/><circle cx="32" cy="32" r="20" stroke-dasharray="1 4"/><path d="M32 1v7M32 56v7M1 32h7M56 32h7M10 10l5 5M49 49l5 5M10 54l5-5M49 15l5-5"/></svg><div><strong>Set the light. Set the mood.</strong><p>Choose Brightness &amp; color to dim a lamp, warm the room, or pick a color.</p></div>';ul.append(note);
+    }
+    station.append(ul);$("board").replaceChildren(station);
+  }else{$("board").removeAttribute("aria-labelledby");$("board").replaceChildren(el("p","empty","No devices available. Check the room connection."));}
+  const items=groups.flatMap(g=>g.items).filter(i=>!i.protected&&i.kind!=="appletv"&&i.reachable!==false);
+  $("onCount").textContent=`${items.filter(i=>i.on).length} / ${items.length}`;
+  if(focusId)document.getElementById(focusId)?.focus({preventScroll:true});
 }
 function paintAge(){
   const age=lastGood?Date.now()-lastGood:null, a=$("age");
   const stale=age==null||age>60000;
   document.body.classList.toggle("stale",!!lastGood && stale);
   $("room").classList.toggle("stale",!!lastGood && stale);
-  if(!lastGood){ a.textContent="connecting"; a.className="rt"; }
+  if(!lastGood){ a.textContent="Connecting"; a.className="rt"; if(Date.now()-startedAt>12000)$("board").innerHTML='<p class="empty">Room controls are unavailable.<br>Check the connection to your Mac. Retrying automatically…</p>'; }
   else if(stale){ a.textContent=`not updating · ${ago(age)}`; a.className="rt warn";
-    $("banner").textContent=`Room control has not updated for ${ago(age)} — these states may be wrong`; }
+    $("banner").textContent=`Room control has not updated for ${ago(age)} — controls paused until reconnected`; }
   else { a.innerHTML=`<span class="live"></span>live`; a.className="rt"; }
   health.controls=!!lastGood && !stale;
 }
 async function tickControls(){
-  if(Date.now()<pausedUntil){ paintAge(); return; }
+  if(Date.now()<pausedUntil||pending.size){ paintAge(); return; }
   try{
     const r=await fetch("/controls",{cache:"no-store",signal:AbortSignal.timeout(10000)});
     if(!r.ok) throw new Error("HTTP "+r.status);
     const d=await r.json();
     if(!d || !Array.isArray(d.groups)) throw new Error("bad shape");
-    if(Date.now()<pausedUntil) return;   // a tap landed while this was in flight
-    model=d; lastGood=Date.now(); render();
+    if(Date.now()<pausedUntil||pending.size) return; // Interaction started during the fetch.
+    lastGood=Date.now()-Math.max(0,d.age_ms||0);
+    if(!cur){model=d;render();}
   }catch(e){ /* keep the last good board; paintAge dims it past 60 s */ }
   paintAge();
 }
@@ -533,9 +506,9 @@ async function tickMarkets(){
     mktOpen=d.symbols.some(q=>q.open);
     $("ticks").replaceChildren(...d.symbols.map(q=>{
       const t=el("div","tick"); const dn=(q.change??0)<0;
-      t.innerHTML=`<div class="sym">${q.symbol}<small>${q.open?"LIVE":"CLOSE"}</small></div>
-        <div><div class="px">${fmt(q.price).replace(".",'<i class="pt"></i>')}</div>
-        <div class="ch ${dn?"dn":"up"}">${dn?"▼":"▲"} ${fmt(Math.abs(q.change))} · ${q.changePct>0?"+":""}${fmt(q.changePct)}%</div></div>
+      t.innerHTML=`<div class="sym">${q.symbol}<small>${q.open?"LIVE":"CLOSED"}</small></div>
+        <div><div class="px">${fmt(q.price)}</div>
+        <div class="ch ${dn?"dn":"up"}">${q.changePct==null?"—":`${dn?"−":"+"}${fmt(Math.abs(q.changePct))}%`}</div></div>
         ${spark(q)}`;
       return t;
     }));
@@ -543,7 +516,7 @@ async function tickMarkets(){
     const stale=age>(mktOpen?180000:1800000);
     $("mkts").classList.toggle("stale",stale);
     $("mktAge").className="rt"+(stale?" warn":"");
-    $("mktAge").innerHTML=mktOpen?`<span class="live"></span>NYSE open · ${ago(age)}`:`NYSE closed`;
+    $("mktAge").innerHTML=mktOpen?`<span class="live"></span>Open`:`Closed`;
     health.markets=!stale;
   }catch(e){
     health.markets=false; $("mkts").classList.add("stale");
@@ -597,7 +570,7 @@ function paintRuview(){
     const bar=el("div","bar"); for(let i=0;i<24;i++){ const b=el("i"); if(i<fill) b.className=i>=18?"h":"f"; bar.append(b); }
     d.innerHTML=`<span class="id">N${n.id}${n.leader?"<b>LEAD</b>":""}</span>`;
     d.append(bar);
-    d.insertAdjacentHTML("beforeend",`<span class="num">${e.toFixed(1)}</span><span class="num d">${n.rssi??"—"} dBm</span><span class="num d">${Math.round(n.fps??0)} fps</span>`);
+    d.insertAdjacentHTML("beforeend",`<span class="num">${e.toFixed(1)}</span><span class="num d">${n.rssi??"—"} dBm</span><span class="num d fps">${Math.round(n.fps??0)} fps</span>`);
     return d;
   }));
   if(rv){
@@ -607,12 +580,12 @@ function paintRuview(){
     $("nct").textContent=`${rv.activeCount}/${rv.totalCount}`;
     // The server's head count is fabricated (0 detections after millions of
     // frames); show that we have no fix rather than its number.
-    $("ppl").textContent=rv.trustworthy&&rv.claimedPersons!=null?String(rv.claimedPersons):"NO FIX";
+    $("ppl").textContent=rv.trustworthy&&rv.claimedPersons!=null?String(rv.claimedPersons):"Unconfirmed";
   }
 }
 function paintPresence(){
   const p=rv&&rv.presence; const who=$("who"), s=$("whoS");
-  if(!p||p.ok===false){ who.textContent="Unknown"; who.className="v muted"; s.textContent=p&&p.error?p.error:"no presence feed"; health.presence=false; return; }
+  if(!health.ruview||!p||p.ok===false){ who.textContent="Unknown"; who.className="v muted"; s.textContent="Presence unavailable"; health.presence=false; return; }
   health.presence=true;
   const named=(p.named||[]).filter(Boolean);
   const desk=p.desk||{}, idle=desk.idle_seconds;
@@ -635,18 +608,117 @@ async function tickRuview(){
   const stale=age==null||age>15000||!(rv&&rv.ok);
   $("rv").classList.toggle("stale",stale);
   $("rvAge").className="rt"+(stale?" warn":"");
-  $("rvAge").innerHTML=stale?(rvGood?`stale · ${ago(age)}`:"no feed"):`<span class="live"></span>v${rv.version||"?"}`;
+  $("rvAge").innerHTML=stale?(rvGood?`stale · ${ago(age)}`:"no feed"):`<span class="live"></span>Live`;
   health.ruview=!stale;
   paintRuview(); paintPresence(); paintDots();
 }
+
+
+// Apple TV is a remote, not a mains switch. Only deliberate button presses
+// send commands; opening, tabbing, polling and showing capabilities are reads.
+const tvSheet=$("tvSheet");let tvState=null,tvCatalog=null,tvBusy=false,tvReading=false,tvIdle=null,tvReturning=null,tvController=null;
+function tvSummary(){return tvState?.ok?(tvState.power==="Off"?"Asleep · Open remote":`${tvState.app?.name||"Awake"} · Open remote`):tvState?"Unavailable · Open remote":"Open remote";}
+function tvAvailable(name){return !!tvState?.ok&&tvState.features?.[name]==="Available";}
+function tvPoke(){clearTimeout(tvIdle);tvIdle=setTimeout(()=>{if(tvBusy)tvPoke();else closeTV();},180000);}
+function openTV(){
+  if(tvSheet.classList.contains("open"))return;
+  tvReturning=document.activeElement?.id;armed=null;allArmed=null;clearTimeout(tap._disarm);clearTimeout(allTap._t);
+  $("toast").classList.remove("show");tvSheet.classList.add("open");document.querySelector(".shell").inert=true;$("tvClose").focus();$("tvStatus").textContent="";tvPoke();paintTV();tickTV(true);
+}
+function closeTV(){tvSheet.classList.remove("open");clearTimeout(tvIdle);document.querySelector(".shell").inert=false;if(tvReturning)document.getElementById(tvReturning)?.focus({preventScroll:true});}
+$("tvClose").addEventListener("click",closeTV);tvSheet.addEventListener("pointerdown",tvPoke);tvSheet.addEventListener("keydown",e=>{
+  tvPoke();if(e.key==="Escape"){e.preventDefault();closeTV();return;}
+  if(e.key==="Tab"){const focusable=[...tvSheet.querySelectorAll("button,input,select,summary")].filter(x=>!x.disabled&&x.tabIndex!==-1&&x.getClientRects().length&&!x.closest("[hidden]"));const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
+});
+function tvTab(id,focus=false){
+  for(const button of $("tvTabs").children){const yes=button.dataset.tvTab===id;button.setAttribute("aria-selected",String(yes));button.tabIndex=yes?0:-1;$(button.dataset.tvTab).hidden=!yes;if(yes&&focus)button.focus();}
+  if(id==="tvApps"||id==="tvMore")loadTVCatalog();
+}
+$("tvTabs").addEventListener("click",e=>{const button=e.target.closest("[data-tv-tab]");if(button)tvTab(button.dataset.tvTab);});
+$("tvTabs").addEventListener("keydown",e=>{if(!["ArrowRight","ArrowLeft","Home","End"].includes(e.key))return;e.preventDefault();const tabs=[...$("tvTabs").children],i=tabs.findIndex(t=>t.getAttribute("aria-selected")==="true");const next=e.key==="Home"?0:e.key==="End"?tabs.length-1:(i+(e.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length;tvTab(tabs[next].dataset.tvTab,true);});
+function tvTime(n){if(n==null)return"—";return `${Math.floor(n/60)}:${String(Math.floor(n%60)).padStart(2,"0")}`;}
+function paintTV(){
+  const d=tvState;
+  $("tvConnection").textContent=d?.ok?`Connected · ${d.power==="Off"?"Asleep":d.power==="On"?"Awake":"Power unknown"} · ${d.app?.name||"GP TV"}`:d?.error||"Connecting to GP TV…";
+  $("tvNowTitle").textContent=d?.ok?(d.title||d.app?.name||"Ready when you are."):d?"Apple TV unavailable":"Connecting…";
+  $("tvNowDetail").textContent=d?.ok?[d.artist,d.playback].filter(Boolean).join(" · "):d?"Check Apple TV power and its Wi-Fi connection.":"Reading current activity.";
+  for(const button of tvSheet.querySelectorAll("[data-feature]")){
+    const supported=tvAvailable(button.dataset.feature);button.disabled=tvBusy||!supported;button.title=supported?"":"Not available on Apple TV right now";
+  }
+  const keyboard=d?.keyboardFocus==="Focused";
+  for(const button of tvSheet.querySelectorAll('[data-feature^="Text"]'))button.disabled=tvBusy||!keyboard||!tvAvailable(button.dataset.feature);
+  $("tvKeyboardHint").textContent=keyboard?"Apple TV is ready for text.":"Open a search or text field on Apple TV first.";
+  $("tvVolumeHint").textContent=tvAvailable("VolumeUp")?"Volume follows Apple TV’s current audio output.":"Volume control is unavailable for the current audio output.";
+  $("tvSeek").disabled=tvBusy||!tvAvailable("SetPosition")||!d?.duration;
+  if(document.activeElement!==$("tvSeek")){ $("tvSeek").max=d?.duration||1;$("tvSeek").value=d?.position||0; }
+  $("tvPosition").textContent=`${tvTime(d?.position)} / ${tvTime(d?.duration)}`;
+  if(document.activeElement!==$("tvVolume"))$("tvVolume").value=d?.volume??0;
+  $("tvVolumeValue").textContent=d?.volume==null?"Unavailable":Math.round(d.volume)+"%";
+  if(document.activeElement!==$("tvShuffle"))$("tvShuffle").value=d?.shuffle||"Off";
+  if(document.activeElement!==$("tvRepeat"))$("tvRepeat").value=d?.repeat||"Off";
+  $("tvTouchMode").disabled=!tvAvailable("Swipe")||!tvAvailable("Click");
+  if(d?.streamError)$("tvStatus").textContent=d.streamError;
+}
+async function tickTV(catalog=false){
+  if(tvReading||tvBusy||!tvSheet.classList.contains("open"))return;
+  tvReading=true;
+  try{const r=await fetch("/appletv/state",{cache:"no-store",signal:AbortSignal.timeout(26000)});tvState=await r.json();}
+  catch{tvState={ok:false,error:"Apple TV connection unavailable. Check the Mac and Apple TV."};}
+  finally{tvReading=false;if(tvSheet.classList.contains("open"))paintTV();}
+  if(catalog&&tvState?.ok)loadTVCatalog();
+}
+let catalogReading=false;
+async function loadTVCatalog(){
+  if(catalogReading)return;catalogReading=true;
+  try{
+    const r=await fetch("/appletv/catalog",{cache:"no-store",signal:AbortSignal.timeout(26000)});const d=await r.json();if(!d.ok)throw new Error(d.error);tvCatalog=d;
+    $("tvAppList").replaceChildren(...d.apps.map(app=>{const b=el("button","tv-btn",app.name);b.dataset.feature="LaunchApp";b.addEventListener("click",()=>sendTV({action:"launch_app",value:app.id},`Opening ${app.name}…`));return b;}));
+    if(!d.apps.length)$("tvAppList").append(el("p","tv-caption","No installed apps available. Retry after GP TV connects."));
+    const accountValue=$("tvAccount").value;$("tvAccount").replaceChildren(...d.accounts.map(a=>{const o=el("option",null,a.name);o.value=a.id;return o;}));if([...$("tvAccount").options].some(o=>o.value===accountValue))$("tvAccount").value=accountValue;
+    $("tvOutputs").replaceChildren(...d.outputs.map(o=>{const row=el("div","tv-output-row");row.append(el("span",null,o.name||"Audio output"));const b=el("button","tv-btn","Remove");b.dataset.feature="RemoveOutputDevices";b.addEventListener("click",()=>sendTV({action:"remove_output",devices:[o.id]},"Removing audio output…"));row.append(b);return row;}));
+    if(!d.outputs.length)$("tvOutputs").textContent="No audio outputs reported. Use Control Center to choose speakers.";
+    paintTV();
+  }catch(e){$("tvAppList").replaceChildren(el("p","tv-caption",e.message||"Apps unavailable. Try the Apps tab again."));}
+  finally{catalogReading=false;}
+}
+async function sendTV(body,message="Sending command…"){
+  if(tvBusy){$("tvStatus").textContent="Waiting for Apple TV…";return;}tvBusy=true;tvPoke();$("tvStatus").textContent=message;paintTV();
+  try{
+    const r=await fetch("/appletv/command",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body),signal:AbortSignal.timeout(26000)});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||"Apple TV did not accept the command.");
+    $("tvStatus").textContent="Command sent";
+    if(body.action.startsWith("text_"))$("tvText").value="";
+    if(body.action.includes("output"))loadTVCatalog();
+  }catch(e){$("tvStatus").textContent=e.message||"No reply. Check GP TV and try again.";}
+  finally{tvBusy=false;paintTV();tickTV();}
+}
+tvSheet.addEventListener("click",e=>{const b=e.target.closest("[data-tv]");if(b&&!b.disabled)sendTV({action:b.dataset.tv});});
+$("tvTextSend").addEventListener("click",()=>sendTV({action:"text_set",value:$("tvText").value}));
+$("tvTextAppend").addEventListener("click",()=>sendTV({action:"text_append",value:$("tvText").value}));
+$("tvPlayURL").addEventListener("click",()=>sendTV({action:"play_url",value:$("tvURL").value.trim()},"Starting video…"));
+$("tvStreamAudio").addEventListener("click",()=>sendTV({action:"stream_audio",value:$("tvURL").value.trim()},"Starting audio…"));
+$("tvSwitchAccount").addEventListener("click",()=>sendTV({action:"switch_account",value:$("tvAccount").value}));
+$("tvAddOutput").addEventListener("click",()=>sendTV({action:"add_output",devices:[$("tvOutputId").value.trim()]}));
+$("tvSetOutput").addEventListener("click",()=>sendTV({action:"set_output",devices:[$("tvOutputId").value.trim()]}));
+$("tvSeek").addEventListener("change",()=>sendTV({action:"seek",value:Number($("tvSeek").value)}));
+$("tvVolume").addEventListener("change",()=>sendTV({action:"set_volume",value:Number($("tvVolume").value)}));
+$("tvShuffle").addEventListener("change",()=>sendTV({action:"shuffle",value:$("tvShuffle").value}));
+$("tvRepeat").addEventListener("change",()=>sendTV({action:"repeat",value:$("tvRepeat").value}));
+$("tvTouchMode").addEventListener("click",()=>{const touch=$("tvTouch");touch.hidden=!touch.hidden;$("tvDpad").hidden=!touch.hidden;$("tvTouchMode").textContent=touch.hidden?"Use touchpad":"Use buttons";});
+let touchStart=null;
+const tvPoint=e=>{const r=$("tvTouch").getBoundingClientRect();return [Math.round(Math.max(0,Math.min(1000,(e.clientX-r.left)/r.width*1000))),Math.round(Math.max(0,Math.min(1000,(e.clientY-r.top)/r.height*1000)))];};
+$("tvTouch").addEventListener("pointerdown",e=>{if(tvBusy||!tvAvailable("Swipe"))return;touchStart={point:tvPoint(e),at:Date.now()};$("tvTouch").setPointerCapture(e.pointerId);});
+$("tvTouch").addEventListener("pointerup",e=>{if(!touchStart)return;const start=touchStart;touchStart=null;const end=tvPoint(e),distance=Math.hypot(end[0]-start.point[0],end[1]-start.point[1]);if(distance<35)sendTV({action:"touch_click"});else sendTV({action:"swipe",points:[...start.point,...end],duration:Math.max(50,Math.min(2000,Date.now()-start.at))});});
+$("tvTouch").addEventListener("pointercancel",()=>{touchStart=null;});
+loop(tickTV,3000);
 
 // ── Night: 23:00 to 06:30 the panel sits under a dark veil. The first touch
 // only lifts it (90 s), so waking the screen never switches anything. ────────
 let wokeUntil=0;
 function nightCheck(){
   const d=new Date(), m=d.getHours()*60+d.getMinutes();
-  const night=(m>=23*60 || m<6*60+30) && Date.now()>wokeUntil && !sheet.classList.contains("open");
+  const night=(m>=23*60 || m<6*60+30) && Date.now()>wokeUntil && !sheet.classList.contains("open") && !tvSheet.classList.contains("open");
   document.body.classList.toggle("night",night);
+  document.querySelector(".shell").inert=night||sheet.classList.contains("open")||tvSheet.classList.contains("open");
 }
 $("veil").addEventListener("click",e=>{ e.stopPropagation(); wokeUntil=Date.now()+90000; nightCheck(); });
 addEventListener("pointerdown",()=>{ if(!document.body.classList.contains("night") && wokeUntil>Date.now()) wokeUntil=Date.now()+90000; },true);
@@ -656,7 +728,7 @@ addEventListener("pointerdown",()=>{ if(!document.body.classList.contains("night
 function loop(fn,ms){ (async function go(){ try{ await fn(); }catch{} setTimeout(go,ms); })(); }
 document.fonts.ready.then(()=>{
   sizeCanvas(); addEventListener("resize",sizeCanvas);
-  setInterval(drawAscii,125);
+  drawAscii(); setInterval(drawAscii,matchMedia("(prefers-reduced-motion: reduce)").matches?2000:250);
 });
 loop(tickControls,2000);
 loop(tickRuview,1000);

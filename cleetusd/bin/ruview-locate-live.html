@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Room Heatmap</title>
+<style>
+:root{--bg:#f4f1ea;--panel:#fffdf8;--ink:#1d1a16;--dim:#6f685d;--line:#d9d2c4;--hot:#e2572b;--node:#2f6f6a;--tx:#8a5cc2}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15130f;--panel:#1d1a15;--ink:#efe8da;--dim:#9a9285;--line:#39342b;--hot:#ff7a45;--node:#5fb3aa;--tx:#b891ec}}
+:root[data-theme="dark"]{--bg:#15130f;--panel:#1d1a15;--ink:#efe8da;--dim:#9a9285;--line:#39342b;--hot:#ff7a45;--node:#5fb3aa;--tx:#b891ec}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 ui-sans-serif,system-ui,-apple-system,sans-serif;padding:20px 16px;max-width:760px;margin:0 auto}
+h1{font-size:20px;font-weight:650;letter-spacing:-.01em}
+.sub{color:var(--dim);font-size:13px;margin-top:2px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:14px}
+canvas{width:100%;height:auto;display:block}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline}
+.big{font-size:28px;font-weight:700;letter-spacing:-.02em}
+.pill{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+.bars{display:grid;grid-template-columns:70px 1fr 44px;gap:6px 10px;align-items:center;font-size:13px;margin-top:6px}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--hot)}
+.note{color:var(--dim);font-size:12px;margin-top:10px}
+</style>
+</head>
+<body>
+<h1>Room heatmap</h1>
+<div class="sub">From Wi-Fi only: 3 boards, 12 views, no camera. <span id="stat"></span></div>
+
+<div class="card">
+  <div class="row"><span class="big" id="where">…</span><span class="pill" id="conf"></span><span class="pill" id="empty"></span></div>
+  <canvas id="c" width="720" height="560" aria-label="Floor plan heatmap"></canvas>
+  <div class="bars" id="bars"></div>
+  <div class="note">What you see: the model's probability for each spot it was trained on, one person, one walk (retrained 25 Sep on the walk plus self-labelled desk time: 60% right on held-out 10-minute blocks, desk 81%, bed 82%; keys, closet and out are weak until more walks). The dot is a probability-weighted blend of those spots, so between spots it means "uncertain", not "standing here". Two people have not been tested. Desk chair, closet and middle positions are approximate.</div>
+</div>
+
+<script>
+// Metres, desk board at origin (27 Aug tape solve). Approximate points marked ~.
+const NODES=[{n:"desk board",x:0,y:0},{n:"turtle board",x:2.261,y:0},{n:"closet board",x:0.025,y:-2.133}];
+const TX={n:"mango",x:1.166,y:-2.207};
+const SPOTS={desk:{x:0.45,y:-0.55,l:"desk chair ~"},keys:{x:1.422,y:-0.012,l:"keys"},bed:{x:2.076,y:-1.110,l:"bed"},center:{x:1.15,y:-1.05,l:"middle ~"},closet:{x:0.35,y:-1.8,l:"closet ~"}};
+const X0=-0.45,X1=2.75,Y0=-2.55,Y1=0.45;
+const c=document.getElementById("c"),g=c.getContext("2d");
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const px=x=>(x-X0)/(X1-X0)*c.width, py=y=>(Y1-y)/(Y1-Y0)*c.height;
+let S=null; const trail=[]; let dot=null;
+function draw(){
+  const W=c.width,H=c.height; g.clearRect(0,0,W,H);
+  g.strokeStyle=css("--line"); g.lineWidth=2; g.setLineDash([]);
+  g.strokeRect(px(-0.3),py(0.3),px(2.6)-px(-0.3),py(-2.45)-py(0.3));
+  if(S&&S.spots){
+    const scale=W/(X1-X0);
+    for(const[k,p]of Object.entries(S.spots)){const s=SPOTS[k];if(!s)continue;
+      const r=0.55*scale, grd=g.createRadialGradient(px(s.x),py(s.y),0,px(s.x),py(s.y),r);
+      const hot=css("--hot"); grd.addColorStop(0,hot+Math.round(Math.min(1,p)*235).toString(16).padStart(2,"0")); grd.addColorStop(1,hot+"00");
+      g.fillStyle=grd; g.beginPath(); g.arc(px(s.x),py(s.y),r,0,7); g.fill();}
+  }
+  // estimated position: probability-weighted mean of the trained spots, eased
+  if(dot&&S&&(S.out??0)<0.5){
+    g.strokeStyle=css("--hot"); g.lineWidth=2; g.globalAlpha=0.35; g.beginPath();
+    trail.forEach((p,i)=>{i?g.lineTo(px(p.x),py(p.y)):g.moveTo(px(p.x),py(p.y))}); g.stroke(); g.globalAlpha=1;
+    g.fillStyle=css("--ink"); g.beginPath(); g.arc(px(dot.x),py(dot.y),8,0,7); g.fill();
+    g.strokeStyle=css("--hot"); g.lineWidth=3; g.stroke();
+  }
+  g.font="12px ui-sans-serif,system-ui"; g.textAlign="center";
+  for(const[k,s]of Object.entries(SPOTS)){g.fillStyle=css("--ink");g.beginPath();g.arc(px(s.x),py(s.y),3,0,7);g.fill();g.fillStyle=css("--dim");g.fillText(s.l,px(s.x),py(s.y)+17);}
+  for(const n of NODES){g.fillStyle=css("--node");g.fillRect(px(n.x)-6,py(n.y)-6,12,12);g.fillText(n.n,px(n.x),py(n.y)-11);}
+  g.fillStyle=css("--tx");g.beginPath();g.moveTo(px(TX.x),py(TX.y)-8);g.lineTo(px(TX.x)+7,py(TX.y)+5);g.lineTo(px(TX.x)-7,py(TX.y)+5);g.fill();g.fillText(TX.n,px(TX.x),py(TX.y)+20);
+}
+const NAMES={desk:"Desk chair",keys:"Keys",bed:"Bed",center:"Middle of room",closet:"By the closet"};
+async function tick(){
+  try{S=await (await fetch("state",{cache:"no-store"})).json();}catch(e){S=null}
+  const st=document.getElementById("stat");
+  if(!S||S.status!=="ok"){document.getElementById("where").textContent=S?S.status:"no connection";st.textContent="";draw();return;}
+  st.textContent=`· ${S.views_live}/${S.views_total} views live`;
+  const out=S.out??0, entries=Object.entries(S.spots).sort((a,b)=>b[1]-a[1]);
+  const [top,p]=entries[0];
+  document.getElementById("where").textContent= out>0.5?"Room looks empty":NAMES[top]||top;
+  document.getElementById("conf").textContent= out>0.5?`${Math.round(out*100)}% out`:`${Math.round(p*100)}% sure`;
+  document.getElementById("empty").textContent=`empty ${Math.round(out*100)}%`;
+  let wx=0,wy=0,ws=0; for(const[k,v]of entries){const s=SPOTS[k]; if(s){wx+=v*s.x;wy+=v*s.y;ws+=v;}}
+  if(ws>0){const tgt={x:wx/ws,y:wy/ws}; dot=dot?{x:dot.x+0.35*(tgt.x-dot.x),y:dot.y+0.35*(tgt.y-dot.y)}:tgt;
+    trail.push({...dot}); if(trail.length>40)trail.shift();}
+  document.getElementById("bars").innerHTML=[...entries,["out",out]].map(([k,v])=>`<span>${k}</span><span class="bar"><i style="width:${Math.round(v*100)}%"></i></span><span>${Math.round(v*100)}%</span>`).join("");
+  draw();
+}
+draw(); tick(); setInterval(tick,250);
+</script>
+</body>
+</html>

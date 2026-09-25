@@ -22,62 +22,7 @@ const PY = join(CONFIG.home, ".config/meross/venv/bin/python");
 const CTL = join(CONFIG.home, ".config/meross/ctl.py");
 const NAMES = join(CONFIG.home, ".config/meross/homenames.py");
 
-// ── The panel is laid out by ROOM, not by device ──────────────────────────────
-//
-// It used to render one column per Meross strip plus one for the diffuser and
-// one for Hue, which is how the hardware is wired, not how the room is used.
-// Grayson wanted it by station (2026-09-15): the two desk monitors as ONE tile,
-// a Keys station that reaches across Hue + Govee, the three dead Nightstand
-// outlets gone, and the diffuser and turtle bulb moved onto the Nightstand.
-//
-// So the layout is declared here and readControls fills each item's live state
-// in. Device ids are hardcoded on purpose: this is one physical room, the
-// uuids are stable, and a name-heuristic is exactly what put "Switch 2" on a
-// wall. Names still come from Apple Home; the LAYOUT decides grouping, merging,
-// labels and guards.
-const DEV = {
-  DESK: "26020384186219540601c4e7ae271d8e",
-  NIGHT: "26020301084529540601c4e7ae271e4a",
-  DIFFUSER: "25110588025417641101c4e7ae23b4de",
-};
-const HUE = {
-  KEYS_LIGHT: "0cc68bee-3f8b-4e1c-88ad-c10ae7eddfd1",   // "Hue Essential lamp 3" -> the top light
-  TURTLE_BULB: "17cb8aa6-4ad2-416e-a621-ea02c21093d1",
-  LAMP1: "a8e801f1-70ec-4a7e-a418-219c8b1dc7f2",
-  LAMP4: "8f2d924a-da4d-45cd-8e61-482a3bbc1576",
-};
-
-const LAYOUT = [
-  { name: "Nightstand", kind: "mixed", items: [
-    { kind: "meross", uuid: DEV.NIGHT, channel: 3 },                 // Turtle Lamp
-    { kind: "hue", lightId: HUE.TURTLE_BULB },                       // Turtle bulb (moved here)
-    { kind: "diffuser", uuid: DEV.DIFFUSER },                        // Diffuser (moved here)
-    { kind: "meross", uuid: DEV.NIGHT, channel: 5 },                 // Phone And Pi (protected by name)
-  ] },
-  // The Keys station: was the Diffuser column. Reaches across two systems.
-  { name: "Keys", kind: "mixed", items: [
-    { kind: "hue", lightId: HUE.KEYS_LIGHT, label: "Keys light" },
-    // Powered studio speakers. Cutting mains can POP the drivers, so this is
-    // NOT a bare one-tap: `confirm` makes the page arm-then-fire. The server
-    // still performs the write; the guard is against the accidental tap.
-    { kind: "govee", device: "Keys monitors", label: "Keys monitors",
-      confirm: "Keys monitors are powered speakers — cutting power can pop the drivers. Tap again to confirm." },
-    // The keys SCREEN is the one Belkin WeMo on the network (192.168.1.156,
-    // "Wemo Mini" Socket). Local SOAP, fast, a screen so no pop guard.
-    { kind: "wemo", host: "192.168.1.156", label: "Keys screen" },
-  ] },
-  { name: "Desk", kind: "mixed", items: [
-    // The two desk monitors as one tile. Tapping switches both.
-    { kind: "merossMerge", uuid: DEV.DESK, channels: [1, 2], label: "Main Monitors" },
-    { kind: "meross", uuid: DEV.DESK, channel: 3 },                  // Helix
-    { kind: "meross", uuid: DEV.DESK, channel: 4 },                  // Desk Screen
-    { kind: "meross", uuid: DEV.DESK, channel: 5 },                  // Desk USB
-  ] },
-  { name: "Lights", kind: "hue", items: [
-    { kind: "hue", lightId: HUE.LAMP1 },
-    { kind: "hue", lightId: HUE.LAMP4 },
-  ] },
-];
+import { CONTROL_LAYOUT as LAYOUT, PROTECTED_CONTROLS } from "./control-layout.mjs";
 
 // ── What must never be tappable ──
 //
@@ -264,7 +209,8 @@ export async function readControls() {
           on: Boolean(o?.on),
           named_in_home: Boolean(o?.named_in_home),
           reachable: Boolean(o),
-          protected: protectedReason(o?.name || it.label),
+          protected: PROTECTED_CONTROLS.get(`meross:${it.uuid}:${it.channel}`) || protectedReason(o?.name || it.label),
+          confirm: it.confirm || null,
         });
       } else if (it.kind === "merossMerge") {
         const outs = it.channels.map((ch) => outlet(it.uuid, ch));
@@ -301,6 +247,10 @@ export async function readControls() {
           confirm: it.confirm || null,     // page arms-then-fires when set
           protected: null,
         });
+      } else if (it.kind === "appletv") {
+        // State is fetched separately so an offline TV never slows the lights.
+        items.push({ id: "appletv:gp-tv", kind: "appletv", name: it.label,
+          on: null, reachable: true, protected: null, remote: true, bulkExclude: true });
       } else if (it.kind === "wemo") {
         const st = await wemoCached(it.host);
         items.push({
@@ -314,7 +264,7 @@ export async function readControls() {
         });
       }
     }
-    groups.push({ name: col.name, kind: col.kind || "mixed", online: true, items });
+    groups.push({ name: col.name, number: col.number, kind: col.kind || "mixed", online: true, items });
   }
 
   return { at: Math.floor(Date.now() / 1000), groups, meross_error: meross.error || null };
@@ -328,6 +278,7 @@ export async function readControls() {
 export async function setControl(id, on, opts = {}) {
   const [system, ...rest] = String(id || "").split(":");
   const { brightness, xy, mirek } = opts;
+  if (PROTECTED_CONTROLS.has(id)) return { ok: false, error: "refused: " + PROTECTED_CONTROLS.get(id) };
 
   if (system === "hue") {
     if (!hueConfigured()) return { ok: false, error: "Hue is not configured" };

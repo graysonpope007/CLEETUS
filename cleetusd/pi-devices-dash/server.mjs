@@ -165,6 +165,34 @@ http.createServer(async (req, res) => {
     }
   }
 
+  if (["/appletv/state", "/appletv/catalog", "/appletv/command"].includes(path)) {
+    const command = path === "/appletv/command";
+    if (req.method !== (command ? "POST" : "GET")) { res.writeHead(405); return res.end(); }
+    try {
+      let body;
+      if (command) {
+        body = "";
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > 8192) { res.writeHead(413); return res.end(); }
+        }
+      }
+      // Do not retry a remote button after an ambiguous network failure.
+      // Read requests discover the healthy upstream before commands use it.
+      const send = command ? (p, init) => fetch(`${UPSTREAM}${p}`, init) : upstreamFetch;
+      const r = await send(path, {
+        method: command ? "POST" : "GET",
+        headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(command ? { "content-type": "application/json" } : {}) },
+        body, signal: AbortSignal.timeout(25000),
+      });
+      res.writeHead(r.status, { "content-type": "application/json", "cache-control": "no-store" });
+      return res.end(await r.text());
+    } catch {
+      res.writeHead(503, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ ok: false, error: "Apple TV connection unavailable. Check the Mac and Apple TV." }));
+    }
+  }
+
   if (path === "/devices") {
     try {
       const r = await upstreamFetch("/devices", {

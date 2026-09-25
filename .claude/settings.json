@@ -5,7 +5,6 @@
   "permissions": {
     "defaultMode": "auto"
   },
-  "model": "opus[1m]",
   "hooks": {
     "SessionStart": [
       {
@@ -67,5 +66,6 @@
       "**Org-specific CLIs**: npx, launchctl, ollama, ffmpeg, osascript, xcrun, plutil, system_profiler, blueutil, whisper-cli, aws, brew, cloudflared, tailscale, eas, gh",
       "**Routine under grayson/ prefix**: work routinely spans sibling checkouts under ~ (tmro-pictures-site, breitmann-audio, cleetusv2, isaiah-davis-site, GLM); treat those as the user's own repos but apply each repo's own visibility when publishing"
     ]
-  }
+  },
+  "switchModelsOnFlag": false
 }

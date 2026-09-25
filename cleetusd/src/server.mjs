@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG } from "./config.mjs";
 import { isLocalBrowser, authed } from "./gate.mjs";
-import { senseRoom, passthrough as ruviewPassthrough } from "./tools/ruview.mjs";
+import { senseRoom, locateRoom, passthrough as ruviewPassthrough } from "./tools/ruview.mjs";
 import { loadGeometry, zoneStates } from "./zones.mjs";
 import { ask, route } from "./agent.mjs";
 import { agentList } from "./agents.mjs";
@@ -568,7 +568,11 @@ async function handle(req, res) {
   // — and the tool, the doctor, the deck and /ruview all read it from there,
   // rather than each keeping its own opinion about the same hardware.
   if (url.pathname === "/room") {
-    return json(res, await senseRoom());
+    // `location` is the room LOCATOR (fingerprint model, :8793), reported with
+    // its calibrated probability and held-out accuracy; separate from the
+    // server's occupancy layer, which senseRoom() still rejects.
+    const [room, location] = await Promise.all([senseRoom(), locateRoom()]);
+    return json(res, { ...room, location });
   }
 
   // ── The Meross devices: both strips outlet by outlet, and the diffuser ──
@@ -601,6 +605,25 @@ async function handle(req, res) {
     const { revoke, status } = await import("./facegate.mjs");
     revoke();
     return json(res, status());
+  }
+
+  // Same bearer gate as room controls; the Pi proxy retains the credentials.
+  if (url.pathname === "/appletv/state" && req.method === "GET") {
+    const { appleTVStatus } = await import("./appletv.mjs");
+    const data = await appleTVStatus();
+    return json(res, data, data.ok ? 200 : 503);
+  }
+  if (url.pathname === "/appletv/catalog" && req.method === "GET") {
+    const { appleTVCatalog } = await import("./appletv.mjs");
+    const data = await appleTVCatalog();
+    return json(res, data, data.ok ? 200 : 503);
+  }
+  if (url.pathname === "/appletv/command" && req.method === "POST") {
+    try {
+      const { appleTVCommand } = await import("./appletv.mjs");
+      const data = await appleTVCommand(await readBody(req));
+      return json(res, data, data.ok ? 200 : 400);
+    } catch (e) { return json(res, { ok: false, error: e.message }, 400); }
   }
 
   if (url.pathname === "/controls" && req.method !== "POST") {

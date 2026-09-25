@@ -194,6 +194,41 @@ export async function passthrough(path, search = "") {
  * believed. Exported for the doctor, which asserts the same conditions rather
  * than keeping a second opinion about the same hardware.
  */
+// The room LOCATOR (bin/ruview-locate-live.py, :8793) is a separate thing from
+// the sensing server's occupancy layer: a fingerprint model trained on labelled
+// walks plus self-labelled desk time, scored on held-out time. It answers WHICH
+// SPOT, not how many people, and it can be wrong, so it is reported with its
+// calibrated probability and its measured accuracy, never as certainty.
+const LOCATE = "http://127.0.0.1:8793/state";
+export async function locateRoom() {
+  try {
+    const ctl = AbortSignal.timeout(2000);
+    const r = await fetch(LOCATE, { signal: ctl });
+    if (!r.ok) return { up: false, why: `HTTP ${r.status}` };
+    const d = await r.json();
+    if (d.status !== "ok") return { up: true, ok: false, why: d.status };
+    const out = d.out ?? 0;
+    const [top, p] = Object.entries(d.spots).sort((a, b) => b[1] - a[1])[0];
+    return { up: true, ok: true, empty: out, top, p, spots: d.spots, views: `${d.views_live}/${d.views_total}`, accHeldout: d.acc_heldout };
+  } catch (e) {
+    return { up: false, why: String(e.message || e) };
+  }
+}
+
+const SPOT_NAMES = { desk: "in the desk chair", keys: "at the keyboard stool", bed: "on the bed", center: "in the middle of the room", closet: "by the closet" };
+
+function renderLocation(L) {
+  if (!L || !L.up) return `Room locator (:8793) is not answering${L?.why ? ` (${L.why})` : ""}; no location available.`;
+  if (!L.ok) return `Room locator is up but has no estimate right now (${L.why}).`;
+  const acc = L.accHeldout != null ? `${Math.round(L.accHeldout * 100)}%` : "unmeasured";
+  const head = L.empty >= 0.5
+    ? `Room locator: the room looks EMPTY (${Math.round(L.empty * 100)}% calibrated).`
+    : `Room locator: most likely ${SPOT_NAMES[L.top] || L.top} (${Math.round(L.p * 100)}% calibrated; empty ${Math.round(L.empty * 100)}%).`;
+  return head + ` It knows only the spots desk chair, keyboard stool, bed, middle of room and by the closet, ` +
+    `was right about ${acc} of the time on held-out data, and has not been tested with two people. ` +
+    `Report it as the locator's best guess with that probability, not as fact. Views live: ${L.views}.`;
+}
+
 export async function senseRoom() {
   const [nodes, mesh, poseNow, poseStats, vitals, edge, health] = await Promise.all([
     grab("/api/v1/nodes"),
@@ -359,8 +394,8 @@ function render(r) {
   }
 
   lines.push("");
-  lines.push("THIS SENSOR CANNOT TELL YOU WHETHER ANYONE IS IN THE ROOM. Its occupancy output failed every");
-  lines.push("consistency check below, so it is fabricated, not merely uncertain:");
+  lines.push("THE SENSING SERVER'S OWN OCCUPANCY LAYER (person count, breathing, heart rate) IS UNUSABLE. It failed");
+  lines.push("every consistency check below, so it is fabricated, not merely uncertain (the room LOCATOR below is separate):");
   for (const why of r.reasons) lines.push(`  - ${why}`);
   lines.push("");
   lines.push(
@@ -371,11 +406,15 @@ function render(r) {
     `average or reason over them. They are listed only so you can see what was thrown away.`,
   );
   lines.push(
-    `If Grayson asked whether anyone is in the studio, the honest answer is that RuView cannot tell — ` +
-    `the boards are alive and streaming, but the occupancy layer on top of them does not work. Say that. ` +
-    `If you need to know who is at the desk, the face recogniser on the camera is a real answer and this is not.`,
+    `For WHERE Grayson is, use the room locator section below, with its probability. Never use the ` +
+    `person count, breathing or heart rate above.`,
   );
   return lines.join("\n");
+}
+
+async function senseAll() {
+  const [r, L] = await Promise.all([senseRoom(), locateRoom()]);
+  return render(r) + "\n\n" + renderLocation(L);
 }
 
 export const ruviewTools = {
@@ -388,13 +427,14 @@ export const ruviewTools = {
         "who or what is in the studio, whether anyone is home, whether Grayson is at his desk, whether the " +
         "room is empty, or whether the WiFi sensors are working. Never answer those from memory or from " +
         "what you were told earlier in the conversation — the room changes and the sensors flap. " +
-        "IMPORTANT: this deployment's occupancy output is currently fabricated, and the tool says so " +
-        "explicitly when it is. When it does, report that RuView cannot tell you who is in the room; do NOT " +
-        "repeat the person count, breathing rate or heart rate it prints, even hedged.",
+        "It also returns the ROOM LOCATOR: which spot (desk chair, keyboard stool, bed, middle, closet) or " +
+        "empty, with a calibrated probability and its measured accuracy. Answer 'where is Grayson' from the " +
+        "locator, quoting the probability. IMPORTANT: the sensing server's own person count, breathing and " +
+        "heart rate are fabricated and the tool says so; never repeat them, even hedged.",
       parameters: { type: "object", properties: {}, required: [] },
     },
     async run() {
-      return render(await senseRoom());
+      return senseAll();
     },
   },
 };
