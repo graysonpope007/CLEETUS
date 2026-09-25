@@ -38,6 +38,7 @@ async function turn(text) {
     out = await ask({
       history,
       agent: forcedAgent,
+      probe: false, // Grayson talking, not a test: his runs show in Recent work
       onStep: ({ tool }) => { spin?.note(tool); },
     });
   } catch (e) {

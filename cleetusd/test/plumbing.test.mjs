@@ -29,7 +29,9 @@ console.log(`\nvault:  ${CONFIG.vault}\nmemory: ${CONFIG.memoryRoot}\nmodel:  ${
 
 console.log("config");
 check("env file found", Object.keys(CONFIG).length > 0);
-check("model resolved", /laguna/.test(CONFIG.model), CONFIG.model);
+// Not pinned to a model name: laguna was removed 17 Sep and this stayed red.
+// Whether the model is actually pulled is the ollama check below.
+check("model resolved", CONFIG.model.length > 0, CONFIG.model);
 check("site password loaded for the cloud bridge", CONFIG.sitePassword.length > 0);
 
 console.log("\nagents");

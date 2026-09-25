@@ -247,6 +247,7 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
   <li><a href="#s153"><span>153</span>The Pi panel is now one studio panel&hellip;</a></li>
   <li><a href="#s154"><span>154</span>RuView can say where Grayson is, from the three boards alone&hellip;</a></li>
   <li><a href="#s155"><span>155</span>The desk camera now teaches the RF locator&hellip;</a></li>
+  <li><a href="#s160"><span>160</span>The revert loop was the pipeline, and LLM_MODEL is empty&hellip;</a></li>
 </ol></div></nav>
 
 <section id="state"><div class="wrap">
@@ -746,7 +747,7 @@ git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GIT
         Six can be fixed with a path rewrite; four scripts were never merged out of the worktree and are
         gone. Full detail and the exact commands in section 14. <b>This is the top of the list.</b></li>
       <li><b>Push notifications.</b> <code>apns_devices</code> empty since July. Open the iOS app once.</li>
-      <li><b>Cleetus is auto-committing then reverting to the web app repo in a loop.</b> The Cloudflare deploy history (22 Sep) is filled with paired commits "Cleetus: /api/health reports X is down" immediately followed by "Revert ...", for snapshot and schwab. Every one FAILED to deploy anyway (the 64-var limit, now fixed, see s159), so the churn was invisible. Find what generates these commits (an improve/self-heal path that edits functions/api/health.js on a failing signal, commits, then reverts), and stop it or gate it. NEXT SESSION: start here. See [[cleetusv2-cloudflare-env-limit]], section s159.</li>
+      <li><b>Cleetus is auto-committing then reverting to the web app repo in a loop.</b> The Cloudflare deploy history (22 Sep) is filled with paired commits "Cleetus: /api/health reports X is down" immediately followed by "Revert ...", for snapshot and schwab. Every one FAILED to deploy anyway (the 64-var limit, now fixed, see s159), so the churn was invisible. Find what generates these commits (an improve/self-heal path that edits functions/api/health.js on a failing signal, commits, then reverts), and stop it or gate it. NEXT SESSION: start here. See [[cleetusv2-cloudflare-env-limit]], section s159. <b>RESOLVED 25 Sep, s160:</b> not a loop, two attempts that the pipeline failure caused to revert; improve.mjs no longer blames or retires on a pipeline failure, and both fixes were relanded (e4cf37d).</li>
     </ol>
   </div>
 
@@ -9256,8 +9257,34 @@ in that form is invented.</pre>
     <li><strong>Durable gotcha:</strong> the Pages env is at 60/64. Adding &gt;4 more vars re-breaks every deploy. Under ~5 headroom until Workers Paid.</li>
     <li>wrangler installed globally (4.140.0). All Cloudflare reads/writes here went through the CLOUDFLARE_API_TOKEN in cleetus.env, not wrangler.</li>
     <li><strong>Final state:</strong> Grayson re-set the LLM_MODEL secret himself via <code>wrangler pages secret put</code> (wrangler works end to end), and a redeploy <code>2d8bd748</code> succeeded and is canonical. Env at 60/64. Site 401 = SITE_PASSWORD gate up. Served model still unverified from outside (needs the site login or the secret LLM_PROVIDER).</li>
+    <li><strong>Confirmed 25 Sep:</strong> Grayson logged in and reports the site works on deploy <code>2d8bd748</code>. Which model it serves (local Qwen or Claude) is still unconfirmed.</li>
     <li><strong>`cleetus chat`</strong> added (bin/chat.mjs): talks to Cleetus HIMSELF via ask() — personality, memory, vault, 24 agents, run
       logs — keeping conversation history. Distinct from bare <code>cleetus</code> (the coding agent). Verified: recalled a number across turns.</li>
+  </ul>
+</section>
+
+<section id="s160">
+  <h2>160. The revert loop was the pipeline, and LLM_MODEL is empty at runtime (25 Sep)</h2>
+  <ul>
+    <li><strong>Site confirmed working</strong> by Grayson after the 2d8bd748 redeploy.</li>
+    <li><strong>The "auto-commit/revert loop" was not a loop.</strong> improve-state.json has exactly two attempts, schwab (22 Sep 03:18) and snapshot (22 Sep 16:17), both
+      "reverted: build failed at deploy". That failure was the 64-var publish wall, not the code. The loop blamed each fix, reverted it, and RETIRED the
+      issue for 7+ days. Both fixes were correct: schwab/income.js minted from the stale SCHWAB_REFRESH_TOKEN env var instead of the app_kv token that
+      _lib/schwab.js uses; morning-brief.js skipped the daily snapshot on the cached-brief cron retry.</li>
+    <li><strong>improve.mjs fixed:</strong> <code>deployBlamesTheFix()</code> blames the change only for a failure in the <code>build</code> stage (gates already ran
+      that build locally). A publish/clone/init failure or a timeout still reverts but records <code>retire: false</code>, so the issue stays on the work list. A new
+      preflight blocker refuses to start a fix while the latest production deploy is failing. Test added in improveoutcome.test.mjs. Also fixed two stale
+      tests: plumbing's "model resolved" was pinned to /laguna/, and bin/chat.mjs (s159) never set <code>probe: false</code>. Suite 488/488. cleetusd restarted.
+      These cleetusd edits are uncommitted in the home repo.</li>
+    <li><strong>Relanded both fixes</strong> as e4cf37d on cleetusv2 main: gates passed (node --check, esbuild, vite build), deploy 5fd835ec succeeded. Live /api/health after:
+      down = schwab, outlook, brief, the same set as before, so nothing new broke. /api/schwab/income still says <code>no_token</code>: the app_kv refresh token itself has
+      lapsed. Only the weekly Schwab re-auth fixes that (and the schwab health check).</li>
+    <li><strong>Which model the site serves, answered:</strong> local_llm <code>inUse: true</code>, so LLM_PROVIDER is local: 208 served, 7 fallbacks, last failure 24 Sep
+      "model 'laguna-xs-2.1:q8_0' not found". BUT the health detail reads "up but  is COLD" with a BLANK name: <code>cfg.model</code> is '' at runtime. The
+      wrangler <code>secret put</code> stored an empty string. Any call without an explicit tag throws "LLM_MODEL not set" and falls back to Claude.
+      Re-setting it through the API + a redeploy was blocked by the auto-mode classifier (production deploy), so it is Grayson's to run:
+      <code>printf 'qwen3.8-27b-heretic:q8_0' | wrangler pages secret put LLM_MODEL --project-name cleetus</code>, then redeploy (retry the latest deployment in the dashboard,
+      or push to main). Verify: /api/health local_llm.detail names qwen instead of a blank. <b>DONE:</b> Grayson re-set it and pushed 6b8e3e2; deploy 01bd85e7 succeeded; live detail now "qwen3.8-27b-heretic:q8_0 resident". Down set unchanged (schwab, outlook, brief).</li>
   </ul>
 </section>
 

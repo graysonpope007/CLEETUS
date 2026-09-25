@@ -63,3 +63,12 @@ test("the summary never claims convergence", () => {
   assert.doesNotMatch(s, /^all /);
   assert.match(s, /still failing/);
 });
+
+test("a pipeline failure is not the fix's fault, so it does not retire the issue", async () => {
+  const { deployBlamesTheFix } = await import("../src/improve.mjs");
+  // 22 Sep: publish died on the 64-var limit; schwab and snapshot fixes were blamed.
+  assert.equal(deployBlamesTheFix({ ok: false, stage: "deploy" }), false);
+  assert.equal(deployBlamesTheFix({ ok: false, stage: null }), false); // timed out
+  assert.equal(deployBlamesTheFix({ ok: false, stage: "build" }), true);
+  assert.equal(deployBlamesTheFix({ ok: true }), false);
+});

@@ -286,12 +286,40 @@ async function waitForDeploy(sha, { timeoutMs = 600_000 } = {}) {
       const stage = d?.latest_stage;
       if (hash.startsWith(sha.slice(0, 7))) {
         if (stage?.status === "success" && stage?.name === "deploy") return { ok: true };
-        if (stage?.status === "failure") return { ok: false, reason: `build failed at ${stage.name}` };
+        if (stage?.status === "failure") return { ok: false, stage: stage.name, reason: `build failed at ${stage.name}` };
       }
     } catch {}
     await new Promise((r) => setTimeout(r, 15_000));
   }
-  return { ok: false, reason: "deploy did not finish in time" };
+  return { ok: false, stage: null, reason: "deploy did not finish in time" };
+}
+
+/**
+ * Did a failed deploy say anything about the FIX?
+ *
+ * Only a failure in the build stage can be the change's fault, and gates()
+ * already ran the same build locally. A failure at publish ("deploy"), clone or
+ * init, or a timeout, is Cloudflare's pipeline. 22 Sep: every deploy died at
+ * publish on the 64-env-var Workers Free limit, so the loop reverted a correct
+ * schwab fix and a correct snapshot fix, blamed both, and retired both issues.
+ * Neither change was ever judged; the pipeline would have rejected an empty commit.
+ */
+export function deployBlamesTheFix(deployed) {
+  return !deployed.ok && deployed.stage === "build";
+}
+
+/** Is the Pages pipeline itself failing right now? Returns a reason, or null. */
+async function pipelineBroken() {
+  try {
+    const { secrets } = await import("./config.mjs");
+    const acc = process.env.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID;
+    const r = await fetch(`https://api.cloudflare.com/client/v4/accounts/${acc}/pages/projects/cleetus/deployments?per_page=1&env=production`,
+      { headers: { Authorization: `Bearer ${secrets.CLOUDFLARE_API_TOKEN}` }, signal: AbortSignal.timeout(30_000) });
+    const d = (await r.json()).result?.[0];
+    const stage = d?.latest_stage;
+    if (stage?.status === "failure") return `the latest Pages deploy (${String(d.id).slice(0, 8)}) failed at ${stage.name} — nothing can ship until that is fixed`;
+  } catch {}
+  return null;
 }
 
 // ── The loop ────────────────────────────────────────────────────────────────
@@ -394,6 +422,10 @@ export async function improveOnce({ dry = false } = {}) {
   // A dirty tree means Grayson is mid-something. Shipping on top of that would
   // put his work in a commit he did not write, and a revert would take it away.
   if (dirty.trim()) blockers.push("working tree is dirty — not touching Grayson's uncommitted work");
+  // A fix pushed into a broken pipeline cannot deploy, gets reverted, and
+  // retires a real issue for a week. Do not start one.
+  const broken = await pipelineBroken();
+  if (broken) blockers.push(broken);
   if (!dry && blockers.length) return { skipped: blockers[0] };
 
   // NOT in a dry run. This is a mutation — it moves whatever branch you are on
@@ -448,7 +480,7 @@ export async function improveOnce({ dry = false } = {}) {
   // one that never recovered is the same one, still unfixable by this loop.
   const lastAttempt = new Map();
   for (const h of state.history || []) {
-    if (h.key) lastAttempt.set(h.key, h.at || null);
+    if (h.key && h.retire !== false) lastAttempt.set(h.key, h.at || null);
   }
   const issues = [];
   for (const i of found) {
@@ -665,7 +697,10 @@ export async function improveOnce({ dry = false } = {}) {
     const { stdout: revSha } = await sh("git rev-parse HEAD");
     const revDeployed = undone ? await waitForDeploy(revSha.trim()) : { ok: false, reason: "revert was never pushed" };
     state.count++;
-    state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: undone ? "reverted" : "REVERT FAILED — bad commit still live", why, sha: newSha.trim().slice(0, 7) });
+    // A pipeline failure reverts (nothing shipped, so the revert is free) but
+    // does not retire the issue: the fix was never tried against production.
+    const unjudged = !deployed.ok && !deployBlamesTheFix(deployed);
+    state.history.push({ at: new Date().toISOString(), key: issue.key, issue: issue.what, outcome: undone ? (unjudged ? "reverted, deploy pipeline failed (fix not judged)" : "reverted") : "REVERT FAILED — bad commit still live", why, sha: newSha.trim().slice(0, 7), retire: !(unjudged && undone) });
     await saveState(state);
     // Never report a revert that did not happen. This value is what the
     // heartbeat and the doctor read, and "reverted" with the change still live
