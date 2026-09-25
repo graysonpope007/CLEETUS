@@ -246,6 +246,7 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
   <li><a href="#s152"><span>152</span>The Apple TV is set up and on the house Wi-Fi&hellip;</a></li>
   <li><a href="#s153"><span>153</span>The Pi panel is now one studio panel&hellip;</a></li>
   <li><a href="#s154"><span>154</span>RuView can say where Grayson is, from the three boards alone&hellip;</a></li>
+  <li><a href="#s155"><span>155</span>The desk camera now teaches the RF locator&hellip;</a></li>
 </ol></div></nav>
 
 <section id="state"><div class="wrap">
@@ -305,7 +306,7 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
         <td>all 18 pushed 13 Aug; the check that caught the drift now passes</td></tr>
     <tr><td>The morning brief you read</td><td><span class="tag ok">live</span></td>
         <td>written 07:00 today, local model, money guard held on the $-form and missed a bare figure — section 101</td></tr>
-    <tr><td>RuView room locator</td><td><span class="tag ok">live</span></td><td>spot-level, :8793 and room_sense; 60% on held-out time, desk 81%, bed 82%; keys/closet/out weak; day-2 test pending (section 154)</td></tr>
+    <tr><td>RuView room locator</td><td><span class="tag ok">live</span></td><td>spot-level, :8793 and room_sense; 60% on held-out time, desk 81%, bed 82%; keys/closet/out weak; day-2 test pending; camera teacher waiting on its first walk (sections 154 and 155)</td></tr>
     <tr><td>Pi wall panel (creo-bots-pi)</td><td><span class="tag ok">live</span></td>
         <td>studio panel on :8791 (clock, room control, RuView, markets), glass screenshot 23 Sep. DNS fixed 23 Sep: lookups 5053 ms to 18 to 52 ms, tunnel 5.4 s to 0.15 s (section 153)</td></tr>
     <tr><td>Push notifications</td><td><span class="tag bad">down</span></td>
@@ -9030,6 +9031,56 @@ in that form is invented.</pre>
     <li>Two-person walk. Raw CSI retention policy. Commit the RuView firmware and server changes.</li>
   </ul>
 </section>
+
+<section id="s155">
+  <h2>The desk camera now teaches the RF locator; one command for the daily pass (25 Sep 2026)</h2>
+
+  <p><strong>Why.</strong> The RF locator (section 154) only learns spots it has labels for. HID labels only
+  ever say &ldquo;desk&rdquo;, and walks are short. The C920 at the desk looks <em>across</em> the room: door and
+  closet side, the middle, the bed. Those are exactly the spots the locator is weakest on (12 to 24%).</p>
+
+  <h3>Cameras back</h3>
+  <ul>
+    <li>Both cameras hung with zero frames (roomwatch <code>camera_unavailable</code> since 23 Sep 00:39). After a
+      replug the Brio worked; the C920 worked only once plugged <strong>directly into the Mac</strong>, not through the
+      hub. AirPad restarted, <code>frame.jpg</code> 503 to 200, roomwatch heartbeats real again. Keep cameras off the hub.</li>
+  </ul>
+
+  <h3>How the camera labels (observe now, label later)</h3>
+  <ul>
+    <li><code>~/cleetusd/bin/ruview-camlabel.py run</code> (agent <code>com.cleetus.ruview-camlabel</code>, runs in the
+      studio-locate venv for MediaPipe): every 2 s it reads AirPad&rsquo;s <code>frame.jpg</code> (no second camera
+      open), runs MediaPipe pose (<code>~/cleetusd/models/pose/pose_landmarker_full.task</code>), and appends
+      <strong>numbers only, no images</strong> to <code>roomwatch/camera-obs.jsonl</code>: hip and shoulder position in the
+      frame, lying or upright, visibility, brightness. Below brightness 12/255 it logs &ldquo;dark&rdquo; and detects nothing.</li>
+    <li>No hand-drawn image regions. <code>ruview-camlabel.py calibrate &lt;walk&gt;</code> fits the
+      camera-position to spot map from a walk (the walk says where the body really was), <strong>scores it on
+      held-out rounds</strong>, and saves <code>roomwatch/camera-spotmap.json</code> with that score.</li>
+    <li><code>ruview-locate-train.py</code> uses camera labels only from a calibrated map, only at 80%+ confidence,
+      only when exactly one body is seen, and never inside walks or HID-desk time. A body seen during an
+      &ldquo;out&rdquo; block is never a label, and &ldquo;nobody seen&rdquo; is never turned into &ldquo;empty&rdquo; (the
+      view does not cover the desk).</li>
+    <li>Tested on a synthetic walk with a known answer: calibrated to 100% on held-out rounds and labelled only bed,
+      middle and closet. That test caught a real bug first: frames at block edges spilled into the next block, so
+      &ldquo;out&rdquo; had learned two bodies and could have labelled a person as out. Fixed.
+      <strong>Not yet run on a real walk</strong>; there is no calibrated map until the next one.</li>
+  </ul>
+
+  <h3>Walk changes</h3>
+  <ul>
+    <li>The first walk shut the door for every &ldquo;out&rdquo; block, and the model learned &ldquo;door shut = out&rdquo;.
+      The walk now sets the door <strong>open in odd rounds, shut in even rounds</strong>, for every spot including
+      out, and logs <code>door</code> per block. Held-out-round scoring then also tests the other door state.</li>
+  </ul>
+
+  <h3>The daily pass, one command</h3>
+  <ul>
+    <li><code>~/cleetusd/bin/ruview-locate-day.sh [rounds=2] [block=45]</code>: spoken walk, then
+      <strong>score it against the saved model before anything learns from it</strong> (the honest day-over-day number),
+      then camera calibration from the same walk, then the guarded retrain, then restart the live map (:8793).</li>
+  </ul>
+</section>
+
 
 
 </body>
