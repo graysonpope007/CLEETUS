@@ -9198,5 +9198,24 @@ in that form is invented.</pre>
   </ul>
 </section>
 
+<section id="s157">
+  <h2>157. <code>cleetus</code> in the terminal: a Claude-Code-style coding agent on the local model (25 Sep)</h2>
+  <ul>
+    <li><code>~/cleetusd/bin/cleetus.mjs</code>, symlinked to <code>/usr/local/bin/cleetus</code>. Type <code>cleetus</code> in any directory;
+      <code>cleetus --self</code> opens in ~/cleetusd so Cleetus works on its own code. <code>-p "prompt"</code> one-shot, <code>-c</code> continue,
+      <code>--yolo</code>, <code>--model</code>, <code>--think</code>; in-session <code>/clear /model /think /yolo /cwd /exit</code>.</li>
+    <li>Tools: read_file, list_dir, grep, glob, edit_file, write_file, bash, all relative to the directory you are in. Reads are free;
+      every edit/write shows a diff and every non-read-only shell command asks y/n/a(lways). Pre-edit copies go to
+      <code>~/.cleetus/backups/</code>, sessions to <code>~/.cleetus/sessions/</code>. Loads CLEETUS.md / CLAUDE.md / AGENTS.md from the project (never ~/AGENTS.md).</li>
+    <li>Model: <code>qwen3.8-27b-heretic:q8_0</code> (tools + thinking, 262k native, run at num_ctx 32768; override with CLEETUS_MODEL / CLEETUS_CTX). ~16 tok/s.</li>
+    <li>Verified: fixed a planted off-by-one on its own (ran the failing test, read both files, edited, re-ran: pass) in 48 s cold;
+      declining a write left no file and it asked what to do instead.</li>
+    <li><strong>Found:</strong> the daemon's configured model <code>laguna-xs-2.1:q8_0</code> (LLM_MODEL in cleetus.env) is NOT installed in Ollama any more;
+      only qwen3.8-27b-heretic, qwen2.5vl:7b and lfm2.5:8b are. cleetusd calls to its default model will fail until that is repointed or re-pulled.</li>
+    <li>Fixed <code>~/.zshrc</code> line 1: the old <code>cleetus</code> alias (to a deleted ~/cleetus/cleetus.py) was glued to the brew shellenv eval on one line.
+      Backup <code>~/.zshrc.bak-20260925</code>.</li>
+  </ul>
+</section>
+
 </body>
 </html>
