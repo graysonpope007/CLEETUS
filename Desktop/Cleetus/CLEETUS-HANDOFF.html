@@ -9113,6 +9113,89 @@ in that form is invented.</pre>
       caught a sign error first.</li>
     <li>Prices: Pi 5 8 GB is $175 now (RAM price rises). v1 about $415, the ideal build about $576.</li>
   </ul>
+
+  <h3>The sentry plan in full (source of truth: Obsidian 30-Projects/Cleetus/cleetus-security.md)</h3>
+  <p><strong>What it is.</strong> A stationary unit in the main living area. When something moves while the house is armed it
+    points a night-vision camera at the target, keeps it in frame as it moves, works out housemate vs stranger, and for a
+    stranger pushes a live stream to Grayson's phone. <strong>Grayson decides</strong> whether to call the police; the bot never
+    calls anyone and never confronts anyone.</p>
+
+  <h4>Decisions from the Q&amp;A</h4>
+  <table>
+    <tr><th>Question</th><th>Answer</th><th>What it changes</th></tr>
+    <tr><td>Where</td><td>Main living area, scalable to more units</td><td>One unit covering entry + living room; every unit reports in one shared house coordinate frame</td></tr>
+    <tr><td>Who else</td><td>Other people live here; regular visitors</td><td>Identity is the core problem: faces, visitor time windows, and where a track was born</td></tr>
+    <tr><td>Budget</td><td>~$250-400 first unit</td><td>v1 list below lands ~$415 (Pi prices rose); drop thermal to get under $400</td></tr>
+    <tr><td>Triggers</td><td>Nothing yet: RuView + the bot itself</td><td>The bot detects on its own; RuView is optional extra evidence later</td></tr>
+  </table>
+
+  <h4>Why RuView is not the trigger</h4>
+  <ul>
+    <li>The boards are in the bedroom; they see nothing in the living area.</li>
+    <li>Its presence/alert layer is measured not to work (motion AUC 0.60; edge-vitals presence is 95% false whether empty or occupied).</li>
+    <li>The fingerprint locator is 6-spot classification for one room, and tonight it was pinned at "keys". Not a coordinate feed.</li>
+    <li>So the sentry locates people itself with an HLK-LD2450 24 GHz radar (x/y in mm per person, in the dark). RuView joins later as
+      one voter on the same bus (bedroom occupancy, "Grayson is asleep" from the sleep watch).</li>
+  </ul>
+
+  <h4>How it works</h4>
+  <ol>
+    <li><strong>Wake:</strong> radar track confirmed (4+ hits, survives 2 s dropouts, single-frame blips never confirm) while armed.</li>
+    <li><strong>Aim:</strong> the unit's pose in the house is known, so radar x/y becomes pan/tilt. The camera person detector then does
+      fine aiming (closed loop), since radar is ~0.1-0.2 m and a face at 5 m needs better.</li>
+    <li><strong>Verify human:</strong> radar alone NEVER alerts (fans, curtains, HVAC). Camera person detector or thermal must agree within 6 s.</li>
+    <li><strong>Identify:</strong> face match against housemates + in-window visitors (existing YuNet+SFace gallery, re-enrolled in IR since night faces are grayscale).</li>
+    <li><strong>Decide:</strong> known face = logged, no push. Away mode, unknown = URGENT. Night mode, track born at an entry (front door,
+      patio door, window) = URGENT. Night mode, born in the interior (bedroom hallway) with no face = CHECK (quiet push). A known face
+      later downgrades the alert ("it's Alex").</li>
+    <li><strong>Stream:</strong> MediaMTX on the Pi serves WebRTC (&lt;1 s latency) over Tailscale; the push opens it. 10 s pre-roll ring buffer
+      so the clip starts before the trigger. Clips stay on the unit.</li>
+  </ol>
+  <p><strong>Arming:</strong> Away (no household phones on Wi-Fi, or manual); Night (schedule first, then auto when the sleep watch says
+    Grayson is asleep, which is what the sleep baseline is for); Disarmed by default.</p>
+  <p><strong>Multi-unit:</strong> each unit publishes tracks in house coordinates over MQTT <code>cleetus/security/&lt;unit&gt;/tracks</code>; mounting
+    pose fitted once from a 4-spot calibration walk (<code>fit_pose</code>, which also resolves the radar x sign). The hub (cleetusd) fuses
+    tracks so a person walking room to room is one incident handed between units.</p>
+
+  <h4>Shopping list v1 (prices checked 25 Sep 2026, ~$415 + tax)</h4>
+  <table>
+    <tr><th>Part</th><th>Price</th><th>Where</th><th>Why</th></tr>
+    <tr><td>Raspberry Pi 5 8 GB</td><td>$175.00</td><td>pishop.us</td><td>Brain; PCIe for the AI HAT (check 4 GB price, 4 GB is enough). The Pi 4 stays the office BLE hub</td></tr>
+    <tr><td>Official Active Cooler</td><td>$10.95</td><td>pishop.us</td><td>Fits under the HAT with the 16 mm header</td></tr>
+    <tr><td>Official 27 W USB-C PSU</td><td>$12.95</td><td>pishop.us</td><td>5 V/5 A</td></tr>
+    <tr><td>AI HAT+ 13 TOPS (Hailo-8L)</td><td>$76.95</td><td>pishop.us</td><td>Person detection at frame rate; 26 TOPS ($119.95) not needed</td></tr>
+    <tr><td>Camera Module 3 NoIR Wide</td><td>$38.50</td><td>pishop.us</td><td>Sees IR at night; pinkish by day; light enough for micro servos</td></tr>
+    <tr><td>850 nm IR illuminator (DORHEA 3 W 2-pack)</td><td>~$10 (unverified)</td><td>amazon.com/dp/B07FM6LL3V</td><td>Room is 0/255 black after 02:00. Power from 5 V, not 3.3 V</td></tr>
+    <tr><td>HLK-LD2450 radar, pins soldered</td><td>$11.99</td><td>shillehtek.com</td><td>x/y of up to 3 people, 6 m, &plusmn;60&deg;</td></tr>
+    <tr><td>SparkFun MLX90640 thermal 110&deg; Qwiic</td><td>$39.95 (sale)</td><td>sparkfun.com</td><td>Human check in total darkness (Adafruit 110&deg; out of stock)</td></tr>
+    <tr><td>Adafruit Mini Pan-Tilt Kit, assembled (2x SG90)</td><td>$18.95</td><td>adafruit.com/product/1967</td><td>Cheap; no position feedback</td></tr>
+    <tr><td>64-128 GB high-endurance microSD</td><td>~$15-25 (unverified)</td><td>any</td><td>OS + clips</td></tr>
+  </table>
+  <p><strong>Upgrades later:</strong> Waveshare 2-Axis Pan-Tilt Camera Module $109.99 (2x ST3215 12-bit feedback servos); Arducam B0270
+    IMX477 auto IR-cut $64.99 (sharper faces, needs the Waveshare pan-tilt; no IMX708 board with auto IR-cut exists); Geekworm X1200 UPS $45
+    + 2x Molicel P28A $11.98; Slamtec RPLIDAR C1 $69 only if radar disappoints. Ideal build total ~$576.</p>
+  <p><strong>Gotchas:</strong> Pi 5 camera cables differ from Pi 4. One PCIe lane, so AI HAT and NVMe don't share cleanly: clips on SD or USB 3 SSD.
+    LD2450 = 5 V power, 3.3 V UART, 256000 baud, x/y sign-magnitude with top bit = POSITIVE (the csRon GitHub decoder gets X backwards; ours
+    matches the Hi-Link manual's worked example).</p>
+
+  <h4>Build phases</h4>
+  <ul>
+    <li><strong>P0, done 25 Sep:</strong> parser, house frame + pose fit, tracker, policy, simulator, 11 tests. <code>python -m sentry.sim intruder|housemate|fan</code>:
+      stranger via front door URGENT at 5.9 s; housemate KNOWN, no push; fan RADAR_ONLY, no alert.</li>
+    <li><strong>P1, radar on the bench:</strong> LD2450 on USB-serial on the Mac; confirm frames and x sign; log a walk. Before the Pi arrives.</li>
+    <li><strong>P2, the unit:</strong> Pi 5 + HAT + camera + servos; radar aim, then camera closed loop. Metric: target in the middle third of the frame &ge; 90% of a walk.</li>
+    <li><strong>P3, identity:</strong> IR face enrolment, visitor windows, real entry/interior zones. Metric: a week armed at night, zero URGENT on housemates.</li>
+    <li><strong>P4, phone:</strong> push with live WebRTC link, pre-roll clips, ack button, Night auto-arm from the sleep watch.</li>
+    <li><strong>P5:</strong> unit two.</li>
+  </ul>
+
+  <h4>Waiting on Grayson</h4>
+  <ul>
+    <li>Rough floor plan of the living area: front door, patio door, bedroom hallway (zones + mount spot). <code>sim.py</code> uses a placeholder.</li>
+    <li>Housemates' names and consent to face enrolment; they must know the camera exists.</li>
+    <li>Buy the v1 list (or say drop thermal to stay under $400).</li>
+    <li>Audio stays off by default (consent issues); video only.</li>
+  </ul>
 </section>
 
 </body>
