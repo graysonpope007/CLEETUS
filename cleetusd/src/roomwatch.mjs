@@ -461,7 +461,12 @@ export async function pushAlert(title, body, data = {}) {
   const { createSign } = await import("node:crypto");
   const { connect } = await import("node:http2");
   const team = secrets.APNS_TEAM_ID, kid = secrets.APNS_KEY_ID, bundle = secrets.APNS_BUNDLE_ID;
-  const p8 = join(HOME, "Downloads", `AuthKey_${kid}.p8`);
+  // The key moved from ~/Downloads to Desktop/Cleetus, and every push from this
+  // machine (the room alarm included) then failed with "APNs not usable
+  // locally" and nobody saw it. Look where it has lived, not one place.
+  const p8 = [secrets.APNS_KEY_PATH, join(HOME, "Downloads", `AuthKey_${kid}.p8`),
+    join(HOME, "Desktop", "Cleetus", `AuthKey_${kid}.p8`), join(HOME, ".cleetus", "keys", `AuthKey_${kid}.p8`)]
+    .find((f) => f && existsSync(f)) || join(HOME, "Downloads", `AuthKey_${kid}.p8`);
   if (!team || !kid || !bundle || !existsSync(p8)) {
     return { ok: false, why: `APNs not usable locally: need APNS_TEAM_ID/KEY_ID/BUNDLE_ID and ${p8}` };
   }
