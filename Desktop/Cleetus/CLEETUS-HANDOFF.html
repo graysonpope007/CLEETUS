@@ -248,6 +248,7 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
   <li><a href="#s154"><span>154</span>RuView can say where Grayson is, from the three boards alone&hellip;</a></li>
   <li><a href="#s155"><span>155</span>The desk camera now teaches the RF locator&hellip;</a></li>
   <li><a href="#s160"><span>160</span>The revert loop was the pipeline, and LLM_MODEL is empty&hellip;</a></li>
+  <li><a href="#s161"><span>161</span>cleetus from the phone, a Claude-style terminal, and a session that cannot vanish&hellip;</a></li>
 </ol></div></nav>
 
 <section id="state"><div class="wrap">
@@ -9286,6 +9287,59 @@ in that form is invented.</pre>
       <code>printf 'qwen3.8-27b-heretic:q8_0' | wrangler pages secret put LLM_MODEL --project-name cleetus</code>, then redeploy (retry the latest deployment in the dashboard,
       or push to main). Verify: /api/health local_llm.detail names qwen instead of a blank. <b>DONE:</b> Grayson re-set it and pushed 6b8e3e2; deploy 01bd85e7 succeeded; live detail now "qwen3.8-27b-heretic:q8_0 resident". Down set unchanged (schwab, outlook, brief).</li>
   </ul>
+</section>
+
+<section id="s161">
+  <h2>161. cleetus from the phone, a Claude-style terminal, and a session that cannot vanish (25 Sep)</h2>
+  <p>Grayson asked for three things: drive <code>cleetus</code> coding sessions on the Mac from the Cleetus app on his phone (start one, watch it, reply, approve), make the terminal look like Claude Code, and make sure a session never drops again like his first one did. Then an honest list of what is left.</p>
+
+  <h3>Earlier the same day (s160 follow-ups)</h3>
+  <ul>
+    <li><strong>Commits pushed</strong> to <code>selfedit-20260813</code> on the PUBLIC repo graysonpope007/CLEETUS: d0beb4d (improve loop), e848fd6 (Apple TV panel, RuView locator tooling, studio panel, CLI context fix, 24 files; secret-scanned first), f84c210 (auto-compaction). Grayson ran the e848fd6 push himself after the classifier refused it for me.</li>
+    <li><strong>Context:</strong> <code>cleetus</code> asked Ollama for 32768 tokens; a 69-message session overflowed and Ollama silently dropped the start of the prompt, so replies came back blank. Now 262144 (what the model is loaded at anyway), old tool output trimmed from 70%, and from 80% the model summarizes the older part (goal, instructions, files, facts, state, next steps); last 12 messages and the current request are kept verbatim; the full transcript is archived to <code>~/.cleetus/sessions/archive/</code> first. <code>/compact</code>, <code>/context</code>. Verified on the real stuck session: 57 messages to one summary, ~29k to ~7k tokens, next answer stayed on task. Summary takes 3-5 min on the local model.</li>
+  </ul>
+
+  <h3>Why the first session dropped (causes found in the code; no crash report existed)</h3>
+  <ul>
+    <li>Nothing was saved until a whole turn finished, so a death during the first turn left no file. Grayson's 13:42 attempt left none.</li>
+    <li>If stdin closed, the pending <code>rl.question</code> promise never settled, nothing kept Node alive, and the process exited silently.</li>
+    <li>No uncaught-exception handler (an EPIPE on the terminal killed it); no retry on Ollama (a model reload or restart failed the turn).</li>
+    <li><strong>Fixed:</strong> the conversation is written atomically (tmp + rename) after EVERY message; Ollama 5xx/connection errors retry at 2/5/10/20 s; errors go to <code>~/.cleetus/crash.log</code> and the prompt comes back; SIGHUP/SIGTERM/EOF save and print how to resume; <code>-c</code> keeps writing the same file instead of forking a copy; <code>--resume FILE</code>. If it ever drops again, crash.log will say why.</li>
+  </ul>
+
+  <h3>Live sessions: how the phone reaches a terminal session</h3>
+  <ul>
+    <li><code>cleetusd/src/codelive.mjs</code>: every interactive <code>cleetus</code> registers in <code>~/.cleetus/live/</code>: <code>&lt;id&gt;.json</code> (pid, cwd, state, pending approval, session file), <code>&lt;id&gt;.jsonl</code> (numbered events: user, delta, assistant, tool, tool_result, approval, approval_done, notice, status, history, compact) and <code>&lt;id&gt;.sock</code>, a mode-600 unix socket taking /message, /approve, /interrupt, /stop. The session process stays the only owner of its conversation. Terminal and phone are equal; whoever answers an approval first wins, and both see who did. Messages sent while it works are queued. Socket paths over 104 bytes fall back to <code>/tmp/cleetus-&lt;uid&gt;/</code>.</li>
+    <li><code>cleetusd/src/coderoutes.mjs</code>, bearer-gated in server.mjs: <code>GET/POST /code/sessions</code>, <code>GET /code/sessions/:id?after=N</code>, <code>POST .../message|approve|interrupt|stop</code>, <code>GET /code/dirs</code>. Starting from the phone runs <code>cleetus --origin phone</code> in a detached tmux session <code>cleetus-&lt;launch&gt;</code> (so it can be attached on the Mac), only in a directory inside HOME. Resume re-uses a live one if the file is already open.</li>
+    <li><strong>Pushes:</strong> a watcher (4 s) pushes "Cleetus needs your OK" and "Cleetus finished" via <code>pushAlert</code> (APNs direct), only for sessions the phone started or last spoke to. Data is nested as <code>data: { view: "code", session }</code> because the app reads <code>info["data"]</code>; roomwatch's pushAlert spreads extra fields at the top level, which the app would have ignored. Every push is logged as <code>[code] push ... -&gt; sent / NOT sent: why</code> in cleetusd.err.log.</li>
+    <li><strong>Web:</strong> <code>cleetusv2/code.html</code> (+ Hub link) and <code>functions/api/code/[[path]].js</code>, a named pass-through adding CLEETUSD_TOKEN. No new env vars (still 60/64). Commit b1160f8, deploy 45aa5a15.</li>
+    <li><strong>App:</strong> native <code>CodeView.swift</code>, reached from More &gt; The Mac &gt; Code on the Mac: running and saved sessions, New (folder picker + first message), Resume, live transcript with tool rows (tap for output), Allow / Always / Deny, Interrupt, End. A code push opens the tapped session (Push.pendingCodeSession). Builds clean (xcodebuild, generic iOS). <b>NOT installed yet:</b> <code>install.sh</code> built it, then <code>devicectl</code> started <code>xcodebuild -runFirstLaunch</code> (Xcode wants to install device components; CoreDevice/CoreSimulator are out of date for this Xcode) and that sat on a macOS admin-password dialog. I cancelled it rather than touch system credentials. Grayson: run <code>xcodebuild -runFirstLaunch</code> once (enter the password), then <code>~/cleetusv2/cleetus-ios/install.sh</code> with the phone unlocked on the home network.</li>
+  </ul>
+
+  <h3>The terminal, Claude Code style</h3>
+  <ul>
+    <li><code>cleetusd/src/coderui.mjs</code> (pure, tested) + the rewritten <code>bin/cleetus.mjs</code>: welcome box; boxed input with a status line under it (mode, model, context %, cwd, phone id); <code>⏺ Read(file)</code> / <code>Bash(cmd)</code> / <code>Update(file)</code> rows with a <code>⎿</code> result line; streamed markdown (headers, bullets, code fences, inline code, bold); spinner with a verb, seconds and "esc to interrupt"; approval box with 1 Yes / 2 Always / 3 No and diff line numbers; Esc interrupts (kills a running shell command too); shift+tab cycles ask / accept-edits / yolo; typing while it works queues the message; Ctrl-C twice exits and saves.</li>
+    <li>readline clears everything below the prompt on each redraw, so the bottom border and status line are redrawn after every keypress with the cursor saved and restored, after reserving space so the screen never scrolls in between.</li>
+  </ul>
+
+  <h3>Verified</h3>
+  <ul>
+    <li><code>test/cleetus-live.test.mjs</code>: a real cleetus process + scripted fake Ollama, driven only through the socket: phone message runs a turn, a 503 is retried and said so, approval yes runs the command, a second answer is refused, approval no does not run it, the file is on disk, /stop ends cleanly and removes the socket; kill -9 mid-turn has already saved the message and shows as "dropped"; <code>-c</code> writes back to the same file and replays history. Made to fail once by breaking phone approvals (the test went red), then restored. Plus <code>test/coderui.test.mjs</code>. Suite 496/496.</li>
+    <li>Real model through cleetusd: a session started "from the phone" in tmux answered "pong"; in the page (headless Chrome, iPhone metrics, via a local stand-in for the Pages function) a message needing <code>date -u +%Y</code> showed NEEDS YOU and the approval card; tapping Allow ran it (exit 0, "Allowed from your phone") and the answer was "It printed 2026." After deploy: live <code>/api/code/sessions</code> through the tunnel lists sessions (200), unauthenticated gets 401.</li>
+    <li>Terminal UI checked in a tmux pane with a fake model: box, tool rows, approval box, markdown, shift+tab, a phone message arriving while the prompt was open (ran the turn, echoed "from your phone"), Esc interrupt, Ctrl-C twice (state "ended", socket gone, 21 messages saved).</li>
+    <li>Grayson's own session was respawned on the new code in tmux <code>cleetus</code>: live as hd5o5yjt8w, 71 messages resumed. <code>tmux attach -t cleetus</code>.</li>
+  </ul>
+
+  <h3>Left to do</h3>
+  <ol>
+    <li><strong>Install the app on the phone</strong> if it did not go on today (see the App line above): phone unlocked and on the home network, then <code>~/cleetusv2/cleetus-ios/install.sh</code>. Until then the same thing works at cleetusai.com/code.html in Safari or from the Hub.</li>
+    <li><strong>Confirm the first real push</strong> arrives and that tapping it opens the session: <code>grep "\[code\] push" ~/Library/Logs/cleetusd.err.log</code>. Not yet seen end to end on the device.</li>
+    <li>The watcher polls every 4 s, so a turn shorter than that may not send a "finished" push. The page polls (1.2 s while working) rather than streaming.</li>
+    <li>The phone cannot change a session's mode (ask / accept edits / yolo) or run slash commands other than as typed text; /compact typed from the phone does work.</li>
+    <li>Housekeeping not built: <code>~/.cleetus/live/*.jsonl</code> grow forever and ended sessions are never pruned; phone-started tmux sessions close when cleetus exits, so a crash there leaves no pane to look at (crash.log still has it).</li>
+    <li>Terminal edge cases: very long wrapped input or resizing mid-prompt can misplace the box borders (cosmetic). The two saved sessions titled "Last login: ..." are real: the first message of that session was pasted terminal text.</li>
+    <li>Carried over: Pi studio panel (<code>pi-devices-dash</code>) new code is committed but not deployed to the Pi; Schwab re-auth (income endpoint still no_token); Outlook re-link; security sentry decisions (floor plan, housemates' consent, parts); sleep watch needs 5+ nights of <code>sleepwatch</code> marks; RuView locator pinned at "keys" until a walk-through.</li>
+  </ol>
 </section>
 
 </body>

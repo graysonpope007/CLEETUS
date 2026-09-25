@@ -44,6 +44,7 @@ let controlsCache = { at: 0, value: null };
 // "seen 40s ago" instead of flickering between a name and nobody.
 let lastNamed = { names: [], at: 0 };
 import { acceptDrop, attachmentLine, listDrops } from "./drops.mjs";
+import { handleCode, startCodeWatcher } from "./coderoutes.mjs";
 
 /* Every request header the browser is allowed to send across an origin.
    This is one constant rather than two string literals because the two used to
@@ -291,6 +292,15 @@ async function handle(req, res) {
   }
 
   if (!localBrowser && !authed(req)) return json(res, { ok: false, error: "unauthorized" }, 401);
+
+  // ── Coding sessions ──
+  // `cleetus` in a terminal, watched and driven from the phone. Bearer only:
+  // these routes can run shell commands on this Mac (after an approval), so
+  // they are deliberately NOT on the local-browser list above.
+  if (url.pathname.startsWith("/code/")) {
+    if (localBrowser && !authed(req)) return json(res, { ok: false, error: "unauthorized" }, 401);
+    if (await handleCode(req, res, url, { json, readBody })) return;
+  }
 
   // The dashboard. Same origin as the API on purpose — see ui.mjs.
   if (url.pathname === "/" || url.pathname === "/index.html") {
@@ -1095,6 +1105,9 @@ process.on("uncaughtException", (e) => {
   console.error("[cleetusd] uncaught exception (staying up):", e?.stack || e);
   if (!listening) process.exit(1);
 });
+
+// Push the phone when a session it is driving needs an approval or has finished.
+startCodeWatcher({ push: async (title, body, data) => (await import("./roomwatch.mjs")).pushAlert(title, body, data) });
 
 server.listen(CONFIG.port, CONFIG.host, () => {
   listening = true;

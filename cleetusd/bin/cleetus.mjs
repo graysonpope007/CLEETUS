@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bin/cleetus.mjs — `cleetus` in a terminal: a coding agent on the LOCAL model.
+// bin/cleetus.mjs: `cleetus` in a terminal, a coding agent on the LOCAL model.
 //
 //   cleetus                    interactive session in the current directory
 //   cleetus --self             same, but in ~/cleetusd (Cleetus working on Cleetus)
@@ -9,21 +9,37 @@
 //   cleetus --model NAME       any Ollama model with tool support
 //
 // Same shape as Claude Code on purpose: the model reads freely, but every write,
-// edit and shell command is shown first and needs a y/n (or "a" = always, for
-// this session). Nothing leaves the machine: the model is Ollama on this Mac.
+// edit and shell command is shown first and needs a yes (or "always" for this
+// session). Nothing leaves the machine: the model is Ollama on this Mac.
+//
+// Every interactive session is also LIVE (src/codelive.mjs): it registers in
+// ~/.cleetus/live and listens on a private socket, so the phone (cleetusai.com/code,
+// through cleetusd) can watch it, send it messages, answer its approvals and
+// interrupt it. Terminal and phone are equal; whoever answers first wins.
+//
+// It must not lose a session. The conversation is written to disk after EVERY
+// message (atomically), not at the end of a turn; Ollama hiccups are retried;
+// an unexpected error is logged to ~/.cleetus/crash.log and the prompt comes
+// back instead of the process dying; closing the terminal saves and says how to
+// resume. The first version exited silently when stdin closed and only saved
+// once a whole turn finished, which is how a first session vanished with no file.
 //
 // Why not the daemon's ask(): that loop is Cleetus-the-assistant (vault, memory,
 // 40+ tools, run logs in the vault). A coding session wants a small, sharp tool
-// set rooted in the directory you typed `cleetus` in, and paths relative to it,
-// where the daemon's file tools resolve relative paths against HOME.
+// set rooted in the directory you typed `cleetus` in, and paths relative to it.
 
-import { readFile, writeFile, mkdir, readdir, stat, appendFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, stat, appendFile, rename } from "node:fs/promises";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve, relative } from "node:path";
+import { dirname, join, resolve, relative, basename } from "node:path";
 import { execFile, execSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import * as readline from "node:readline";
 import os from "node:os";
+import { LiveSession } from "../src/codelive.mjs";
+import {
+  setColor, dim, bold, red, green, yellow, cyan, mag, gray, amber, onGray,
+  box, toolLabel, toolSummary, mdRenderer, pickVerb, spinnerFrame, MODES, statusLine, vis, strip,
+} from "../src/coderui.mjs";
 
 const run = promisify(execFile);
 const HOME = os.homedir();
@@ -39,7 +55,6 @@ const argv = process.argv.slice(2);
 // 24 agents), not the coding agent. Delegate to the daemon's chat REPL and keep
 // this file about coding. Everything after `chat` is passed straight through.
 if (argv[0] === "chat" || argv[0] === "talk") {
-  const { spawn } = await import("node:child_process");
   const child = spawn(process.execPath, [join(HOME, "cleetusd/bin/chat.mjs"), ...argv.slice(1)],
     { stdio: "inherit", cwd: join(HOME, "cleetusd") });
   child.on("exit", (code) => process.exit(code ?? 0));
@@ -58,19 +73,23 @@ if (flag("--help") || flag("-h")) {
   cleetus --self          code in ~/cleetusd (Cleetus works on itself)
   cleetus -p "prompt"     one-shot coding task
   cleetus -c              continue the last coding session here
+  cleetus --resume FILE   continue a specific saved session
   cleetus --yolo          skip approval prompts
   cleetus --model NAME    pick an Ollama model (default $CLEETUS_MODEL or qwen3.8-27b-heretic:q8_0)
   cleetus --think         show the model's reasoning (slower)
 
-In a coding session: /help /compact /context /clear /model /think /yolo /cwd /exit
-In chat: /agent <name> /clear /exit`);
+Every coding session can be watched and driven from the phone at cleetusai.com/code.
+In a session: /help /compact /context /phone /clear /model /think /mode /cwd /exit`);
   process.exit(0);
 }
 let MODEL = opt("--model") || process.env.CLEETUS_MODEL || "qwen3.8-27b-heretic:q8_0";
-let YOLO = flag("--yolo");
+let MODE = flag("--yolo") ? "yolo" : "ask";   // ask | edits (auto-accept edits) | yolo
 let THINK = flag("--think");
 const CONTINUE = flag("-c") || flag("--continue");
+const RESUME = opt("--resume");
 const SELF = flag("--self");
+const ORIGIN = opt("--origin") === "phone" ? "phone" : "terminal";
+const LAUNCH = opt("--launch");
 const oneShot = opt("-p") ?? opt("--print");
 // Matches what Ollama already loads this model at (262144, same as cleetusd), so
 // a turn never forces a reload. 32768 overflowed in ~30 tool calls, and Ollama
@@ -79,10 +98,15 @@ const NUM_CTX = Number(process.env.CLEETUS_CTX || 262144);
 if (SELF) process.chdir(join(HOME, "cleetusd"));
 let CWD = process.cwd();
 
-// ---------- colour ----------
-const tty = process.stdout.isTTY;
-const c = (n) => (s) => (tty ? `\x1b[${n}m${s}\x1b[0m` : String(s));
-const dim = c(2), red = c(31), green = c(32), yellow = c(33), cyan = c(36), bold = c(1), mag = c(35);
+// ---------- output ----------
+const tty = !!process.stdout.isTTY;
+const interactive = tty && !!process.stdin.isTTY;
+setColor(tty);
+const cols = () => Math.max(40, Math.min(process.stdout.columns || 80, 140));
+let muted = false;         // hide readline's echo while a turn prints
+let messages = [];         // the conversation; [0] is the system prompt once started
+function out(s) { try { process.stdout.write(s); } catch {} }
+function line(s = "") { out(s + "\n"); }
 
 // ---------- paths ----------
 const P = (p) => {
@@ -90,21 +114,41 @@ const P = (p) => {
   if (s.startsWith("~")) s = join(HOME, s.slice(1));
   return resolve(CWD, s);
 };
-const show = (p) => { const r = relative(CWD, p); return r && !r.startsWith("..") ? r : p.replace(HOME, "~"); };
+const show = (p) => { const r = relative(CWD, p); return r === "" ? "." : !r.startsWith("..") ? r : p.replace(HOME, "~"); };
+const tilde = (p) => p.replace(HOME, "~");
 
 // ---------- approval ----------
 let rl = null;
+let live = null;
+let killTool = null;       // set while a shell command runs, so an interrupt can stop it
 const always = new Set();
-function ask(q) {
-  return new Promise((res) => rl.question(q, (a) => res(a.trim().toLowerCase())));
-}
-async function approve(kind, preview) {
-  if (YOLO || always.has(kind)) return true;
-  if (oneShot !== null && !process.stdin.isTTY) return false;
-  console.log(preview);
-  const a = await ask(yellow(`  allow ${kind}? [y]es / [n]o / [a]lways this session: `));
-  if (a === "a") { always.add(kind); return true; }
-  return a === "y" || a === "yes" || a === "";
+const ANSWERS = { "": "y", "1": "y", y: "y", yes: "y", "2": "a", a: "a", always: "a", "3": "n", n: "n", no: "n" };
+const WORD = { y: "yes", a: "yes, always this session", n: "no" };
+async function approve(kind, preview, title = kind) {
+  if (MODE === "yolo" || (MODE === "edits" && kind === "edits") || always.has(kind)) return true;
+  if (!interactive && !live) return false;          // a piped one-shot has nobody to ask
+  spinner.stop();
+  const q = kind === "edits" ? "Do you want to make this change?" : "Do you want to run this?";
+  if (tty) {
+    line("");
+    line(amber(`╭─ ${title} ${"─".repeat(Math.max(0, cols() - vis(title) - 5))}╮`));
+    for (const l of String(preview).split("\n").slice(0, 60)) line(l);
+    line("");
+    line(`  ${bold(q)}`);
+    line(`  ${amber("1.")} Yes`);
+    line(`  ${amber("2.")} Yes, and don't ask again for ${kind === "edits" ? "edits" : "shell commands"} this session`);
+    line(`  ${amber("3.")} No, and tell Cleetus what to do instead`);
+    if (live) line(gray(`  (or answer from your phone)`));
+    line(amber(`╰${"─".repeat(cols() - 2)}╯`));
+  }
+  const phone = live ? live.requestApproval(kind, `${title}\n\n${strip(preview)}`) : null;
+  const typed = interactive ? readLine(amber("  ❯ ")).then((a) => ({ a: a === null ? "n" : (ANSWERS[a.trim().toLowerCase()] || "n"), by: "terminal" })) : new Promise(() => {});
+  const r = await Promise.race([typed, phone ? phone.promise.then((a) => ({ a, by: "phone" })) : new Promise(() => {})]);
+  if (r.by === "phone") { cancelLine(); line(gray(`  ⎿  answered from your phone: ${WORD[r.a]}`)); }
+  else if (phone) live.settleApproval(phone.aid, r.a, "terminal");
+  muted = true;
+  if (r.a === "a") { always.add(kind); if (kind === "edits" && MODE === "ask") MODE = "edits"; return true; }
+  return r.a === "y";
 }
 
 function diffPreview(before, after, path) {
@@ -114,13 +158,13 @@ function diffPreview(before, after, path) {
   while (ea >= s && eb >= s && a[ea] === b[eb]) { ea--; eb--; }
   const out = [bold(`  ${show(path)}`) + dim(`  @ line ${s + 1}`)];
   const ctx = Math.max(0, s - 2);
-  for (let i = ctx; i < s; i++) out.push(dim(`    ${a[i]}`));
+  for (let i = ctx; i < s; i++) out.push(dim(`  ${String(i + 1).padStart(4)}   ${a[i]}`));
   const del = a.slice(s, ea + 1), add = b.slice(s, eb + 1);
-  const cap = (arr, col, sign) => {
-    arr.slice(0, 40).forEach((l) => out.push(col(`  ${sign} ${l}`)));
-    if (arr.length > 40) out.push(dim(`    ... ${arr.length - 40} more lines`));
+  const cap = (arr, col, sign, start) => {
+    arr.slice(0, 40).forEach((l, i) => out.push(col(`  ${String(start + i).padStart(4)} ${sign} ${l}`)));
+    if (arr.length > 40) out.push(dim(`         ... ${arr.length - 40} more lines`));
   };
-  cap(del, red, "-"); cap(add, green, "+");
+  cap(del, red, "-", s + 1); cap(add, green, "+", s + 1);
   return out.join("\n");
 }
 
@@ -188,7 +232,7 @@ const TOOLS = {
       if (!old_string || n === 0) return `old_string not found in ${show(p)}. Read the file and copy the text exactly (indentation included, no line-number prefixes).`;
       if (n > 1 && !replace_all) return `old_string appears ${n} times in ${show(p)}. Add surrounding lines to make it unique, or set replace_all.`;
       const next = replace_all ? text.split(old_string).join(new_string) : text.replace(old_string, () => new_string);
-      if (!(await approve("edits", diffPreview(text, next, p)))) return "The user declined this edit. Ask what they want instead.";
+      if (!(await approve("edits", diffPreview(text, next, p), `Edit ${show(p)}`))) return "The user declined this edit. Ask what they want instead.";
       await backup(p, text);
       await writeFile(p, next);
       return `Edited ${show(p)}`;
@@ -201,7 +245,7 @@ const TOOLS = {
       const p = P(path);
       const before = existsSync(p) ? await readFile(p, "utf8") : "";
       const preview = before ? diffPreview(before, String(content), p) : bold(`  new file ${show(p)}`) + dim(` (${String(content).split("\n").length} lines)`) + "\n" + String(content).split("\n").slice(0, 25).map((l) => green(`  + ${l}`)).join("\n");
-      if (!(await approve("edits", preview))) return "The user declined this write. Ask what they want instead.";
+      if (!(await approve("edits", preview, before ? `Overwrite ${show(p)}` : `Create ${show(p)}`))) return "The user declined this write. Ask what they want instead.";
       if (before) await backup(p, before);
       await mkdir(dirname(p), { recursive: true });
       await writeFile(p, String(content));
@@ -213,15 +257,16 @@ const TOOLS = {
     params: { command: "string", timeout_s: "number? default 120" },
     async run({ command, timeout_s }) {
       const safe = /^\s*(ls|pwd|cat|head|tail|wc|git (status|diff|log|show|branch)|rg|grep|find|which|echo|node -v|python3? --version)\b[^;&|>]*$/.test(command);
-      if (!safe && !(await approve("shell", `  ${bold("$")} ${cyan(command)}`))) return "The user declined this command. Ask what they want instead.";
+      if (!safe && !(await approve("shell", `  ${bold("$")} ${cyan(command)}`, "Run a shell command"))) return "The user declined this command. Ask what they want instead.";
       return new Promise((res) => {
         const ch = spawn("/bin/zsh", ["-lc", command], { cwd: CWD, env: { ...process.env, PAGER: "cat", GIT_PAGER: "cat" } });
+        killTool = () => { ch.kill("SIGTERM"); out += "\n[stopped: interrupted by user]"; };
         let out = "";
         const add = (d) => { out += d; if (out.length > 400_000) out = out.slice(-200_000); };
         ch.stdout.on("data", add); ch.stderr.on("data", add);
         const t = setTimeout(() => { ch.kill("SIGKILL"); out += "\n[killed: timeout]"; }, (timeout_s || 120) * 1000);
         ch.on("close", (code) => {
-          clearTimeout(t);
+          clearTimeout(t); killTool = null;
           const s = out.length > MAX_OUT ? out.slice(0, MAX_OUT / 2) + `\n...[${out.length - MAX_OUT} chars cut]...\n` + out.slice(-MAX_OUT / 2) : out;
           res(`exit ${code}\n${s.trim()}`);
         });
@@ -288,27 +333,68 @@ ${notes ? `\nProject instructions:\n${notes}` : ""}`;
 }
 
 // ---------- model ----------
+const RETRY_MS = [2000, 5000, 10000, 20000];
+const sleep = (ms, signal) => new Promise((res, rej) => {
+  const t = setTimeout(res, ms);
+  signal?.addEventListener("abort", () => { clearTimeout(t); rej(Object.assign(new Error("aborted"), { name: "AbortError" })); }, { once: true });
+});
+function note(text, bad = false) { line((bad ? yellow : gray)(`  ${text}`)); live?.emit("notice", { text, bad }); }
+
+// Ollama goes away briefly more often than you would think: a model reload when
+// another caller asks for a different context size, a restart, the Mac waking.
+// A coding session should wait that out, not throw away the turn.
+async function openStream(messages, signal) {
+  for (let i = 0; ; i++) {
+    let why;
+    try {
+      const res = await fetch(`${OLLAMA}/api/chat`, {
+        method: "POST", signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: MODEL, messages: messages.map(wire), tools: toolSchemas, stream: true, think: THINK,
+          options: { num_ctx: NUM_CTX, temperature: 0.3 } }),
+      });
+      if (res.ok) return res;
+      const body = (await res.text()).slice(0, 300);
+      if (res.status < 500) throw Object.assign(new Error(`ollama ${res.status}: ${body}`), { fatal: true });
+      why = `Ollama answered ${res.status}`;
+    } catch (e) {
+      if (e.name === "AbortError" || e.fatal) throw e;
+      why = `Ollama not answering (${e.cause?.code || e.message})`;
+    }
+    if (i >= RETRY_MS.length) throw new Error(`${why}; gave up after ${RETRY_MS.length} retries. Your message is saved; send it again when Ollama is back.`);
+    note(`${why}; retrying in ${RETRY_MS[i] / 1000}s`, true);
+    await sleep(RETRY_MS[i], signal);
+  }
+}
 async function* stream(messages, signal) {
-  const res = await fetch(`${OLLAMA}/api/chat`, {
-    method: "POST", signal,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: MODEL, messages, tools: toolSchemas, stream: true, think: THINK,
-      options: { num_ctx: NUM_CTX, temperature: 0.3 } }),
-  });
-  if (!res.ok) throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const res = await openStream(messages, signal);
   const dec = new TextDecoder(); let buf = "";
   for await (const chunk of res.body) {
     buf += dec.decode(chunk, { stream: true });
     let i;
     while ((i = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-      if (line) yield JSON.parse(line);
+      const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!l) continue;
+      let ev; try { ev = JSON.parse(l); } catch { continue; }   // one bad line must not end the turn
+      if (ev.error) throw new Error(`ollama: ${ev.error}`);
+      yield ev;
     }
   }
 }
+// Only what Ollama needs goes over the wire; bookkeeping fields stay local.
+const wire = (m) => { const { compacted, from, ...rest } = m; return rest; };
 
-let current = null;   // AbortController of the in-flight turn
+let current = null;   // AbortController of the in-flight model call
+let busy = false;     // a turn is running
+let stopFlag = false; // an interrupt arrived during the turn
 let lastCtx = 0;      // prompt+eval tokens Ollama reported for the last call
+
+function interrupt() {
+  if (!busy) return;
+  stopFlag = true;
+  current?.abort();
+  killTool?.();
+}
 
 // Keep the conversation inside the window, without ever losing the session.
 //
@@ -361,7 +447,7 @@ async function summarizeOlder(ms) {
   // so Ollama's KV cache covers it and only the summary itself is generated.
   const res = await fetch(`${OLLAMA}/api/chat`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: MODEL, messages: [...older, { role: "user", content: SUMMARIZE }], tools: toolSchemas,
+    body: JSON.stringify({ model: MODEL, messages: [...older, { role: "user", content: SUMMARIZE }].map(wire), tools: toolSchemas,
       stream: false, think: false, options: { num_ctx: NUM_CTX, temperature: 0.2 } }),
   });
   if (!res.ok) return { ok: false, why: `ollama ${res.status}` };
@@ -380,99 +466,185 @@ async function keepInWindow(ms, { force = false } = {}) {
   const overhead = Math.ceil(JSON.stringify(toolSchemas).length / 3.2);
   let used = Math.max(lastCtx, estTokens(ms) + overhead);
   const freed = trimToolOutputs(ms, NUM_CTX, used);
-  if (freed) { lastCtx = 0; used = estTokens(ms) + overhead; console.log(dim(`  trimmed old tool output (${Math.round(freed / 1000)}k chars) to stay inside the ${NUM_CTX} context`)); }
+  if (freed) { lastCtx = 0; used = estTokens(ms) + overhead; note(`trimmed old tool output (${Math.round(freed / 1000)}k chars) to stay inside the ${NUM_CTX} context`); persistSoon(); }
   if (!force && used <= NUM_CTX * SUMMARIZE_AT) return;
-  const spin = tty ? startSpinner() : null;
+  spinner.start("Compacting the conversation");
   let r;
-  try { r = await summarizeOlder(ms); } catch (e) { r = { ok: false, why: e.message }; } finally { spin?.stop(); }
-  if (r.ok) { lastCtx = 0; console.log(dim(`  compacted ${r.removed} older messages into a summary (~${Math.round(r.before / 1000)}k -> ~${Math.round(r.after / 1000)}k tokens); full transcript kept at ${show(r.archived)}`)); }
-  else console.log(yellow(`  could not compact: ${r.why}`));
+  try { r = await summarizeOlder(ms); } catch (e) { r = { ok: false, why: e.message }; } finally { spinner.stop(); }
+  if (r.ok) {
+    lastCtx = 0; persistSoon();
+    note(`compacted ${r.removed} older messages into a summary (~${Math.round(r.before / 1000)}k -> ~${Math.round(r.after / 1000)}k tokens); full transcript kept at ${tilde(r.archived)}`);
+    live?.emit("compact", { removed: r.removed });
+  } else note(`could not compact: ${r.why}`, true);
 }
+
+// ---------- a turn ----------
+function add(m) { messages.push(m); persistSoon(); }
 
 async function turn(messages) {
-  for (let step = 0; step < MAX_STEPS; step++) {
-    await keepInWindow(messages);
-    current = new AbortController();
-    let text = "", thinking = "", calls = [], started = false, stats = null;
-    const spin = tty ? startSpinner() : null;
-    try {
-      for await (const ev of stream(messages, current.signal)) {
-        const m = ev.message || {};
-        if (m.thinking) { spin?.stop(); if (THINK) process.stdout.write(dim(m.thinking)); thinking += m.thinking; }
-        if (m.content) {
-          spin?.stop();
-          if (!started && THINK && thinking) process.stdout.write("\n");
-          started = true; text += m.content; process.stdout.write(m.content);
+  busy = true; stopFlag = false;
+  live?.setState("working");
+  try {
+    for (let step = 0; step < MAX_STEPS; step++) {
+      await keepInWindow(messages);
+      if (stopFlag) { note("⎿  Interrupted"); return; }
+      current = new AbortController();
+      let text = "", thinking = "", calls = [], stats = null, pending = "", printed = false;
+      const md = mdRenderer();
+      let deltaBuf = "", deltaTimer = null;
+      const flushDelta = () => { if (deltaBuf) live?.emit("delta", { text: deltaBuf }); deltaBuf = ""; deltaTimer = null; };
+      const printLine = (l) => { line((printed ? "  " : `${bold("⏺")} `) + md(l)); printed = true; };
+      spinner.start();
+      try {
+        for await (const ev of stream(messages, current.signal)) {
+          const m = ev.message || {};
+          if (m.thinking) {
+            thinking += m.thinking;
+            if (THINK) { spinner.stop(); out(dim(m.thinking)); } else spinner.extra(`${Math.round(thinking.length / 4)} thinking tokens`);
+          }
+          if (m.content) {
+            spinner.stop();
+            if (!text && THINK && thinking) line("");
+            text += m.content; pending += m.content; deltaBuf += m.content;
+            if (!deltaTimer) deltaTimer = setTimeout(flushDelta, 400);
+            let i; while ((i = pending.indexOf("\n")) >= 0) { printLine(pending.slice(0, i)); pending = pending.slice(i + 1); }
+          }
+          if (m.tool_calls?.length) calls.push(...m.tool_calls);
+          if (ev.done) stats = ev;
         }
-        if (m.tool_calls?.length) calls.push(...m.tool_calls);
-        if (ev.done) stats = ev;
+      } catch (e) {
+        spinner.stop(); clearTimeout(deltaTimer);
+        if (e.name === "AbortError") {
+          if (pending) printLine(pending);
+          line(gray("  ⎿  Interrupted. What should Cleetus do instead?"));
+          add({ role: "assistant", content: text + " [interrupted by user]" });
+          live?.emit("assistant", { text: (text ? text + "\n\n" : "") + "[interrupted]" });
+          return;
+        }
+        throw e;
+      } finally { spinner.stop(); current = null; }
+      clearTimeout(deltaTimer); deltaBuf = "";      // the whole text below supersedes the deltas
+      if (pending) printLine(pending);
+      add({ role: "assistant", content: text, ...(calls.length ? { tool_calls: calls } : {}) });
+      if (text.trim()) live?.emit("assistant", { text });
+      if (stats) lastCtx = (stats.prompt_eval_count || 0) + (stats.eval_count || 0);
+      if (!calls.length && !text.trim()) {
+        // A blank reply with no tool call is how an overflowing prompt looks from here.
+        note(`the model returned nothing (context ${lastCtx || "?"}/${NUM_CTX}). Try again, or /compact.`, true);
       }
-    } catch (e) {
-      spin?.stop();
-      if (e.name === "AbortError") { console.log(dim("\n  [interrupted]")); messages.push({ role: "assistant", content: text + " [interrupted by user]" }); return; }
-      throw e;
-    } finally { spin?.stop(); current = null; }
-    if (text && !text.endsWith("\n")) process.stdout.write("\n");
-    messages.push({ role: "assistant", content: text, ...(calls.length ? { tool_calls: calls } : {}) });
-    if (stats) lastCtx = (stats.prompt_eval_count || 0) + (stats.eval_count || 0);
-    if (stats && tty) {
-      const tps = stats.eval_count && stats.eval_duration ? (stats.eval_count / (stats.eval_duration / 1e9)).toFixed(1) : "?";
-      const ctx = lastCtx;
-      if (!calls.length) console.log(dim(`  ${tps} tok/s · context ${ctx}/${NUM_CTX}`));
-      // No warning needed: the next step compacts on its own past 80%.
+      if (!calls.length) {
+        if (stats && tty) {
+          const tps = stats.eval_count && stats.eval_duration ? (stats.eval_count / (stats.eval_duration / 1e9)).toFixed(1) : "?";
+          line(gray(`  ${tps} tok/s · ctx ${Math.round(100 * lastCtx / NUM_CTX)}%`));
+        }
+        return;
+      }
+      for (let k = 0; k < calls.length; k++) {
+        const call = calls[k];
+        const name = call.function?.name; let args = call.function?.arguments ?? {};
+        if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
+        if (stopFlag) { add({ role: "tool", tool_name: name, content: "Skipped: the user interrupted." }); continue; }
+        const t = TOOLS[name];
+        const label = toolLabel(name, args, (p) => show(P(p)));
+        line(`${green("⏺")} ${bold(label)}`);
+        live?.emit("tool", { name, label });
+        let result;
+        try { result = t ? await t.run(args) : `Unknown tool ${name}. Tools: ${Object.keys(TOOLS).join(", ")}`; }
+        catch (e) { result = `Tool error: ${e.message}`; }
+        const sum = toolSummary(name, result);
+        line(gray("  ⎿  ") + (sum.bad ? red(sum.text) : gray(sum.text)));
+        for (const l of sum.more || []) line(gray(`     ${l}`));
+        live?.emit("tool_result", { name, summary: sum.text, bad: !!sum.bad, detail: String(result).slice(0, 4000) });
+        add({ role: "tool", tool_name: name, content: String(result) });
+      }
+      if (stopFlag) { line(gray("  ⎿  Interrupted. What should Cleetus do instead?")); live?.emit("notice", { text: "Interrupted" }); return; }
     }
-    if (!calls.length && !text.trim()) {
-      // A blank reply with no tool call is how an overflowing prompt looks from here.
-      console.log(yellow(`  the model returned nothing (context ${lastCtx || "?"}/${NUM_CTX}). Try again, or /compact.`));
-    }
-    if (!calls.length) return;
-    for (const call of calls) {
-      const name = call.function?.name; let args = call.function?.arguments ?? {};
-      if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
-      const t = TOOLS[name];
-      const label = Object.values(args).map((v) => String(v)).join(" ").replace(/\s+/g, " ").slice(0, 90);
-      console.log(mag(`  ● ${name}`) + dim(` ${label}`));
-      let result;
-      try { result = t ? await t.run(args) : `Unknown tool ${name}. Tools: ${Object.keys(TOOLS).join(", ")}`; }
-      catch (e) { result = `Tool error: ${e.message}`; }
-      const first = String(result).split("\n").slice(0, 3).join(" | ");
-      console.log(dim(`    ${first.slice(0, 140)}`));
-      messages.push({ role: "tool", tool_name: name, content: String(result) });
-    }
+    note(`stopped after ${MAX_STEPS} steps; say "continue" to keep going`, true);
+  } finally {
+    busy = false; stopFlag = false;
+    live?.setState("idle");
   }
-  console.log(yellow(`  stopped after ${MAX_STEPS} steps`));
 }
 
-function startSpinner() {
-  const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]; let i = 0, on = true;
-  const t0 = Date.now();
-  const iv = setInterval(() => process.stdout.write(`\r${cyan(frames[i++ % 10])} ${dim(`thinking ${((Date.now() - t0) / 1000).toFixed(0)}s`)}  `), 100);
-  return { stop() { if (on) { on = false; clearInterval(iv); process.stdout.write("\r\x1b[K"); } } };
-}
+// ---------- spinner ----------
+const spinner = (() => {
+  let iv = null, t0 = 0, i = 0, verb = "", extraText = "";
+  return {
+    start(v) {
+      if (!tty || iv) return;
+      verb = v || pickVerb(); t0 = Date.now(); extraText = "";
+      iv = setInterval(() => out(`\r${spinnerFrame(i++, verb, Math.round((Date.now() - t0) / 1000), extraText)}\x1b[K`), 120);
+    },
+    extra(s) { extraText = s; },
+    stop() { if (iv) { clearInterval(iv); iv = null; out("\r\x1b[K"); } },
+  };
+})();
 
 // ---------- sessions ----------
 const sessionDir = join(STATE, "sessions");
-const sessionKey = CWD.replaceAll("/", "_");
+let sessionKey = CWD.replaceAll("/", "_");
 async function loadLast() {
   try {
-    const files = (await readdir(sessionDir)).filter((f) => f.startsWith(sessionKey + "__")).sort();
+    const files = (await readdir(sessionDir)).filter((f) => f.startsWith(sessionKey + "__") && f.endsWith(".json")).sort();
     if (!files.length) return null;
-    return JSON.parse(await readFile(join(sessionDir, files.at(-1)), "utf8"));
+    const f = join(sessionDir, files.at(-1));
+    return { file: f, messages: JSON.parse(await readFile(f, "utf8")) };
   } catch { return null; }
 }
 let sessionFile = null;
-async function save(messages) {
-  await mkdir(sessionDir, { recursive: true });
-  sessionFile ??= join(sessionDir, `${sessionKey}__${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
-  await writeFile(sessionFile, JSON.stringify(messages));
+let saving = Promise.resolve();
+// Atomic: a crash mid-write leaves the previous version, never half a file.
+function save(ms = messages) {
+  const snapshot = JSON.stringify(ms);
+  saving = saving.then(async () => {
+    await mkdir(sessionDir, { recursive: true });
+    sessionFile ??= join(sessionDir, `${sessionKey}__${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+    const tmp = `${sessionFile}.${process.pid}.tmp`;
+    await writeFile(tmp, snapshot);
+    await rename(tmp, sessionFile);
+    if (live && live.sessionFile !== sessionFile) { live.sessionFile = sessionFile; live.writeMeta(); }
+  }).catch((e) => crashLog("save", e));
+  return saving;
 }
-async function archive(messages) {
+let saveTimer = null;
+function persistSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(() => save(), 250); }
+async function archive(ms) {
   const dir = join(sessionDir, "archive");
   await mkdir(dir, { recursive: true });
   const f = join(dir, `${sessionKey}__${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
-  await writeFile(f, JSON.stringify(messages));
+  await writeFile(f, JSON.stringify(ms));
   return f;
 }
+
+// ---------- staying alive ----------
+function crashLog(where, e) {
+  const msg = `${new Date().toISOString()} [${process.pid}] ${where}: ${e?.stack || e}\n`;
+  appendFile(join(STATE, "crash.log"), msg).catch(() => {});
+}
+let shuttingDown = false;
+async function shutdown(reason, code = 0) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  interrupt();
+  spinner.stop();
+  clearTimeout(saveTimer);
+  if (messages.length > 1) await save().catch(() => {});
+  await live?.close(reason).catch(() => {});
+  if (tty && messages.length > 1) line(gray(`\n  Session saved. Resume it with ${bold("cleetus -c")}${ORIGIN === "phone" ? "" : " here"}, or from your phone.`));
+  process.exit(code);
+}
+for (const sig of ["SIGHUP", "SIGTERM"]) process.on(sig, () => shutdown(sig === "SIGHUP" ? "terminal closed" : "terminated"));
+process.on("uncaughtException", (e) => {
+  crashLog("uncaught", e);
+  if (e?.code === "EPIPE") return shutdown("terminal gone");
+  try { line(red(`  internal error: ${e?.message || e} (logged to ~/.cleetus/crash.log; the session is saved and still running)`)); } catch {}
+  persistSoon();
+});
+process.on("unhandledRejection", (e) => {
+  crashLog("unhandled", e);
+  try { line(red(`  internal error: ${e?.message || e} (logged to ~/.cleetus/crash.log; the session is saved and still running)`)); } catch {}
+});
+process.stdout.on("error", (e) => { if (e.code === "EPIPE") shutdown("terminal gone"); });
 
 // ---------- main ----------
 async function checkModel() {
@@ -485,66 +657,246 @@ async function checkModel() {
   } catch { return `Ollama is not reachable at ${OLLAMA} (is it running?)`; }
 }
 
-rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: tty, historySize: 500 });
 const problem = await checkModel();
 if (problem) { console.error(red(`cleetus: ${problem}`)); process.exit(1); }
 
-let messages = [{ role: "system", content: systemPrompt() }];
-if (CONTINUE) {
-  const prev = await loadLast();
-  if (prev) { messages = [{ role: "system", content: systemPrompt() }, ...prev.filter((m) => m.role !== "system")]; console.log(dim(`  continuing (${prev.length} messages)`)); }
+messages = [{ role: "system", content: systemPrompt() }];
+let resumed = 0;
+if (RESUME || CONTINUE) {
+  let prev = null;
+  if (RESUME) {
+    const f = resolve(RESUME.startsWith("/") ? RESUME : join(sessionDir, RESUME));
+    if (!f.startsWith(sessionDir + "/") || !existsSync(f)) { console.error(red(`cleetus: no saved session ${RESUME}`)); process.exit(1); }
+    prev = { file: f, messages: JSON.parse(await readFile(f, "utf8")) };
+  } else prev = await loadLast();
+  if (prev) {
+    messages = [{ role: "system", content: systemPrompt() }, ...prev.messages.filter((m) => m.role !== "system")];
+    sessionFile = prev.file;       // keep writing the same file instead of forking a copy per resume
+    resumed = prev.messages.length;
+  }
 }
 
 if (oneShot !== null) {
-  messages.push({ role: "user", content: oneShot || (await readFile("/dev/stdin", "utf8")) });
-  await turn(messages); await save(messages); rl.close(); process.exit(0);
+  add({ role: "user", content: oneShot || (await readFile("/dev/stdin", "utf8")) });
+  busy = true;
+  try { await turn(messages); } catch (e) { console.error(red(`cleetus: ${e.message}`)); }
+  await save(); process.exit(0);
 }
 
-console.log(`${bold(cyan("cleetus"))} ${dim(`· ${MODEL} · local · ${show(CWD) === "" ? CWD : CWD.replace(HOME, "~")}`)}`);
-console.log(dim(`  /help for commands · ctrl-c interrupts · ${YOLO ? yellow("yolo: no approval prompts") : "writes and shell ask first"}`));
+// Live: the phone's way in. A session that cannot register still works locally.
+try {
+  const firstUser = messages.find((m) => m.role === "user" && !String(m.content).startsWith("[Session summary"));
+  live = new LiveSession({ cwd: CWD, model: MODEL, sessionFile, origin: ORIGIN, launch: LAUNCH, title: firstUser ? String(firstUser.content).slice(0, 80) : "" });
+  await live.start();
+  if (resumed) {
+    const items = [];
+    for (const m of messages.slice(1)) {
+      if (m.role === "user") items.push({ role: "user", text: String(m.content).slice(0, 3000) });
+      else if (m.role === "assistant" && String(m.content).trim()) items.push({ role: "assistant", text: String(m.content).slice(0, 3000) });
+      else if (m.role === "assistant" && m.tool_calls) for (const c of m.tool_calls) {
+        let a = c.function?.arguments || {};
+        if (typeof a === "string") { try { a = JSON.parse(a); } catch { a = {}; } }
+        items.push({ role: "tool", text: toolLabel(c.function?.name, a, (p) => show(P(p))) });
+      }
+    }
+    live.emit("history", { items: items.slice(-80), total: items.length });
+  }
+  live.onInterrupt = () => { if (busy) { interrupt(); } };
+  live.onStop = () => shutdown("stopped from phone");
+} catch (e) { crashLog("live", e); live = null; }
+
+// ---------- input ----------
+// One queue for everything the session is asked: lines typed here and messages
+// from the phone. Approvals take the next typed line directly (lineWaiter).
+const inputs = [];
+let wake = null;
+let lineWaiter = null;
+let promptShown = false;
+function enqueue(item) { inputs.push(item); wake?.(); }
+if (live) live.onInbox = () => wake?.();
+
+rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: interactive, historySize: 500,
+  completer: (l) => [[], l] });   // a completer turns tab and shift+tab into no-ops instead of inserting them
+if (interactive) {
+  const orig = rl._writeToOutput.bind(rl);
+  rl._writeToOutput = (s) => { if (!muted) orig(s); };
+}
+rl.on("line", (l) => {
+  if (lineWaiter) { const w = lineWaiter; lineWaiter = null; w(l); return; }
+  if (!l.trim()) { if (promptShown) redrawPrompt(); return; }
+  enqueue({ text: l, from: "terminal" });
+  if (!promptShown && tty) line(gray(`  ⎿  queued: ${l.slice(0, 70)}`));
+});
+rl.on("close", () => {
+  if (lineWaiter) { const w = lineWaiter; lineWaiter = null; w(null); }
+  // Piped stdin closing is not a reason to end a session the phone is driving.
+  if (interactive || !live) shutdown("input closed");
+});
+
+function readLine(prompt) {
+  return new Promise((res) => {
+    lineWaiter = res; muted = false;
+    rl.setPrompt(prompt); rl.prompt();
+  });
+}
+function cancelLine() {
+  lineWaiter = null;
+  rl.line = ""; rl.cursor = 0;
+  out("\r\x1b[K");
+}
+
+const ctxPct = () => Math.round(100 * Math.max(lastCtx, estTokens(messages) + Math.ceil(JSON.stringify(toolSchemas).length / 3.2)) / NUM_CTX);
+const status = () => statusLine({ mode: MODE, model: MODEL, ctxPct: ctxPct(), cwd: tilde(CWD), liveId: live?.id, width: cols() });
+// The input box. readline clears everything below the prompt whenever it
+// redraws, so the bottom border and the status line are drawn AFTER it, again
+// after every keypress (see the keypress listener), with the cursor saved and
+// restored around them. Space is reserved first so the bottom of the screen
+// never scrolls between the save and the restore.
+function drawPrompt() {
+  promptShown = true; muted = false;
+  if (!interactive) return;
+  out(`\n${gray("╭" + "─".repeat(cols() - 2) + "╮")}\n\n\n\n\x1b[3A\r`);
+  rl.setPrompt(gray("│ ") + "> ");
+  rl.prompt(true);
+  drawBottom();
+}
+function drawBottom() {
+  if (!interactive || !promptShown || lineWaiter) return;
+  const w = process.stdout.columns || 80;
+  const len = 4 + vis(rl.line || "");
+  const down = Math.floor(len / w) - Math.floor((4 + (rl.cursor || 0)) / w) + 1;
+  out(`\x1b7\x1b[${down}B\r\x1b[K${gray("╰" + "─".repeat(cols() - 2) + "╯")}\x1b[1B\r\x1b[K${status()}\x1b8`);
+}
+function redrawPrompt() { if (!interactive) return; out("\x1b[1A\r\x1b[J"); promptShown = false; drawPrompt(); }
+function setStatus(text) {
+  if (!interactive || !promptShown || lineWaiter) return;
+  const w = process.stdout.columns || 80;
+  const down = Math.floor((4 + vis(rl.line || "")) / w) - Math.floor((4 + (rl.cursor || 0)) / w) + 2;
+  out(`\x1b7\x1b[${down}B\r\x1b[K${text}\x1b8`);
+}
+function clearPrompt(item) {
+  promptShown = false;
+  if (!interactive) { if (item.from === "phone") line(`> ${item.text}  (from phone)`); return; }
+  if (item.from === "terminal") {
+    const rows = Math.max(1, Math.ceil((4 + vis(item.text)) / (process.stdout.columns || 80)));
+    out(`\x1b[${rows + 1}A\r\x1b[J`);
+  } else {
+    rl.line = ""; rl.cursor = 0;
+    out("\r\x1b[1A\x1b[J");
+  }
+  const first = item.text.split("\n")[0];
+  const shown = first.length > cols() - 8 ? first.slice(0, cols() - 9) + "…" : first;
+  line(onGray(` > ${shown} `) + (item.from === "phone" ? gray("  from your phone") : ""));
+  line("");
+  muted = true;
+}
+async function nextInput() {
+  for (;;) {
+    if (live?.inbox.length) { const text = live.inbox.shift(); live.writeMeta(); return { text, from: "phone" }; }
+    if (inputs.length) return inputs.shift();
+    if (!promptShown) drawPrompt();
+    await new Promise((res) => { wake = res; });
+    wake = null;
+  }
+}
 
 let lastSigint = 0;
 rl.on("SIGINT", () => {
-  if (current) { current.abort(); return; }
-  if (Date.now() - lastSigint < 1500) { console.log(); process.exit(0); }
-  lastSigint = Date.now(); console.log(dim("\n  (ctrl-c again to exit)")); rl.prompt();
+  if (busy) { interrupt(); return; }
+  if (lineWaiter) { const w = lineWaiter; lineWaiter = null; w("n"); return; }
+  if (rl.line) { rl.line = ""; rl.cursor = 0; redrawPrompt(); return; }
+  if (Date.now() - lastSigint < 1500) return shutdown("exit");
+  lastSigint = Date.now();
+  setStatus(yellow("  Press Ctrl-C again to exit"));
+  setTimeout(() => setStatus(status()), 1500);
 });
+if (interactive) {
+  process.stdin.on("keypress", (_s, key) => {
+    if (!key) return;
+    if (key.name === "escape" && busy) interrupt();
+    if (key.name === "tab" && key.shift && promptShown && !lineWaiter) {
+      MODE = MODES[(MODES.indexOf(MODE) + 1) % MODES.length];
+    }
+    // readline has just redrawn (and cleared below) for this key; put the box back.
+    if (promptShown && !busy && !lineWaiter && !(key.name === "return" || key.name === "enter")) drawBottom();
+  });
+}
 
-const HELP = `  /compact       summarize older messages now to free context (automatic at 80%)
-  /context       show how full the context window is
+// ---------- commands ----------
+const HELP = `  ${bold("Commands")}
+  /compact       summarize older messages now to free context (automatic at 80%)
+  /context       how full the context window is
+  /phone         how to reach this session from your phone
+  /mode [m]      ask | edits | yolo (or shift+tab)
   /clear         start a fresh conversation (the old one stays on disk)
   /model [name]  show or switch the Ollama model
   /think         toggle showing reasoning (currently ${THINK ? "on" : "off"})
-  /yolo          toggle approval prompts
   /cwd [dir]     show or change the working directory
-  /exit          quit`;
+  /exit          save and quit (Ctrl-C twice does the same)
 
-while (true) {
-  const line = await new Promise((res) => rl.question(bold(green("› ")), res)).catch(() => null);
-  if (line === null) break;
-  const q = line.trim();
-  if (!q) continue;
-  if (q.startsWith("/")) {
-    const [cmd, ...rest] = q.slice(1).split(/\s+/); const arg = rest.join(" ");
-    if (cmd === "exit" || cmd === "quit") break;
-    else if (cmd === "help") console.log(HELP);
-    else if (cmd === "compact") { await keepInWindow(messages, { force: true }); await save(messages).catch(() => {}); }
-    else if (cmd === "context") { const est = estTokens(messages) + Math.ceil(JSON.stringify(toolSchemas).length / 3.2); console.log(dim(`  ~${Math.max(lastCtx, est)} of ${NUM_CTX} tokens (${Math.round(100 * Math.max(lastCtx, est) / NUM_CTX)}%), ${messages.length} messages; compacts at ${Math.round(SUMMARIZE_AT * 100)}%`)); }
-    else if (cmd === "clear") { messages = [{ role: "system", content: systemPrompt() }]; sessionFile = null; console.log(dim("  cleared")); }
-    else if (cmd === "think") { THINK = !THINK; console.log(dim(`  reasoning ${THINK ? "shown" : "off"}`)); }
-    else if (cmd === "yolo") { YOLO = !YOLO; console.log(YOLO ? yellow("  yolo on: writes and shell run without asking") : dim("  approvals back on")); }
-    else if (cmd === "model") {
-      if (arg) { const old = MODEL; MODEL = arg; const p = await checkModel(); if (p) { console.log(red(`  ${p}`)); MODEL = old; } else { messages[0].content = systemPrompt(); console.log(dim(`  model: ${MODEL}`)); } }
-      else console.log(dim(`  ${MODEL}`));
-    } else if (cmd === "cwd") {
-      if (arg) { const d = P(arg); if (existsSync(d) && statSync(d).isDirectory()) { CWD = d; process.chdir(d); messages[0].content = systemPrompt(); } else console.log(red("  not a directory")); }
-      console.log(dim(`  ${CWD}`));
-    } else console.log(dim(`  unknown command; /help`));
+  ${bold("Keys")}  esc interrupts · shift+tab cycles approval mode · type while it works to queue a message`;
+
+async function command(q) {
+  const [cmd, ...rest] = q.slice(1).split(/\s+/); const arg = rest.join(" ");
+  if (cmd === "exit" || cmd === "quit") return shutdown("exit");
+  if (cmd === "help") return line(HELP);
+  if (cmd === "compact") { busy = true; try { await keepInWindow(messages, { force: true }); } finally { busy = false; } return save(); }
+  if (cmd === "context") return note(`~${Math.round(ctxPct() * NUM_CTX / 100)} of ${NUM_CTX} tokens (${ctxPct()}%), ${messages.length} messages; compacts at ${Math.round(SUMMARIZE_AT * 100)}%`);
+  if (cmd === "phone") return note(live ? `live as ${live.id}: open cleetusai.com/code on your phone (it is in the Cleetus app too)` : "this session could not register for the phone; see ~/.cleetus/crash.log");
+  if (cmd === "mode" || cmd === "yolo") {
+    MODE = cmd === "yolo" ? (MODE === "yolo" ? "ask" : "yolo") : (MODES.includes(arg) ? arg : MODES[(MODES.indexOf(MODE) + 1) % MODES.length]);
+    return note(`mode: ${MODE}${MODE === "edits" ? " (edits apply without asking; shell still asks)" : MODE === "yolo" ? " (nothing asks)" : " (everything asks)"}`);
+  }
+  if (cmd === "clear") {
+    await save();
+    messages = [{ role: "system", content: systemPrompt() }]; sessionFile = null;
+    if (live) { live.title = ""; live.emit("notice", { text: "conversation cleared (the old one is saved)" }); live.writeMeta(); }
+    return note("cleared; the old conversation is saved and can be resumed with --resume");
+  }
+  if (cmd === "think") { THINK = !THINK; return note(`reasoning ${THINK ? "shown" : "off"}`); }
+  if (cmd === "model") {
+    if (arg) { const old = MODEL; MODEL = arg; const p = await checkModel(); if (p) { note(p, true); MODEL = old; } else { messages[0].content = systemPrompt(); if (live) { live.model = MODEL; live.writeMeta(); } note(`model: ${MODEL}`); } }
+    else note(MODEL);
+    return;
+  }
+  if (cmd === "cwd") {
+    if (arg) { const d = P(arg); if (existsSync(d) && statSync(d).isDirectory()) { CWD = d; process.chdir(d); sessionKey = CWD.replaceAll("/", "_"); messages[0].content = systemPrompt(); if (live) { live.cwd = CWD; live.writeMeta(); } } else return note("not a directory", true); }
+    return note(tilde(CWD));
+  }
+  note(`unknown command ${cmd}; /help`, true);
+}
+
+// ---------- welcome ----------
+if (tty) {
+  const w = Math.min(cols(), 76);
+  line(box([
+    `${amber("✻")} ${bold("Welcome to Cleetus Code")}`,
+    "",
+    gray(`  /help for commands · esc to interrupt · shift+tab for modes`),
+    gray(`  cwd: ${tilde(CWD)}`),
+    gray(`  ${MODEL} · local · ${Math.round(NUM_CTX / 1024)}k context, compacts itself`),
+    live ? gray(`  phone: cleetusai.com/code · session ${live.id}`) : gray("  phone: unavailable (see ~/.cleetus/crash.log)"),
+    ...(resumed ? [gray(`  resumed ${resumed} messages from ${basename(sessionFile)}`)] : []),
+  ], { width: w, color: amber }));
+  if (MODE === "yolo") line(yellow("  yolo: nothing asks before writing or running"));
+}
+
+// ---------- the loop ----------
+for (;;) {
+  const item = await nextInput();
+  clearPrompt(item);
+  const text = item.text.trim();
+  if (text.startsWith("/") && !text.includes("\n") && /^\/[a-z]+(\s|$)/.test(text)) {
+    try { await command(text); } catch (e) { note(`error: ${e.message}`, true); }
     continue;
   }
-  messages.push({ role: "user", content: q });
-  try { await turn(messages); } catch (e) { console.log(red(`  error: ${e.message}`)); }
-  await save(messages).catch(() => {});
+  if (live) {
+    live.last_input_from = item.from;
+    if (!live.title) live.title = text.slice(0, 80);
+    live.emit("user", { text, from: item.from });
+  }
+  add({ role: "user", content: text });
+  try { await turn(messages); }
+  catch (e) { crashLog("turn", e); note(`error: ${e.message}`, true); }
+  await save();
 }
-rl.close();
-process.exit(0);
