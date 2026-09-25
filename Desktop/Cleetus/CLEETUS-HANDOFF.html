@@ -245,6 +245,7 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
   <li><a href="#s151"><span>151</span>How Grayson wants to be spoken to</a></li>
   <li><a href="#s152"><span>152</span>The Apple TV is set up and on the house Wi-Fi&hellip;</a></li>
   <li><a href="#s153"><span>153</span>The Pi panel is now one studio panel&hellip;</a></li>
+  <li><a href="#s154"><span>154</span>RuView can say where Grayson is, from the three boards alone&hellip;</a></li>
 </ol></div></nav>
 
 <section id="state"><div class="wrap">
@@ -304,6 +305,7 @@ footer{padding:2.5rem 0 4rem;color:var(--faint);font-family:var(--mono);font-siz
         <td>all 18 pushed 13 Aug; the check that caught the drift now passes</td></tr>
     <tr><td>The morning brief you read</td><td><span class="tag ok">live</span></td>
         <td>written 07:00 today, local model, money guard held on the $-form and missed a bare figure — section 101</td></tr>
+    <tr><td>RuView room locator</td><td><span class="tag ok">live</span></td><td>spot-level, :8793 and room_sense; 60% on held-out time, desk 81%, bed 82%; keys/closet/out weak; day-2 test pending (section 154)</td></tr>
     <tr><td>Pi wall panel (creo-bots-pi)</td><td><span class="tag ok">live</span></td>
         <td>studio panel on :8791 (clock, room control, RuView, markets), glass screenshot 23 Sep. DNS fixed 23 Sep: lookups 5053 ms to 18 to 52 ms, tunnel 5.4 s to 0.15 s (section 153)</td></tr>
     <tr><td>Push notifications</td><td><span class="tag bad">down</span></td>
@@ -8935,6 +8937,97 @@ in that form is invented.</pre>
       the node RSS before power-cycling.</li>
   </ul>
 </section>
+
+<section id="s154">
+  <h2>RuView can say where Grayson is, from the three boards alone (24 to 25 Sep 2026)</h2>
+
+  <p><strong>Short version.</strong> Every earlier verdict that RuView cannot see a person (sections 130 and
+  on) was measured on the wrong data: the collector kept 7 summary numbers per frame and the server keeps
+  none of the per-subcarrier shape. Position lives in that shape. With the raw channel kept, every radio
+  used as a light source and a labelled walk, a model named the right spot on <strong>72.7%</strong> of visits
+  it never saw (chance 16.7%). It then failed within minutes of the walk (said &ldquo;out&rdquo; while Grayson
+  typed), and was retrained on self-labelled desk time. It is live, spot-level, and reported with its
+  measured accuracy. No line crossing is used anywhere.</p>
+
+  <h3>Measured</h3>
+  <ul>
+    <li><strong>Walk, 23:22 24 Sep</strong> (3 rounds x 6 spots x 45 s, spoken by the Mac, shuffled order):
+      held-out-round accuracy <strong>72.7%</strong>, rounds 70/79/70%. Label-shuffle controls 13.1%.
+      Bed 85, middle 94, desk 88, out 91, keys 42 (read as desk, about 1 m away), closet 36 (read as out,
+      it is by the door). Any one board alone: 30 to 57%. All 12 views: 73%.</li>
+    <li><strong>Then it broke.</strong> From 23:41, with Grayson typing, it said &ldquo;out&rdquo; in 13 to 20 of
+      every 20 windows. The live path was not the cause: the offline pipeline gave the same answer. The walk
+      trained every &ldquo;out&rdquo; block with the door shut and in-room blocks with it (probably) open;
+      opening it helped only partly. One 14-minute walk memorises that walk.</li>
+    <li><strong>Retrained on everything labelled</strong> (walk plus any 3 s window where HID idle stayed under
+      8 s, labelled desk), scored on held-out 10-minute time blocks: <strong>60%</strong> overall,
+      <strong>desk 81 to 82%</strong> (the old model: 31% on those windows), bed 73 to 82%. Keys, closet and
+      out are weak (12 to 24%) because one walk is their only data.</li>
+    <li><strong>Confound check, live:</strong> the new model could have learned &ldquo;not the walk&rdquo; instead of
+      &ldquo;desk&rdquo;. Grayson lay on the bed: <strong>bed 80 of 80</strong> readings. At the desk: desk 30 of 40.</li>
+    <li><strong>Calibration:</strong> shrinkage LDA claims ~100% while right ~71% (ECE 0.29). One temperature
+      (about 10 to 13) fixes it (ECE 0.03). Sticky smoothing on calibrated output: flicker 5.7 to 3.5 switches a
+      minute for 1.6 points. Model variants (logistic, trees, PCA, 5 s windows, level and motion features) all
+      landed within noise of the simple one, so the simple one stays.</li>
+    <li><strong>Rejected:</strong> background subtraction scored 77%, but that was leakage (the held-out
+      round&rsquo;s own out windows made the reference); with a reference 5 minutes stale it fell to 53.8%.</li>
+  </ul>
+
+  <h3>What was built</h3>
+  <ul>
+    <li><strong>Multi-illuminator firmware</strong> on all three boards (v0.8.4 build,
+      <code>~/RuView/firmware/esp32-csi-node/main/csi_collector.c</code>, uncommitted): classifies each frame by
+      transmitter BEFORE the rate gate (the old order starved the wanted source), 25 Hz per transmitter,
+      appends the 6-byte transmitter MAC to each UDP frame. Only the primary source feeds on-board presence.
+      Each board now hears the mango, the house AP and the other two boards: <strong>12 views</strong>.
+      Flash backups: <code>~/RuView-backups/node{1,2,3}-flash-20260924.bin</code>.</li>
+    <li>Presence thresholds pinned in NVS from the empty window (mean + 3 sd): node 1 25.20, node 2 27.45,
+      node 3 27.02, so a reboot with someone present no longer poisons them.</li>
+    <li><strong>Mango</strong>: back on channel 1, OFDM-only basic rates (<code>WirelessMode=7</code>,
+      <code>BasicRate=336</code>), now a plain AP on the Mac&rsquo;s wired bridge at
+      <code>root@192.168.2.250</code> (DHCP off). <code>/etc/ruview-tx.sh</code> pings every RuView board on it at
+      50/s so it transmits frames that carry CSI (beacons carry none). Leave its Ethernet in: node 2&rsquo;s data
+      and the mango&rsquo;s illumination both depend on it.</li>
+    <li>Server (<code>~/RuView/v2</code>, uncommitted): <code>RUVIEW_UDP_TEE</code> raw copy to :5006,
+      <code>RUVIEW_EDGE_PRESENCE_GATE</code> (a board&rsquo;s own empty verdict vetoes the stock classifier),
+      <code>--udp-allow</code> now includes 192.168.2.0/24.</li>
+    <li><code>~/cleetusd/bin/</code>: <code>ruview-raw.py</code> (agent <code>com.cleetus.ruview-raw</code>, 1-minute npz in
+      <code>roomwatch/csi-raw/</code>, about 650 MB a day, forwards to :5007), <code>ruview-locate-session.py</code>
+      (spoken walk), <code>ruview-locate-test.py</code> (held-out-round scoring, controls, <code>--synthetic</code>
+      plants, <code>--score-saved</code> for day-2 tests), <code>ruview-locate-bench.py</code>,
+      <code>ruview-locate-train.py</code> (walk + HID desk + truth-empty, time-blocked CV), and
+      <code>ruview-locate-live.py</code> + <code>.html</code> (agent <code>com.cleetus.ruview-locate</code>).</li>
+    <li><strong>Live map: <code>http://127.0.0.1:8793</code></strong> (<code>/state</code> JSON), 4 Hz, heatmap, a
+      moving dot and trail. The dot blends spot positions, so between spots it means uncertain.</li>
+    <li><strong>Cleetus:</strong> <code>room_sense</code> now returns a ROOM LOCATOR section (spot, calibrated
+      probability, held-out accuracy, limits) and <code>/room</code> carries <code>location</code>. The server&rsquo;s
+      person count, breathing and heart rate are still rejected.</li>
+    <li><strong>Nightly retrain</strong> 04:40 (<code>com.cleetus.ruview-locate-train</code>), refuses to replace the
+      live model if held-out accuracy drops more than 5 points. Log: <code>~/Library/Logs/ruview-locate-train.log</code>.</li>
+  </ul>
+
+  <h3>Traps found</h3>
+  <ul>
+    <li>Pooling transmitters is fatal: each board heard two populations whose profiles differ by 0.5 log units,
+      burying any body. The analyser caught it only because a planted 3% signal scored chance.</li>
+    <li>ESP-IDF 5.4.1 <code>export.sh</code> fails under Xcode Python 3.9 (<code>ruamel_yaml</code> metadata reads as
+      missing). Reinstalled on Homebrew python@3.12; use <code>. ~/esp/idf-env.sh</code>.</li>
+    <li><code>plutil -replace ProgramArguments.N</code> inserted instead of replacing; the server died on a stray
+      argument. Always <code>plutil -p</code> after.</li>
+    <li>Both cameras (C920 and Brio) now hang with no frames, so roomwatch has no camera. Needs a replug.</li>
+  </ul>
+
+  <h3>Next (tomorrow&rsquo;s pass)</h3>
+  <ul>
+    <li><strong>Day-2 test first:</strong> one round of the walk, scored with <code>ruview-locate-test.py
+      &lt;session&gt; --score-saved</code> against the model as it stands, no retraining. That is the honest number.</li>
+    <li>Then walk again with the door both open and shut <em>inside</em> each spot, more rounds, then retrain.</li>
+    <li>Leave the room for 10+ minutes with a truth window open, so &ldquo;out&rdquo; gets real data (the 17:41 empty
+      window is still open and must be closed at the time Grayson came back).</li>
+    <li>Two-person walk. Raw CSI retention policy. Commit the RuView firmware and server changes.</li>
+  </ul>
+</section>
+
 
 </body>
 </html>
