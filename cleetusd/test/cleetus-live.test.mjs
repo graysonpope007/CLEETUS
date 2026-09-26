@@ -93,6 +93,15 @@ test("the phone drives a session: message, approval yes and no, Ollama retry, st
     await until(async () => (await readEvents(meta.id)).events.some((e) => e.type === "assistant" && /will not/.test(e.text)), 20000, "declined turn to finish");
     assert.equal(existsSync(join(cwd, "nope.txt")), false);
 
+    // 2b. Interrupt while parked on an approval: the command must not run, the session must come back.
+    script = [bash("echo parked > parked.txt"), say("Stopped.")];
+    await sessionCall(meta.id, "POST", "/message", { text: "park on an approval" });
+    const ask3 = await until(async () => (await readEvents(meta.id)).events.find((e) => e.type === "approval" && ![ask.aid, ask2.aid].includes(e.aid)), 20000, "third approval");
+    await sessionCall(meta.id, "POST", "/interrupt");
+    await until(async () => (await readEvents(meta.id)).events.some((e) => e.type === "approval_done" && e.aid === ask3.aid && e.decision === "n"), 10000, "interrupt to answer no");
+    await until(async () => (await readMeta(meta.id)).state === "idle", 10000, "back to idle");
+    assert.equal(existsSync(join(cwd, "parked.txt")), false);
+
     // 3. The conversation is on disk.
     const sessions = readdirSync(join(HOME, ".cleetus", "sessions")).filter((f) => f.endsWith(".json"));
     assert.equal(sessions.length, 1);

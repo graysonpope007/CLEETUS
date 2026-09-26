@@ -394,6 +394,11 @@ function interrupt() {
   stopFlag = true;
   current?.abort();
   killTool?.();
+  // A turn parked on an approval is not in the model or a tool, so the two
+  // lines above cannot reach it: answer the approval "no" from here, on both
+  // the terminal and the phone side.
+  if (live?.pending) live.settleApproval(live.pending.aid, "n", "interrupt");
+  else if (lineWaiter) { const w = lineWaiter; lineWaiter = null; w("n"); }
 }
 
 // Keep the conversation inside the window, without ever losing the session.
